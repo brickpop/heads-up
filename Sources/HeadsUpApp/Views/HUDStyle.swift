@@ -32,6 +32,16 @@ enum HUDStyle {
         static var raise2: Color { Color(nsColor: .secondarySystemFill) }
         /// `--track`: the empty part of a progress bar.
         static var track: Color { Color(nsColor: .tertiarySystemFill) }
+        /// `--green`: a running service.
+        static var running: Color { .green }
+        /// `--code-bg`: log drawers and code blocks. Black at 4 % in light, 25 % in dark.
+        static var codeBackground: Color {
+            Color(
+                nsColor: NSColor(name: nil) { appearance in
+                    let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                    return NSColor.black.withAlphaComponent(dark ? 0.25 : 0.04)
+                })
+        }
         static var alert: Color { .red }
         /// `--warn`: something the user should act on, as an icon or short text.
         static var warn: Color { .orange }
@@ -111,6 +121,8 @@ enum HUDStyle {
         static let margin: CGFloat = 8
         static let gap: CGFloat = 8
         static let fontSize: CGFloat = 13
+        /// The padding above and below a two-line notice.
+        static let detailPadding: CGFloat = 8
     }
 
     enum Settings {
@@ -193,6 +205,37 @@ enum HUDStyle {
         static let headerGap: CGFloat = 14
         static let extendPadding: CGFloat = 12
         static let extendCornerRadius: CGFloat = 10
+    }
+
+    enum Services {
+        static let padding: CGFloat = 8
+        /// Past this height the tab scrolls.
+        static let maxHeight: CGFloat = 480
+        static let headerPadding: CGFloat = 12
+        static let rowCornerRadius: CGFloat = 10
+        static let rowPadding: CGFloat = 10
+        static let rowGap: CGFloat = 12
+        static let statusDotSize: CGFloat = 10
+        /// The Start / Stop button's fixed width.
+        static let buttonWidth: CGFloat = 84
+        static let warningDotSize: CGFloat = 6
+        static let drawerHeight: CGFloat = 180
+        /// The drawer starts under the row's text, past the chip.
+        static let drawerLeading: CGFloat = 60
+        static let drawerCornerRadius: CGFloat = 8
+        static let drawerPadding: CGFloat = 10
+        static let logFontSize: CGFloat = 11.5
+        /// Line height 1.6 at 11.5 pt.
+        static let logLineSpacing: CGFloat = 7
+        static let metaSize: CGFloat = 12
+        static let emptyTitleSize: CGFloat = 15
+        /// The space between a log line's time and its text.
+        static let logTimeGap: CGFloat = 12
+    }
+
+    enum ServiceForm {
+        static let portWidth: CGFloat = 100
+        static let envKeyWidth: CGFloat = 160
     }
 
     enum Pill {

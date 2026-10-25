@@ -112,6 +112,9 @@ public final class CaffeineStore {
         toaster?.toast(Strings.Caffeine.off)
     }
 
+    /// The extend choices, in minutes: the HUD's buttons and the actions.
+    public static let extendMinutes = [10, 60]
+
     /// +10 min or +1 h: from the current end, or from now if it already passed.
     public func extend(minutes: Int) {
         guard isOn, let current = endsAt else { return }

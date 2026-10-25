@@ -179,14 +179,16 @@ private func status(
 @Suite struct MenuModelTests {
     private func focusRow(_ focus: FocusSnapshot) -> MenuRow? {
         let menu = MenuModel(
-            hotkey: .ok(.wakeDefault), focus: focus, caffeine: .off, runningServices: 0, pinnedChats: 0, now: now)
+            hotkey: .ok(.wakeDefault), focus: focus, caffeine: .off, services: ServicesSnapshot(), pinnedChats: 0,
+            now: now)
         for case .row(let row) in menu.entries where row.action == .focus { return row }
         return nil
     }
 
     @Test func theRowsAreInTheSpecsOrder() {
         let menu = MenuModel(
-            hotkey: .ok(.wakeDefault), focus: .idle(nextLength: 25), caffeine: .on(endsAt: nil), runningServices: 2,
+            hotkey: .ok(.wakeDefault), focus: .idle(nextLength: 25), caffeine: .on(endsAt: nil),
+            services: ServicesSnapshot(running: 2),
             pinnedChats: 3, now: now)
         #expect(
             menu.entries == [
@@ -206,7 +208,8 @@ private func status(
 
     @Test func theHeaderShowsNoShortcutWhenItIsntRegistered() {
         let menu = MenuModel(
-            hotkey: .taken, focus: .idle(nextLength: 25), caffeine: .off, runningServices: 0, pinnedChats: 0, now: now)
+            hotkey: .taken, focus: .idle(nextLength: 25), caffeine: .off, services: ServicesSnapshot(), pinnedChats: 0,
+            now: now)
         #expect(menu.entries.first == .header(title: "HeadsUp", shortcut: nil))
     }
 
@@ -434,7 +437,9 @@ private func status(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
-                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                dataFolder: nil))
         failing.setOpenAtLogin(true)
         #expect(failing.openAtLogin == .disabled)
         #expect(failing.openAtLoginError?.hasPrefix("HeadsUp couldn't change Open at Login") == true)
@@ -448,7 +453,9 @@ private func status(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: FakeLoginItem(status: .requiresApproval), systemSettings: links, notifier: FakeNotifier(),
-                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                dataFolder: nil))
         #expect(model.openAtLogin == .requiresApproval)
         model.openLoginItemsSettings()
         model.openKeyboardShortcutsSettings()
@@ -465,7 +472,9 @@ private func status(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
-                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                dataFolder: nil))
         try? fake.setEnabled(true)  // changed in System Settings
         #expect(model.openAtLogin == .disabled)
         model.hud.showSettings(.general)
@@ -526,7 +535,8 @@ private func status(
 @Suite struct SliceTwoReviewTests {
     private func row(_ action: MenuAction, services: Int = 0, pinned: Int = 0) -> MenuRow? {
         let menu = MenuModel(
-            hotkey: .ok(.wakeDefault), focus: .idle(nextLength: 25), caffeine: .off, runningServices: services,
+            hotkey: .ok(.wakeDefault), focus: .idle(nextLength: 25), caffeine: .off,
+            services: ServicesSnapshot(running: services),
             pinnedChats: pinned, now: now)
         for case .row(let row) in menu.entries where row.action == action { return row }
         return nil
@@ -563,7 +573,9 @@ private func status(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: files, loginItem: item,
                 systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
-                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                dataFolder: nil))
     }
 
     @Test func anAppOutsideApplicationsAsksToBeMovedAfterTheSwitchFails() {
@@ -632,7 +644,7 @@ private func status(
         #expect(model.body == .suggestions)
         model.hud.setInput("")
         model.hud.selectTab(.services)
-        #expect(model.body == .empty)
+        #expect(model.body == .services)
         model.hud.selectTab(.chat)
         #expect(model.body == .empty)  // the welcome is done once another tab was visited
     }

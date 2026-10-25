@@ -39,8 +39,18 @@ enum Symbols {
     static let close = "xmark"
     /// The bell on Snooze buttons.
     static let snooze = "bell"
+    /// The Logs toggle on a service row.
+    static let logs = "list.bullet"
+    /// The status dot of a failed service: red with a small ×.
+    static let failedDot = "xmark.circle.fill"
     /// The badge on the Caffeine chip while paused on battery.
     static let pauseBadge = "pause.circle.fill"
+    /// The back button of a Settings form: ‹ Services.
+    static let back = "chevron.left"
+    /// The chevron at the end of a row that opens a form.
+    static let disclosure = "chevron.right"
+    /// Removes a row, such as an environment variable.
+    static let minus = "minus"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

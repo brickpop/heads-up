@@ -4,7 +4,7 @@ enum CaffeineActions {
     static func make(caffeine: CaffeineStore) -> [Action] {
         var actions: [Action] = []
         if caffeine.isOn && caffeine.endsAt != nil {
-            for minutes in [10, 60] {
+            for minutes in CaffeineStore.extendMinutes {
                 actions.append(
                     Action(
                         id: ActionID("caffeine.extend:\(minutes)"), title: Strings.Caffeine.extendAction(minutes),

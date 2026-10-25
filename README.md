@@ -27,3 +27,9 @@ from the toolchain; if the toolchain lacks it, install it with `brew install swi
 The bundle identifier and the version are variables at the top of the `justfile`.
 Dependencies are pinned in `Package.resolved`, and builds never resolve new versions.
 To change a dependency, edit `Package.swift`, run `swift package resolve`, and commit both files.
+
+## Services
+
+A service inherits HeadsUp's environment: all of a terminal's variables if HeadsUp was started from
+one, or the short one macOS gives apps otherwise. It runs in your login shell, which adds what your
+profile sets.

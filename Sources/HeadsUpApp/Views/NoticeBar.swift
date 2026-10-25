@@ -1,11 +1,12 @@
 import HeadsUpCore
 import SwiftUI
 
-/// A 36 pt bar at the top of the HUD body for a problem the user should know about:
-/// a warning icon, one line of text and its buttons. The settings-file notice uses it
-/// now, the vision notice later. VoiceOver announces the text when the bar appears.
+/// A bar at the top of the HUD body for a problem the user should know about: a warning
+/// icon, a semibold line, optionally a second line of detail, and its buttons. It is 36 pt
+/// with one line and grows with two. VoiceOver announces all of its text when it appears.
 struct NoticeBar<Actions: View>: View {
     let text: String
+    var detail: String?
     @ViewBuilder var actions: Actions
 
     var body: some View {
@@ -13,19 +14,32 @@ struct NoticeBar<Actions: View>: View {
             Image(systemName: Symbols.warning)
                 .foregroundStyle(HUDStyle.Colors.warn)
                 .accessibilityHidden(true)
-            Text(text)
-                .font(.system(size: HUDStyle.Notice.fontSize, weight: .semibold))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text)
+                    .font(.system(size: HUDStyle.Notice.fontSize, weight: .semibold))
+                    .lineLimit(1)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: HUDStyle.Settings.helpSize))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Spacer(minLength: 0)
             actions
                 .controlSize(.small)
         }
         .padding(.horizontal, HUDStyle.Notice.padding)
-        .frame(height: HUDStyle.Notice.height)
+        .padding(.vertical, detail == nil ? 0 : HUDStyle.Notice.detailPadding)
+        .frame(minHeight: HUDStyle.Notice.height)
         .background(HUDStyle.Colors.raise, in: RoundedRectangle(cornerRadius: HUDStyle.Notice.cornerRadius))
         .padding(HUDStyle.Notice.margin)
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(text).post() }
+        .onAppear { AccessibilityNotification.Announcement(announcement).post() }
+    }
+
+    private var announcement: String {
+        detail.map { "\(text) \($0)" } ?? text
     }
 }
 

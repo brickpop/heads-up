@@ -140,6 +140,19 @@ import Foundation
         public func reveal(_ file: URL) { revealed.append(file) }
     }
 
+    /// A folder panel that answers what the test says, and remembers where it opened.
+    @MainActor
+    public final class FakeFolderPicker: FolderPicker {
+        /// The folder the user picks; nil is Cancel.
+        public var answer: String?
+        public private(set) var openedAt: [String] = []
+        public init() {}
+        public func chooseFolder(startingAt path: String) async -> String? {
+            openedAt.append(path)
+            return answer
+        }
+    }
+
     /// A login item that changes when told to, or fails when `failure` is set.
     @MainActor
     public final class FakeLoginItem: LoginItem {
@@ -232,6 +245,73 @@ import Foundation
             isOnBattery = onBattery
             changed?()
         }
+    }
+
+    /// Launches nothing: the test emits output and exits, and sees the signals sent.
+    @MainActor
+    public final class FakeServiceLauncher: ServiceLauncher {
+        public var canDisclaim = true
+        /// Set to make macOS refuse the disclaim for each launch from now on.
+        public var refuseDisclaim = false
+        /// Set to make the next launch fail.
+        public var failNextLaunch: LaunchError?
+        public private(set) var launched: [Int32: SpawnPlan] = [:]
+        public private(set) var signals: [(group: Int32, signal: Int32)] = []
+        /// Every signal and reap, in order: "TERM 1001", "KILL 1001", "reap 1001".
+        public private(set) var events: [String] = []
+        private var outputs: [Int32: @Sendable (Data) -> Void] = [:]
+        private var exits: [Int32: @Sendable (ProcessExit) -> Void] = [:]
+        private var nextPID: Int32 = 1000
+
+        public init() {}
+
+        public func launch(
+            _ plan: SpawnPlan, output: @escaping @Sendable (Data) -> Void,
+            exit: @escaping @Sendable (ProcessExit) -> Void
+        ) throws(LaunchError) -> LaunchedProcess {
+            if let failure = failNextLaunch {
+                failNextLaunch = nil
+                throw failure
+            }
+            nextPID += 1
+            launched[nextPID] = plan
+            outputs[nextPID] = output
+            exits[nextPID] = exit
+            return LaunchedProcess(pid: nextPID, isolated: canDisclaim && !refuseDisclaim)
+        }
+
+        public func signal(group: Int32, _ signal: Int32) {
+            signals.append((group, signal))
+            let name = signal == SIGTERM ? "TERM" : signal == SIGKILL ? "KILL" : "\(signal)"
+            events.append("\(name) \(group)")
+        }
+
+        public func reap(_ pid: Int32) {
+            events.append("reap \(pid)")
+        }
+
+        /// The process wrote `text`.
+        public func emit(_ pid: Int32, _ text: String) {
+            outputs[pid]?(Data(text.utf8))
+        }
+
+        /// The process ended.
+        public func finish(_ pid: Int32, _ exit: ProcessExit) {
+            exits[pid]?(exit)
+            exits[pid] = nil
+        }
+    }
+
+    /// A port probe that answers what the test says.
+    @MainActor
+    public final class FakePortProbe: PortProbe {
+        /// The port the service's group listens on, for `listeningPort`.
+        public var port: Int?
+        /// The ports that answer on this Mac, for `answers`.
+        public var answering: Set<Int> = []
+        public init(port: Int? = nil) { self.port = port }
+        public func listeningPort(group: Int32) async -> Int? { port }
+        public func answers(port: Int) async -> Bool { answering.contains(port) }
     }
 
 #endif

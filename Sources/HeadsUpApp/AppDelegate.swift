@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notifier: UserNotifier?
     private var wakeObserver: NSObjectProtocol?
     private var clockObserver: NSObjectProtocol?
+    private var powerOffObserver: NSObjectProtocol?
+    /// Logout, restart or shutdown: services stop without the quit question (UX part 1, §10).
+    private var poweringOff = false
     private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,8 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let scheduler = SystemScheduler()
         // Answers from Notification Center go to the model, once it exists.
-        let notifier = UserNotifier { [weak self] category, action in
-            self?.model?.handleNotification(category: category, action: action)
+        let notifier = UserNotifier { [weak self] category, action, requestID in
+            self?.model?.handleNotification(category: category, action: action, requestID: requestID)
         }
         let model = AppModel(
             ports: AppModel.Ports(
@@ -31,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 appearance: SystemAppearanceAdapter(), files: FinderRevealer(), loginItem: LoginItemAdapter(),
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
                 powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
+                serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
+                folderPicker: OpenPanelFolderPicker(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
                 focusSecondsPerMinute: Self.focusSecondsPerMinute))
         self.model = model
@@ -56,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let panel = self.panel, panel.isKeyWindow else { return event }
-            return self.handleKey(event, hud: model.hud, panel: panel) ? nil : event
+            return self.handleKey(event, model: model, panel: panel) ? nil : event
         }
 
         observe(
@@ -76,6 +81,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         model.launch()
+        if model.services.isolationWarning {
+            log.error("responsibility disclaim unavailable; service inherits HeadsUp's permissions")
+        }
+        powerOffObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.poweringOff = true }
+        }
         #if DEBUG && HEADSUP_QUICK_TIMERS
             log.notice("HeadsUp quick timers: one timer minute lasts 5 seconds")
         #endif
@@ -104,6 +117,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         private static let focusSecondsPerMinute: TimeInterval = 60
     #endif
 
+    /// ⌘Q and the menu's Quit: while services run, ask first (UX part 1, §10), then stop them all
+    /// (SIGTERM, then SIGKILL after 3 s) before quitting.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, !model.services.liveServices.isEmpty else { return .terminateNow }
+        if !poweringOff, let question = model.quitQuestion {
+            NSApp.activate(ignoringOtherApps: true)
+            model.hud.beginModal()
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = question.title
+            alert.informativeText = [question.message, question.detail].compactMap { $0 }.joined(separator: "\n")
+            alert.addButton(withTitle: question.quit)  // the default: Return
+            alert.addButton(withTitle: question.cancel).keyEquivalent = "\u{1b}"  // Esc
+            let answer = alert.runModal()
+            model.hud.endModal()
+            guard answer == .alertFirstButtonReturn else { return .terminateCancel }
+        }
+        Task { @MainActor in
+            await model.services.stopAll()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         hotkeys.invalidate()
         // Assertions die with the process anyway; releasing them first is tidier.
@@ -115,7 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Returns false for keys it leaves to the text field. Return stays with the field
     /// (`onSubmit`), and while an input method is composing text (Japanese, Chinese…)
     /// ↑ ↓ and Esc belong to its candidate window.
-    private func handleKey(_ event: NSEvent, hud: HUDStore, panel: NSPanel) -> Bool {
+    private func handleKey(_ event: NSEvent, model: AppModel, panel: NSPanel) -> Bool {
+        let hud = model.hud
         let shortcut = Self.shortcut(for: event)
         if hud.recording {
             // The shortcut recorder takes every key (amendment 5): Esc cancels, anything else is
@@ -140,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case Key.downArrow where hud.arrowKeysMoveSelection:
             hud.moveSelection(1)
         case Key.escape:
-            hud.escape()
+            model.escape()
         default:
             return false
         }

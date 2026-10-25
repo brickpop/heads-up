@@ -49,7 +49,7 @@ public struct MenuModel: Equatable, Sendable {
     public let entries: [MenuEntry]
 
     public init(
-        hotkey: HotkeyStatus, focus: FocusSnapshot, caffeine: CaffeineSnapshot, runningServices: Int,
+        hotkey: HotkeyStatus, focus: FocusSnapshot, caffeine: CaffeineSnapshot, services: ServicesSnapshot,
         pinnedChats: Int, now: Date
     ) {
         let shortcut: String? =
@@ -71,7 +71,7 @@ public struct MenuModel: Equatable, Sendable {
             .row(
                 MenuRow(
                     action: .services, title: Strings.Tabs.title(.services), glyph: .servers,
-                    value: Strings.MenuBar.running(runningServices))),
+                    value: Strings.MenuBar.services(services))),
             .separator,
             .row(
                 MenuRow(

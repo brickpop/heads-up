@@ -16,7 +16,7 @@ After you change an SVG in `source/`, run from the repository root:
 tools/make-icons.sh
 ```
 
-It needs Node.js and npm (Linux or macOS). It renders the SVGs with `@resvg/resvg-js` 2.6.2, installed into a temporary folder for the run with `npm ci` from the lockfile in `tools/icons/` (every package checked against its sha512), and writes the four files above into `Resources/`:
+It needs Node.js and npm (Linux or macOS). It renders the SVGs with `@resvg/resvg-js` 2.6.2, installed into a temporary folder for the run, and writes the four files above into `Resources/`:
 
 - the glyph at 18 and 36 px (PNG), and as a vector PDF drawn from the same geometry. `tools/make-icons.js` writes the PDF by hand, so if you change the glyph's shapes, change them there too;
 - the app icon (light) at 16, 32, 64, 128, 256, 512 and 1024 px, packed into `AppIcon.icns`.

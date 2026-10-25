@@ -154,8 +154,14 @@ public enum Strings {
         public static let caffeinePaused = "caffeine paused on battery"
 
         public static func startFocus(_ minutes: Int) -> String { "Start \(minutes) min" }
-        /// "2 running", or "None" when nothing runs.
-        public static func running(_ count: Int) -> String { count == 0 ? "None" : "\(count) running" }
+        /// The Services row: "2 running · 1 failed", "1 starting", or "None" (UX part 1 §9, addendum 4).
+        public static func services(_ snapshot: ServicesSnapshot) -> String {
+            var parts: [String] = []
+            if snapshot.running > 0 { parts.append("\(snapshot.running) running") }
+            if snapshot.starting > 0 { parts.append("\(snapshot.starting) starting") }
+            if snapshot.failed > 0 { parts.append("\(snapshot.failed) failed") }
+            return parts.isEmpty ? "None" : parts.joined(separator: " · ")
+        }
 
         /// "Break due" or "Break over": the words the item and the menu show for a waiting prompt.
         public static func promptWords(_ prompt: FocusSnapshot.Prompt) -> String {
@@ -299,6 +305,7 @@ public enum Strings {
             case .startFocus: "Start focus"
             case .snooze: "Snooze"
             case .stop: "Stop"
+            case .showLogs: "Show Logs"
             }
         }
     }
@@ -459,8 +466,8 @@ public enum Strings {
 
         // Extend row
         public static let needLonger = "Need a bit longer?"
-        public static let plusTen = "+10 min"
-        public static let plusHour = "+1 h"
+        /// The extend buttons: "+10 min", "+1 h".
+        public static func plus(_ minutes: Int) -> String { minutes == 60 ? "+1 h" : "+\(minutes) min" }
 
         // Durations
         public static let keepAwakeFor = "Keep awake for"
@@ -512,6 +519,200 @@ public enum Strings {
             case .untilOff: "until turned off"
             }
         }
+    }
+
+    /// The Services tab, its log, form and quit question (Services spec; UX part 1 §1, §9, §10;
+    /// addendum 4; Yuki's Services copy). All of it is Yuki's final copy.
+    public enum Services {
+        // Form problems
+        public static let nameEmpty = "Enter a name."
+        public static let nameTooLong = "Use 64 characters or fewer."
+        public static let commandProblem = "Enter a command to run."
+        public static let portProblem = "Enter a port from 1 to 65535, or leave it empty."
+        public static let envKeyProblem = "Use only letters, digits and _, and don't start with a digit."
+        public static let folderMissing = "This folder doesn't exist."
+        /// A NUL character in the command, the folder or a value, which only a hand-edited
+        /// services.json can have.
+        public static let nulProblem = "This has a hidden character that can't be used. Type it again."
+        /// The form's bottom bar, in --danger, when services.json couldn't be written.
+        public static func saveFailed(_ reason: String) -> String { "Couldn't save: \(reason)" }
+        /// The --warn meta line of a service from services.json that breaks a rule: the form's
+        /// problem note in lower case, "Can't start · enter a command to run".
+        public static func cantStart(_ problem: String) -> String {
+            var reason = problem.hasSuffix(".") ? String(problem.dropLast()) : problem
+            if let first = reason.first { reason = first.lowercased() + reason.dropFirst() }
+            return "Can't start · \(reason)"
+        }
+
+        // Log lines
+        public static func commandLine(_ command: String) -> String { "$ \(command)" }
+        public static let starting = "starting…"
+        public static func exited(code: Int32) -> String { "process exited (code \(code))" }
+        public static func killed(signal: String) -> String { "process exited (\(signal))" }
+        public static func shellFallback(_ shell: String) -> String {
+            "\(shell) isn't supported for services; running in zsh"
+        }
+        public static let withoutSeparatePermissions = "started without separate permissions (macOS limitation)"
+        public static func couldNotStart(_ reason: String) -> String { "couldn't start: \(reason)" }
+
+        // Toasts
+        public static func started(_ name: String) -> String { "Started \(name)" }
+        public static func stopped(_ name: String) -> String { "Stopped \(name)" }
+        public static func added(_ name: String) -> String { "Added \(name)" }
+        public static func saved(_ name: String) -> String { "Saved \(name)" }
+        public static func removed(_ name: String) -> String { "Removed \(name)" }
+
+        // The tab
+        public static func tabLabel(running: Int) -> String { "Services · \(running) running" }
+        public static let tabNote = "Logs are always recorded, hidden until you open them"
+        public static let emptyTitle = "No services yet"
+        public static let emptyText = "Add a dev server, a database or a local model, then start and stop it here."
+        public static let addService = "Add a service…"
+        /// The header's button, and the button of a row that can't start.
+        public static let edit = "Edit…"
+        public static let noOutput = "No output yet. Start the service to see its logs."
+        /// Each row's Logs toggle.
+        public static let logs = "Logs"
+        public static let clear = "Clear"
+        public static let ok = "OK"
+        public static let isolationTitle = "Services run with HeadsUp's permissions on this version of macOS."
+        public static let isolationText = "A service can read your calendar and reminders if HeadsUp can."
+        /// "Starting…", or "Starting… waiting for :3000".
+        public static func startingMeta(port: Int?) -> String {
+            port.map { "Starting… waiting for :\($0)" } ?? "Starting…"
+        }
+        /// ":3000 · 42m", or "42m" before a port is known.
+        public static func runningMeta(port: Int?, uptime: String) -> String {
+            port.map { ":\($0) · \(uptime)" } ?? uptime
+        }
+        /// "Running · nothing on :3000 yet", in --warn: alive for 30 s, but its port is silent.
+        public static func silentMeta(port: Int) -> String { "Running · nothing on :\(port) yet" }
+        /// "Exited with code 1 · 2 min ago"
+        public static func failedMeta(code: Int32, ago: String) -> String { "Exited with code \(code) · \(ago)" }
+        /// "just now", "12 min ago", "5 h ago", "yesterday", then the short local date: "Oct 21".
+        public static func ago(
+            _ date: Date, now: Date, locale: Locale = .current, timeZone: TimeZone = .current
+        ) -> String {
+            let minutes = Int(now.timeIntervalSince(date) / 60)
+            if minutes < 1 { return "just now" }
+            if minutes < 60 { return "\(minutes) min ago" }
+            if minutes < 24 * 60 { return "\(minutes / 60) h ago" }
+            if minutes < 48 * 60 { return "yesterday" }
+            var style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+            style.locale = locale
+            style.timeZone = timeZone
+            return date.formatted(style)
+        }
+        /// VoiceOver: "running", "stopped", "failed" (UX part 2, §21), "starting" (addendum 4).
+        public static func statusWord(_ status: ServicesScreen.Status) -> String {
+            switch status {
+            case .stopped: "stopped"
+            case .starting: "starting"
+            case .running: "running"
+            case .failed: "failed"
+            }
+        }
+
+        // Actions
+        public static func startAction(_ name: String) -> String { "Start \(name)" }
+        public static func stopAction(_ name: String) -> String { "Stop \(name)" }
+        public static func restartAction(_ name: String) -> String { "Restart \(name)" }
+        public static let startVerb = "Start"
+        public static let stopVerb = "Stop"
+        public static let restartVerb = "Restart"
+        /// "npm run dev · ~/code/web-app"
+        public static func actionSubtitle(command: String, cwd: String) -> String { "\(command) · \(cwd)" }
+
+        // The quit question (UX part 1, §10)
+        public static let quitTitle = "Quit HeadsUp?"
+        public static func quitMessage(_ names: [String]) -> String {
+            if names.count == 1 { return "\(names[0]) is running. Quitting stops it." }
+            let list = names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+            return "\(names.count) services are running: \(list). Quitting stops them."
+        }
+        public static let quitAlsoStops = "Your focus timer and Caffeine also stop."
+        public static let quitAndStop = "Quit and Stop"
+        public static let cancel = "Cancel"
+
+        public static func failedTitle(_ name: String) -> String { "\(name) stopped" }
+        public static func failedBody(code: Int32) -> String { "It exited with code \(code)." }
+
+        // services.json problems: a card in the Services tab and in Settings → Services.
+        // File names are in backticks, so the view can show them in mono.
+        public static func fileTitle(_ problem: ServicesFileProblem) -> String {
+            switch problem {
+            case .unreadable: "Your services couldn't be loaded"
+            case .newerVersion: "These services are from a newer version of HeadsUp"
+            }
+        }
+        public static func fileText(_ problem: ServicesFileProblem) -> String {
+            switch problem {
+            case .unreadable(let reason?):
+                "HeadsUp couldn't read `services.json` (\(reason)), so it left the file as it is. Fix it, then try again."
+            case .unreadable(nil):
+                "HeadsUp couldn't read `services.json`, so it left the file as it is. Fix it, then try again."
+            case .newerVersion:
+                "HeadsUp left `services.json` as it is, so the newer version keeps them."
+            }
+        }
+        public static let showInFinder = "Show in Finder"
+        public static let tryAgain = "Try Again"
+        /// Why services.json couldn't be read, short and plain, inside the parentheses above.
+        public static let notJSON = "it isn't valid JSON"
+        public static func serviceMissing(_ field: String, service: Int) -> String {
+            "service \(service) has no \(field)"
+        }
+        public static func serviceWrong(_ field: String, service: Int) -> String {
+            "the \(field) of service \(service) isn't valid"
+        }
+        public static let notAllowedToRead = "HeadsUp isn't allowed to read it"
+        /// What `save` and `delete` return while services.json can't be read.
+        public static let cantEdit = "You can't change services until `services.json` can be read."
+    }
+
+    /// The service form in Settings → Services (UX part 1, §1; addenda 3–4).
+    public enum ServiceForm {
+        public static let newTitle = "New service"
+        public static let back = "Services"
+        public static let name = "Name"
+        public static let namePlaceholder = "Web dev server"
+        public static let command = "Command"
+        public static let commandPlaceholder = "npm run dev"
+        public static let commandHelp =
+            "Runs in your login shell, like in Terminal. If your shell is fish or nushell, it runs in zsh."
+        public static let folder = "Folder"
+        public static let choose = "Choose…"
+        public static let environment = "Environment"
+        public static let noVariables = "No variables"
+        /// F11: the warning, then the hint, on two lines.
+        public static let environmentWarning = "Stored in a plain file. Don't put secrets here."
+        public static let environmentHint =
+            "To use a secret, run the command through a secrets tool, e.g. `op run -- npm run dev`."
+        public static let port = "Port"
+        public static let portHelp = "Leave empty to detect it after start."
+        public static let autostart = "Start with HeadsUp"
+        public static let autostartHelp = "Starts this service when HeadsUp opens."
+        public static let runningNote = "Changes apply the next time it starts."
+        public static let remove = "Remove…"
+        public static let cancel = "Cancel"
+        public static let save = "Save"
+        public static let add = "Add service"
+        public static let intro = "Long-running commands you start and stop from the HUD."
+        public static let empty = "No services yet. Add one to start and stop it from the HUD."
+        public static func removeQuestion(_ name: String) -> String { "Remove \(name)?" }
+        public static func removeRunning(_ name: String) -> String { "\(name) is running. Removing it stops it." }
+        /// The remove bar's button.
+        public static let removeConfirm = "Remove"
+        public static let discardQuestion = "Discard your changes?"
+        public static let keepEditing = "Keep editing"
+        public static let discard = "Discard"
+        // The environment table, for VoiceOver and as placeholders.
+        public static let variableName = "Variable name"
+        public static func variableValue(_ key: String) -> String { "Value of \(key)" }
+        public static let removeVariable = "Remove variable"
+        public static let addVariable = "Add variable"
+        public static let keyPlaceholder = "NAME"
+        public static let valuePlaceholder = "value"
     }
 
     public enum Hotkey {

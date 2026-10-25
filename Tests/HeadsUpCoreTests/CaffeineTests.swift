@@ -22,7 +22,9 @@ private struct CaffeineHarness {
             ports: AppModel.Ports(
                 clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
-                notifier: FakeNotifier(), powerAssertions: assertions, powerSource: power, dataFolder: nil),
+                notifier: FakeNotifier(), powerAssertions: assertions, powerSource: power,
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                dataFolder: nil),
             settings: settings)
         model.launch()
     }

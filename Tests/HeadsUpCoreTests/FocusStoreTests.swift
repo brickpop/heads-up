@@ -23,6 +23,7 @@ private struct FocusHarness {
                 clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
                 dataFolder: nil),
             settings: settings)
         window.hud = model.hud

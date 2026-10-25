@@ -35,6 +35,8 @@ public struct General: Equatable, Codable, Sendable {
     public var shortcut = Shortcut.wakeDefault
     /// The first-run welcome was shown.
     public var welcomeDone = false
+    /// The macOS version on which the user dismissed the Services isolation notice (R10).
+    public var isolationWarningDismissedForOS: String?
 
     public init() {}
 
@@ -49,6 +51,8 @@ public struct General: Equatable, Codable, Sendable {
             try container.decodeIfPresent(Bool.self, forKey: .closeOnClickOutside) ?? defaults.closeOnClickOutside
         shortcut = try container.decodeIfPresent(Shortcut.self, forKey: .shortcut) ?? defaults.shortcut
         welcomeDone = try container.decodeIfPresent(Bool.self, forKey: .welcomeDone) ?? defaults.welcomeDone
+        isolationWarningDismissedForOS = try container.decodeIfPresent(
+            String.self, forKey: .isolationWarningDismissedForOS)
     }
 }
 

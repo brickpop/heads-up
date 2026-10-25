@@ -58,6 +58,13 @@ public protocol FileRevealer: AnyObject {
     func reveal(_ file: URL)
 }
 
+/// Asks the user for a folder (the service form's Choose…).
+@MainActor
+public protocol FolderPicker: AnyObject {
+    /// The folder's path, or nil if the user cancelled. The panel opens on `path`.
+    func chooseFolder(startingAt path: String) async -> String?
+}
+
 /// Whether HeadsUp opens at login, as macOS reports it.
 public enum LoginItemStatus: Equatable, Sendable {
     case enabled
@@ -109,12 +116,15 @@ public enum NotificationCategory: String, CaseIterable, Sendable {
     case breakEnd = "break.end"
     /// A break ended and the next focus started by itself: Stop.
     case breakAutostart = "break.autostart"
+    /// A service exited by itself: Show Logs.
+    case serviceFailed = "service.failed"
 
     public var actions: [NotificationAction] {
         switch self {
         case .focusEnd: [.startBreak, .snooze]
         case .breakEnd: [.startFocus, .snooze]
         case .breakAutostart: [.stop]
+        case .serviceFailed: [.showLogs]
         }
     }
 }
@@ -125,6 +135,7 @@ public enum NotificationAction: String, CaseIterable, Sendable {
     case startFocus = "start-focus"
     case snooze
     case stop
+    case showLogs = "show-logs"
 
     public var title: String { Strings.Notifications.actionTitle(self) }
 }

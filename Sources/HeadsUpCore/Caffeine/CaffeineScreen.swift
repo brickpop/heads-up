@@ -71,10 +71,9 @@ extension CaffeineStore {
             extend: isOn && endsAt != nil
                 ? CaffeineScreen.Extend(
                     prompt: Strings.Caffeine.needLonger,
-                    buttons: [
-                        CaffeineScreen.ExtendButton(minutes: 10, title: Strings.Caffeine.plusTen),
-                        CaffeineScreen.ExtendButton(minutes: 60, title: Strings.Caffeine.plusHour),
-                    ]) : nil,
+                    buttons: CaffeineStore.extendMinutes.map {
+                        CaffeineScreen.ExtendButton(minutes: $0, title: Strings.Caffeine.plus($0))
+                    }) : nil,
             durationsLabel: Strings.Caffeine.keepAwakeFor,
             durations: CaffeineDuration.allCases.map { duration in
                 CaffeineScreen.DurationCard(
