@@ -9,9 +9,9 @@
     <key>CFBundleIdentifier</key>
     <string>@BUNDLE_ID@</string>
     <key>CFBundleName</key>
-    <string>HeadsUp</string>
+    <string>@NAME@</string>
     <key>CFBundleDisplayName</key>
-    <string>HeadsUp</string>
+    <string>@NAME@</string>
     <key>CFBundleExecutable</key>
     <string>HeadsUp</string>
     <key>CFBundleIconFile</key>

@@ -2,11 +2,16 @@
 # Builds build/HeadsUp.app on macOS (ADR-001 §10), for both arm64 and x86_64,
 # signed with the hardened runtime and the entitlements in Resources/.
 #
-# Usage: tools/make-app.sh <adhoc|identity> <bundle id> <version> <build number>
+# Usage: tools/make-app.sh <adhoc|identity|quick> <bundle id> <version> <build number>
 #   adhoc     signs with no identity (`just app`). macOS forgets the app's permissions
 #             and Keychain access after each ad-hoc build.
 #   identity  signs with $HEADSUP_SIGN_ID, a code-signing identity in your keychain,
 #             and then makes build/HeadsUp.dmg (`just build`).
+#   quick     a debug build for this Mac only, signed ad-hoc, where one timer minute lasts
+#             5 seconds (`just app-quick`), for checking a whole Focus round quickly. It is a
+#             separate app, "HeadsUp Quick" (build/HeadsUp Quick.app, bundle id <id>.quick,
+#             data in ~/Library/Application Support/HeadsUp-Quick), so it never touches the real one.
+#             The release modes refuse to finish if their binary has the quick timers.
 set -euo pipefail
 
 die() {
@@ -14,7 +19,7 @@ die() {
     exit 1
 }
 
-[ $# -eq 4 ] || die "usage: tools/make-app.sh <adhoc|identity> <bundle id> <version> <build number>"
+[ $# -eq 4 ] || die "usage: tools/make-app.sh <adhoc|identity|quick> <bundle id> <version> <build number>"
 mode=$1 bundle_id=$2 version=$3 build_number=$4
 
 [ "$(uname -s)" = Darwin ] || die "building HeadsUp.app needs macOS with Xcode."
@@ -23,13 +28,21 @@ mode=$1 bundle_id=$2 version=$3 build_number=$4
 [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "'$version' is not a version like 1.2.3"
 [[ "$build_number" =~ ^[0-9]+$ ]] || die "'$build_number' is not a build number"
 
+# The quick build is a separate app: its own name, bundle id (so its permissions and Keychain
+# entries are its own) and data folder (HeadsUp-Quick, chosen by the app itself).
+name=HeadsUp
+if [ "$mode" = quick ]; then
+    name="HeadsUp Quick"
+    bundle_id="$bundle_id.quick"
+fi
+
 case "$mode" in
-adhoc) sign_id=- ;;
+adhoc | quick) sign_id=- ;;
 identity)
     sign_id=${HEADSUP_SIGN_ID:-}
     [ -n "$sign_id" ] || die "set HEADSUP_SIGN_ID to your signing identity. To list them: security find-identity -v -p codesigning"
     ;;
-*) die "mode must be adhoc or identity, not '$mode'" ;;
+*) die "mode must be adhoc, identity or quick, not '$mode'" ;;
 esac
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -38,11 +51,22 @@ cd "$root"
 echo "make-app: $(xcrun swift --version 2>&1 | head -n 1)"
 
 # Only the versions in Package.resolved, and no resolution at build time (F15).
-swift_args=(-c release --arch arm64 --arch x86_64 --only-use-versions-from-resolved-file --disable-automatic-resolution)
+resolved=(--only-use-versions-from-resolved-file --disable-automatic-resolution)
+if [ "$mode" = quick ]; then
+    swift_args=(-c debug -Xswiftc -DHEADSUP_QUICK_TIMERS "${resolved[@]}")
+else
+    swift_args=(-c release --arch arm64 --arch x86_64 "${resolved[@]}")
+fi
 swift build "${swift_args[@]}"
 bin_dir=$(swift build "${swift_args[@]}" --show-bin-path)
 
-app=build/HeadsUp.app
+# The quick timers exist only in debug builds; a release binary that has their log line fails.
+quick_marker="HeadsUp quick timers"
+if [ "$mode" != quick ] && grep -qa "$quick_marker" "$bin_dir/HeadsUp"; then
+    die "this release binary contains the debug quick timers. Build it without -DHEADSUP_QUICK_TIMERS."
+fi
+
+app="build/$name.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin_dir/HeadsUp" "$app/Contents/MacOS/HeadsUp"
@@ -51,7 +75,7 @@ for resource in AppIcon.icns MenuBarGlyph.pdf; do
     [ -f "Resources/$resource" ] || die "Resources/$resource is missing"
     cp "Resources/$resource" "$app/Contents/Resources/$resource"
 done
-sed -e "s/@BUNDLE_ID@/$bundle_id/" -e "s/@VERSION@/$version/" -e "s/@BUILD_NUMBER@/$build_number/" \
+sed -e "s/@BUNDLE_ID@/$bundle_id/" -e "s/@NAME@/$name/" -e "s/@VERSION@/$version/" -e "s/@BUILD_NUMBER@/$build_number/" \
     Resources/Info.plist >"$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 

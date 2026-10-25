@@ -4,7 +4,7 @@ import SwiftUI
 /// The whole HUD, as the panel hosts it: the header, the body and the footer in the frame.
 ///
 /// The body holds the settings-file notice, then the suggestions while there are any, or
-/// else the tab's own body: Settings, or the welcome on Chat at first run. With none of
+/// else the tab's own body: Focus, Settings, or the welcome on Chat at first run. With none of
 /// these the body is empty and the HUD collapses to its header and footer. The panel
 /// follows this view's height and keeps its top edge where it is.
 struct HUDRootView: View {
@@ -26,6 +26,7 @@ struct HUDRootView: View {
                 }
                 switch hudBody {
                 case .suggestions: SuggestionList(hud: hud)
+                case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
                 case .settings: SettingsView(model: model)
                 case .welcome: WelcomeView(model: model)
                 case .empty: EmptyView()
@@ -34,13 +35,15 @@ struct HUDRootView: View {
             .accessibilityElement(children: .contain)
             .accessibilitySortPriority(AccessibilityOrder.body)
         } footer: {
-            HUDFooter(left: hud.footerLeft, toastID: hud.toastID)
-                // With no body, the header's line is the only one.
-                .overlay(alignment: .top) {
-                    if notice != nil || hudBody != .empty { Hairline() }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilitySortPriority(AccessibilityOrder.footer)
+            HUDFooter(left: hud.footerLeft, toastID: hud.toastID) {
+                StatusPills(focus: model.focus, isOpen: hud.isOpen)
+            }
+            // With no body, the header's line is the only one.
+            .overlay(alignment: .top) {
+                if notice != nil || hudBody != .empty { Hairline() }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilitySortPriority(AccessibilityOrder.footer)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Strings.HUD.accessibilityLabel)
@@ -78,6 +81,26 @@ private enum AccessibilityOrder {
                     .previewDisplayName("General, file problem")
                     hud { $0.hud.open() }.previewDisplayName("Welcome")
                     hud(hotkey: .taken) { $0.hud.open() }.previewDisplayName("Welcome, shortcut taken")
+                }
+                .preferredColorScheme(scheme)
+                Group {
+                    hud { $0.hud.selectTab(.focus) }.previewDisplayName("Focus, idle")
+                    hud {
+                        $0.hud.selectTab(.focus)
+                        $0.focus.start()
+                    }
+                    .previewDisplayName("Focus, running")
+                    hud {
+                        $0.hud.selectTab(.focus)
+                        $0.focus.start()
+                        $0.focus.togglePause()
+                    }
+                    .previewDisplayName("Focus, paused")
+                    hud {
+                        $0.hud.selectTab(.focus)
+                        $0.focus.takeBreakNow()
+                    }
+                    .previewDisplayName("Break prompt")
                 }
                 .preferredColorScheme(scheme)
             }

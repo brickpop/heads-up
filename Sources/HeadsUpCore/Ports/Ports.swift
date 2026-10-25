@@ -100,3 +100,54 @@ public enum OpenAtLoginNote: Equatable, Sendable {
     /// macOS couldn't add HeadsUp although it runs from Applications. No button.
     case couldNotAdd
 }
+
+/// The kinds of notification HeadsUp posts, with the actions each offers (ADR-001 §7).
+public enum NotificationCategory: String, CaseIterable, Sendable {
+    /// A focus ended: Start break, Snooze.
+    case focusEnd = "focus.end"
+    /// A break ended: Start focus, Snooze.
+    case breakEnd = "break.end"
+    /// A break ended and the next focus started by itself: Stop.
+    case breakAutostart = "break.autostart"
+
+    public var actions: [NotificationAction] {
+        switch self {
+        case .focusEnd: [.startBreak, .snooze]
+        case .breakEnd: [.startFocus, .snooze]
+        case .breakAutostart: [.stop]
+        }
+    }
+}
+
+/// A notification's buttons.
+public enum NotificationAction: String, CaseIterable, Sendable {
+    case startBreak = "start-break"
+    case startFocus = "start-focus"
+    case snooze
+    case stop
+
+    public var title: String { Strings.Notifications.actionTitle(self) }
+}
+
+/// One notification, to show at `date`.
+public struct NotificationRequest: Equatable, Sendable {
+    public let id: String
+    public let category: NotificationCategory
+    public let title: String
+    public let body: String
+    public let date: Date
+}
+
+/// User notifications (`UNUserNotificationCenter`). The shell registers the categories and
+/// their actions at launch and reports each answer to `AppModel.handleNotification`.
+@MainActor
+public protocol Notifier: AnyObject {
+    /// Asks for permission the first time; afterwards it does nothing.
+    func requestAuthorization()
+    /// Schedules `request`, replacing a pending one with the same id.
+    func schedule(_ request: NotificationRequest)
+    /// Removes a notification that hasn't been shown yet.
+    func cancelPending(id: String)
+    /// Removes a shown notification from Notification Center, once its prompt is answered or over.
+    func removeDelivered(id: String)
+}

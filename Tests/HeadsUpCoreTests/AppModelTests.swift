@@ -10,10 +10,11 @@ private func action(_ id: String, in model: AppModel) -> Action? {
 
 @MainActor
 @Suite struct AppModelTests {
-    @Test func theCatalogueListsAddAModelThenThemeThenGoTo() {
+    @Test func theCatalogueListsFocusThenAddAModelThenThemeThenGoTo() {
         let model = AppModel.preview()
         #expect(
             model.registry.actions.map(\.id.rawValue) == [
+                "focus.start:25", "focus.start:40", "focus.start:50", "focus.break",
                 "model.add", "theme.toggle",
                 "view.open:chat", "view.open:focus", "view.open:caffeine",
                 "view.open:services", "view.open:commands", "view.open:settings",
@@ -38,7 +39,7 @@ private func action(_ id: String, in model: AppModel) -> Action? {
             model.hud.suggestions.map { row -> String in
                 if case .action(let action) = row { return action.title }
                 return "?"
-            } == ["Go to Focus"])
+            } == ["Start 25 min focus", "Start 40 min focus", "Start 50 min focus", "Take a break now", "Go to Focus"])
     }
 
     @Test func addAModelOpensSettingsModels() throws {

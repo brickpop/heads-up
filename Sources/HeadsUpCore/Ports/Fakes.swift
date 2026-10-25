@@ -174,4 +174,28 @@ import Foundation
         public func openKeyboardShortcuts() { opened.append("keyboardShortcuts") }
     }
 
+    /// Records what was scheduled and cancelled.
+    @MainActor
+    public final class FakeNotifier: Notifier {
+        public private(set) var pending: [String: NotificationRequest] = [:]
+        /// Shown in Notification Center: moved here from `pending` by `deliverDue(at:)`.
+        public private(set) var delivered: [String: NotificationRequest] = [:]
+        public private(set) var authorizationRequests = 0
+
+        public init() {}
+
+        public func requestAuthorization() { authorizationRequests += 1 }
+        public func schedule(_ request: NotificationRequest) { pending[request.id] = request }
+        public func cancelPending(id: String) { pending[id] = nil }
+        public func removeDelivered(id: String) { delivered[id] = nil }
+
+        /// What macOS does at each date: shows the pending notifications that are due.
+        public func deliverDue(at now: Date) {
+            for (id, request) in pending where request.date <= now {
+                delivered[id] = request
+                pending[id] = nil
+            }
+        }
+    }
+
 #endif

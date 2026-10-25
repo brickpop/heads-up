@@ -15,12 +15,16 @@ public final class AppModel {
         public var files: FileRevealer
         public var loginItem: LoginItem
         public var systemSettings: SystemSettingsLinks
+        public var notifier: Notifier
         /// Where settings.json lives; nil keeps settings in memory only.
         public var dataFolder: URL?
+        /// How long a timer minute lasts: 60 s, except in a debug build made with `just app-quick`.
+        public var focusSecondsPerMinute: TimeInterval
 
         public init(
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
-            files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, dataFolder: URL?
+            files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
+            dataFolder: URL?, focusSecondsPerMinute: TimeInterval = 60
         ) {
             self.clock = clock
             self.scheduler = scheduler
@@ -29,21 +33,43 @@ public final class AppModel {
             self.files = files
             self.loginItem = loginItem
             self.systemSettings = systemSettings
+            self.notifier = notifier
             self.dataFolder = dataFolder
+            self.focusSecondsPerMinute = focusSecondsPerMinute
         }
     }
 
     public let settings: SettingsStore
     public let hud: HUDStore
     public let registry: ActionRegistry
+    public let focus: FocusStore
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
     private var noticeSeen: SettingsFileProblem?
 
-    /// The activity dot on each tab. Focus, Caffeine and Services fill it in in their slices;
+    /// The activity dot on each tab (amendment 1). Focus: a focus or break runs or is paused,
+    /// a prompt waits, or it is snoozed. Caffeine and Services add theirs in their slices;
     /// Chat, Commands and Settings never have one.
-    public var tabActivity: [Tab: TabActivity] { [:] }
+    public var tabActivity: [Tab: TabActivity] {
+        var activity: [Tab: TabActivity] = [:]
+        if focus.phase != .idle { activity[.focus] = .active }
+        return activity
+    }
+
+    /// The Mac woke up: timers that ended while it slept move on now (ADR-001 §4.3).
+    public func clockJumped() {
+        focus.clockJumped()
+    }
+
+    /// An answer from Notification Center, by the category and action identifiers the shell
+    /// registered. Unknown identifiers are ignored.
+    public func handleNotification(category: String, action: String?) {
+        guard let category = NotificationCategory(rawValue: category) else { return }
+        let parsed = action.flatMap(NotificationAction.init(rawValue:))
+        if action != nil && parsed == nil { return }
+        focus.handleNotification(category, action: parsed)
+    }
 
     /// The title of the notice bar at the top of the HUD body, while there is a settings-file
     /// problem the user hasn't seen yet. It shows on one HUD open: closing the HUD, the ×, or
@@ -65,6 +91,13 @@ public final class AppModel {
         self.settings = settings
         self.registry = registry
         self.hud = hud
+        let history: FocusHistory =
+            ports.dataFolder.map { SQLiteFocusHistory(folder: $0, today: FocusDayFormat.string(ports.clock.now)) }
+            ?? MemoryFocusHistory()
+        let focus = FocusStore(
+            clock: ports.clock, scheduler: ports.scheduler, settings: settings, history: history,
+            notifier: ports.notifier, navigator: hud, toaster: hud, secondsPerMinute: ports.focusSecondsPerMinute)
+        self.focus = focus
         self.clock = ports.clock
         loginItem = ports.loginItem
         systemSettings = ports.systemSettings
@@ -72,6 +105,10 @@ public final class AppModel {
         openAtLogin = ports.loginItem.status
         settings.attach(toaster: hud, revealer: ports.files)
 
+        registry.add(.focus) { [weak focus, weak hud] in
+            guard let focus, let hud else { return [] }
+            return FocusActions.make(focus: focus, hud: hud)
+        }
         registry.add(.model) { [weak hud] in hud.map { ShellActions.addModel(hud: $0, chat: chat) } ?? [] }
         registry.add(.theme) { [weak settings] in
             settings.map { ShellActions.theme(settings: $0, appearance: ports.appearance) } ?? []
@@ -81,6 +118,7 @@ public final class AppModel {
         hud.onEvent = { [weak self] event in
             self?.handle(event)
         }
+        focusSource = { [weak focus] in focus?.snapshot ?? .idle(nextLength: 25) }
     }
 
     private func handle(_ event: HUDEvent) {
@@ -88,7 +126,9 @@ public final class AppModel {
         case .closed:
             if settingsNotice != nil { noticeSeen = settings.fileProblem }
             endWelcome()
+            focus.cancelSnoozeHide()
         case .tabChanged(let tab):
+            focus.cancelSnoozeHide()
             if tab != .chat { endWelcome() }
             // The user may have changed Open at Login in System Settings meanwhile.
             if tab == .settings { refreshOpenAtLogin() }
@@ -220,7 +260,7 @@ public final class AppModel {
     public var statusItem: StatusItemModel {
         StatusItemModel(
             focus: focusSnapshot, caffeine: caffeineSnapshot, now: clock.now,
-            promptVisible: hud.isOpen && hud.tab == .focus, showSeconds: settings.settings.general.menuSeconds)
+            promptVisible: hud.isOpen, showSeconds: settings.settings.general.menuSeconds)
     }
 
     /// The item shows as pressed while the HUD or its menu is open.
@@ -312,7 +352,7 @@ public final class AppModel {
                     hotkeys: FakeHotkeyRegistrar(nextStatus: hotkey),
                     appearance: FixedAppearance(isDark: systemIsDark), files: FakeFileRevealer(),
                     loginItem: FakeLoginItem(status: loginItem),
-                    systemSettings: FakeSystemSettingsLinks(), dataFolder: nil),
+                    systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil),
                 settings: settings)
             if let settingsFileProblem { model.settings.showProblemForPreview(settingsFileProblem) }
             model.launch()
@@ -326,6 +366,8 @@ public final class AppModel {
 public enum HUDBody: Equatable, Sendable {
     /// Rows under the prompt. They come first: typing on any tab shows them.
     case suggestions
+    /// The Focus tab: it always has a body (idle, running, a prompt, snoozed).
+    case focus
     /// The Settings tab.
     case settings
     /// The first-run welcome, on Chat.
@@ -335,10 +377,11 @@ public enum HUDBody: Equatable, Sendable {
 }
 
 extension AppModel {
-    /// The body, by precedence: suggestions, then Settings, then the welcome on Chat.
+    /// The body, by precedence: suggestions, then Focus, then Settings, then the welcome on Chat.
     /// The model menu joins this rule in the chat slice.
     public var body: HUDBody {
         if !hud.suggestions.isEmpty { return .suggestions }
+        if hud.tab == .focus { return .focus }
         if hud.tab == .settings { return .settings }
         if hud.tab == .chat && showsWelcome { return .welcome }
         return .empty

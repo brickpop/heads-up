@@ -299,6 +299,16 @@ add_to_plist Info.plist '    <key>CFBundle&#85;RLTypes</key>
     <array/>'
 expect_lint_fails "the lint fails on a key written with a character reference" 'write every key as'
 
+lint_root
+mkdir -p "$work/lint-root/Sources/HeadsUpApp"
+printf '#if HEADSUP_QUICK_TIMERS\n    let minute = 5.0\n#endif\n' >"$work/lint-root/Sources/HeadsUpApp/Quick.swift"
+expect_lint_fails "the lint fails on quick timers outside #if DEBUG" 'HEADSUP_QUICK_TIMERS may only appear'
+
+lint_root
+mkdir -p "$work/lint-root/Sources/HeadsUpApp"
+printf '    #if DEBUG && HEADSUP_QUICK_TIMERS\n        let minute = 5.0\n    #endif\n' >"$work/lint-root/Sources/HeadsUpApp/Quick.swift"
+expect_lint_passes "the lint allows quick timers behind #if DEBUG"
+
 echo
 echo "Scan's lint cases"
 if "$tools/test-lint-hardening.sh" | sed 's/^/  /'; then

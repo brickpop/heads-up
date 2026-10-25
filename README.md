@@ -14,6 +14,7 @@ and `HeadsUpApp` (the macOS shell). The recipes are in the `justfile`:
 | `just lint` | Linux, macOS | Checks the project's rules (no Apple-only imports in the core, the entitlements, Info.plist) and the formatting. |
 | `just app` | macOS | Builds `build/HeadsUp.app`, signed ad-hoc with the hardened runtime. |
 | `just build` | macOS | Builds `build/HeadsUp.app` signed with `$HEADSUP_SIGN_ID`, and `build/HeadsUp.dmg`. |
+| `just app-quick` | macOS | `build/HeadsUp Quick.app`: a separate debug app (own name, bundle id and data folder) where one timer minute lasts 5 seconds, to check a whole Focus round quickly. Release builds can't contain it. |
 
 On macOS, use Xcode's Swift, at least the version in `.swift-version`.
 The bundle identifier and the version are variables at the top of the `justfile`.

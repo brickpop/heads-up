@@ -277,6 +277,147 @@ public enum Strings {
         }
     }
 
+    /// Notifications (UX part 2, "Notifications (copy)"; addendum 4).
+    public enum Notifications {
+        public static func focusDoneTitle(_ minutes: Int) -> String { "Focus done · \(minutes) min" }
+        public static let focusDoneBody = "Time for a break."
+        public static let breakOverTitle = "Break over"
+        public static let breakOverBody = "Ready to get back to it?"
+        /// A snoozed prompt returns (Yuki).
+        public static let snoozeOverBreakTitle = "Time for a break"
+        public static func snoozeOverBreakBody(focusMinutes: Int?) -> String {
+            guard let focusMinutes else { return "Snooze is over." }
+            return "Snooze is over. Your \(focusMinutes) min focus is done."
+        }
+        public static let snoozeOverBackBody = "Snooze is over. Ready to get back to it?"
+        public static func focusStartedBody(_ minutes: Int) -> String { Focus.focusStarted(minutes) }
+
+        public static func actionTitle(_ action: NotificationAction) -> String {
+            switch action {
+            case .startBreak: "Start break"
+            case .startFocus: "Start focus"
+            case .snooze: "Snooze"
+            case .stop: "Stop"
+            }
+        }
+    }
+
+    /// The Focus tab, its toasts, pill and actions (Focus spec; footer spec).
+    public enum Focus {
+        // Toasts
+        public static func focusStarted(_ minutes: Int) -> String { "Focus started · \(minutes) min" }
+        public static func breakStarted(_ minutes: Int) -> String { "Break started · \(minutes) min" }
+        public static func snoozed(_ minutes: Int) -> String { "Snoozed for \(minutes) min" }
+        /// The toast when a session ends while the user works in the open HUD (Yuki).
+        public static let focusDoneAnnouncement = "Focus done · time for a break"
+        public static let breakOverAnnouncement = "Break over"
+        /// The toast when a snoozed break prompt returns to an open HUD in use.
+        public static let snoozeOverBreakAnnouncement = "Time for a break"
+
+        // Footer pill
+        public static func pillFocus(_ clock: String) -> String { "Focus \(clock)" }
+        public static func pillBreak(_ clock: String) -> String { "Break \(clock)" }
+        public static func pillSnoozed(_ clock: String) -> String { "Snoozed \(clock)" }
+
+        // Actions
+        public static func startAction(_ minutes: Int) -> String { "Start \(minutes) min focus" }
+        public static let startSubtitle = "pomodoro · focus session"
+        public static let stopAction = "Stop timer"
+        public static func stopSubtitle(break isBreak: Bool) -> String { "pomodoro · \(isBreak ? "break" : "focus")" }
+        public static let breakNowAction = "Take a break now"
+        public static let breakNowSubtitle = "pomodoro · break options"
+
+        // Idle
+        public static let idleLabel = "Focus session"
+        /// The manual break prompt's label before any session today (Yuki).
+        public static let noSessionsYet = "No sessions yet today"
+        /// "2 sessions · 1h 05m focused today"
+        public static func todayStats(_ day: FocusDay) -> String {
+            let sessions = day.sessions == 1 ? "1 session" : "\(day.sessions) sessions"
+            let minutes = day.minutes == 0 ? "0m" : Format.minutes(Double(day.minutes) * 60, rounding: .nearest)
+            return "\(sessions) · \(minutes) focused today"
+        }
+        public static func lengthHint(_ minutes: Int) -> String {
+            switch minutes {
+            case 25: "Classic pomodoro"
+            case 40: "Steady block"
+            default: "Deep work"
+            }
+        }
+        public static func minutes(_ minutes: Int) -> String { "\(minutes) min" }
+        /// "Breaks offer: look elsewhere, drink water, stretch your arms…"
+        public static func breaksOffer(_ options: [BreakOption]) -> String {
+            let first = options.prefix(3).map { $0.label.lowercased() }.joined(separator: ", ")
+            return "Breaks offer: \(first)\(options.count > 3 ? "…" : "")"
+        }
+        public static let startFocus = "Start focus"
+
+        // Running
+        public static let focusing = "Focusing"
+        public static let focusPaused = "Focus · paused"
+        public static let breakPaused = "Break · paused"
+        /// VoiceOver for the big timer: "18 minutes left".
+        public static func timeLeftAccessibility(_ spoken: String) -> String { "\(spoken) left" }
+        public static func breakLabel(_ activity: String) -> String { "Break · \(activity)" }
+        /// "25 min session · break at 3:30 PM"
+        public static func sessionSubtitle(minutes: Int, breakAt: String) -> String {
+            "\(minutes) min session · break at \(breakAt)"
+        }
+        public static let breakSubtitle = "Step away. The HUD will call you back."
+        public static let stop = "Stop"
+        public static let endBreak = "End break"
+        public static let pause = "Pause"
+        public static let resume = "Resume"
+
+        // Break prompt
+        public static func sessionDone(minutes: Int, today: Int) -> String {
+            "\(minutes) min session done · \(today) today"
+        }
+        public static let timeForABreak = "Time for a break"
+        public static let length = "Length"
+        public static let keepWorking = "Keep working"
+        public static let keepWorkingHelp = "Skip the break and start the next focus session"
+        public static func snooze(_ minutes: Int) -> String { "Snooze \(minutes) min" }
+        public static func startBreak(_ minutes: Int) -> String { "Start \(minutes) min break" }
+
+        // Back prompt
+        public static let breakFinished = "Break finished"
+        public static let readyToGetBack = "Ready to get back to it?"
+        public static let doneForNow = "Done for now"
+        public static func startFocusOf(_ minutes: Int) -> String { "Start \(minutes) min focus" }
+
+        // Snoozed
+        public static let snoozedLabel = "Snoozed"
+        public static func promptReturns(_ clock: String) -> String { "Prompt returns in \(clock)" }
+        public static let showNow = "Show now"
+    }
+
+    /// Settings → Focus (Settings spec "Focus"; UX part 2, §11).
+    public enum FocusSettings {
+        public static let title = "Focus & breaks"
+        public static let intro = "Options shown when a focus session ends."
+        public static let focusLength = "Focus length"
+        public static let autoStart = "Start the next focus after a break"
+        public static let autoStartHelp = "Skips “Ready to get back to it?”"
+        public static let snoozeLength = "Snooze length"
+        public static let openHud = "Open the HUD when a session ends"
+        public static let openHudHelp = "Otherwise only a notification is sent"
+        public static let addPlaceholder = "Add an option, e.g. Walk around the block"
+        public static let add = "Add"
+        public static let length = "Length"
+        public static let lengthHint = "Click a length on an option to change it."
+        /// The length pill's tooltip.
+        public static let changeLength = "Change length"
+        /// The ×'s VoiceOver label.
+        public static let remove = "Remove"
+        /// The disabled ×'s tooltip on the last option.
+        public static let keepOne = "Keep at least one option"
+        /// "5m"
+        public static func minutesShort(_ minutes: Int) -> String { "\(minutes)m" }
+        /// The segmented choices: "25 min", "2 min".
+        public static func minutes(_ minutes: Int) -> String { "\(minutes) min" }
+    }
+
     public enum Hotkey {
         /// What is wrong with the wake shortcut, in one sentence, or nil when it works.
         public static func reason(_ status: HotkeyStatus, shortcut: Shortcut) -> String? {

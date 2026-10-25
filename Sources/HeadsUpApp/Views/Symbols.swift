@@ -19,6 +19,12 @@ extension Glyph {
         case .pin: "pin"
         case .pause: "pause.circle"
         case .folder: "folder"
+        case .eye: "eye"
+        case .activity: "figure.arms.open"
+        case .people: "person.2"
+        case .utensils: "fork.knife"
+        case .dot: "circle.fill"
+        case .play: "play.fill"
         }
     }
 }
@@ -31,6 +37,8 @@ enum Symbols {
     static let warning = "exclamationmark.triangle.fill"
     /// The ghost × that dismisses a notice.
     static let close = "xmark"
+    /// The bell on Snooze buttons.
+    static let snooze = "bell"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

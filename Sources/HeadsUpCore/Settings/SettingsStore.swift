@@ -58,8 +58,17 @@ public final class SettingsStore {
 
     /// HeadsUp's data folder: ~/Library/Application Support/HeadsUp on macOS.
     public static var defaultFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("HeadsUp", isDirectory: true)
+        dataFolder(quickTimers: false)
+    }
+
+    /// HeadsUp's data folder, or the debug quick-timers build's own one
+    /// (~/Library/Application Support/HeadsUp-Quick), so `just app-quick` never touches the
+    /// real settings and stats.
+    public static func dataFolder(
+        quickTimers: Bool,
+        applicationSupport: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    ) -> URL {
+        applicationSupport.appendingPathComponent(quickTimers ? "HeadsUp-Quick" : "HeadsUp", isDirectory: true)
     }
 
     /// Loads settings.json from `folder`, or keeps settings in memory when `folder` is nil.

@@ -1,0 +1,256 @@
+import Foundation
+
+/// What the Focus tab shows at one moment, ready to draw: every string, choice and state the
+/// view needs, so it holds no logic (contract, slice 3). The view calls
+/// `FocusStore.screen(at:)` each second while the HUD shows.
+public enum FocusScreen: Equatable, Sendable {
+    case idle(Idle)
+    case running(Running)
+    case breakPrompt(BreakPrompt)
+    case backPrompt(BackPrompt)
+    case snoozed(Snoozed)
+
+    public struct Idle: Equatable, Sendable {
+        public let label: String
+        /// The selected length as a timer: "25:00".
+        public let timer: String
+        public let today: String
+        public let lengths: [LengthCard]
+        public let breaksOffer: String
+        public let start: String
+    }
+
+    /// One of the 25 / 40 / 50 cards.
+    public struct LengthCard: Equatable, Sendable {
+        public let minutes: Int
+        public let title: String
+        public let hint: String
+        public let isSelected: Bool
+    }
+
+    /// A focus or a break, running or paused.
+    public struct Running: Equatable, Sendable {
+        public let label: String
+        public let timer: String
+        public let timerAccessibility: String
+        public let subtitle: String
+        public let progress: Double
+        /// "Stop" in a focus, "End break" in a break; both call `stopRun()`.
+        public let stopTitle: String
+        /// "Pause" or "Resume"; both call `togglePause()`.
+        public let pauseTitle: String
+        public let pauseGlyph: Glyph
+    }
+
+    public struct BreakPrompt: Equatable, Sendable {
+        public let label: String
+        public let title: String
+        public let options: [OptionCard]
+        public let lengths: [LengthChoice]
+        /// The break length picked, in minutes: the one `lengths` marks selected.
+        public let selectedLength: Int
+        /// "Keep working", or nil after Take a break now, where it isn't offered.
+        public let keepWorking: String?
+        public let keepWorkingHelp: String
+        public let snooze: String
+        public let startBreak: String
+    }
+
+    /// A break activity in the break prompt.
+    public struct OptionCard: Equatable, Sendable {
+        public let id: BreakOption.ID
+        public let label: String
+        public let glyph: Glyph
+        /// "5 min"
+        public let length: String
+        public let isSelected: Bool
+    }
+
+    /// One segment of the break length control.
+    public struct LengthChoice: Equatable, Sendable {
+        public let minutes: Int
+        public let title: String
+        public let isSelected: Bool
+    }
+
+    public struct BackPrompt: Equatable, Sendable {
+        public let label: String
+        public let title: String
+        public let today: String
+        public let doneForNow: String
+        public let snooze: String
+        public let start: String
+    }
+
+    public struct Snoozed: Equatable, Sendable {
+        public let label: String
+        /// "Prompt returns in 4:12"
+        public let title: String
+        public let showNow: String
+    }
+}
+
+/// Settings → Focus, ready to draw (contract, slice 3).
+public struct FocusSettingsScreen: Equatable, Sendable {
+    public let focusLength: Int
+    public let snoozeMinutes: Int
+    public let openHudOnEnd: Bool
+    public let autoStartNextFocus: Bool
+    public let options: [OptionChip]
+
+    /// A break option chip, with its length pill and remove button.
+    public struct OptionChip: Equatable, Sendable {
+        public let id: BreakOption.ID
+        public let label: String
+        public let glyph: Glyph
+        /// "5m"
+        public let length: String
+        /// False for the last option: there is always one to pick.
+        public let canRemove: Bool
+    }
+}
+
+extension FocusStore {
+    /// The Focus tab at `now`. `locale` and `timeZone` set how "break at" reads (12 or 24 hours).
+    public func screen(at now: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> FocusScreen {
+        switch phase {
+        case .idle:
+            return .idle(idleScreen())
+        case .focus(let run):
+            let breakAt = run.endsAt ?? now.addingTimeInterval(run.timeLeft(at: now))
+            return .running(
+                runningScreen(
+                    run, now: now, label: run.isPaused ? Strings.Focus.focusPaused : Strings.Focus.focusing,
+                    subtitle: Strings.Focus.sessionSubtitle(
+                        minutes: run.minutes, breakAt: Self.clockTime(breakAt, locale: locale, timeZone: timeZone)),
+                    stopTitle: Strings.Focus.stop))
+        case .rest(let run, _):
+            return .running(
+                runningScreen(
+                    run, now: now,
+                    label: run.isPaused ? Strings.Focus.breakPaused : Strings.Focus.breakLabel(activity.label),
+                    subtitle: Strings.Focus.breakSubtitle, stopTitle: Strings.Focus.endBreak))
+        case .prompt(.breakPrompt(let manual)):
+            return .breakPrompt(breakPromptScreen(manual: manual))
+        case .prompt(.backPrompt):
+            let snooze = settings.settings.focus.snoozeMinutes
+            return .backPrompt(
+                FocusScreen.BackPrompt(
+                    label: Strings.Focus.breakFinished, title: Strings.Focus.readyToGetBack,
+                    today: Strings.Focus.todayStats(today), doneForNow: Strings.Focus.doneForNow,
+                    snooze: Strings.Focus.snooze(snooze), start: Strings.Focus.startFocusOf(focusLength)))
+        case .snoozed(let until, _):
+            return .snoozed(
+                FocusScreen.Snoozed(
+                    label: Strings.Focus.snoozedLabel,
+                    title: Strings.Focus.promptReturns(Format.clock(until.timeIntervalSince(now))),
+                    showNow: Strings.Focus.showNow))
+        }
+    }
+
+    /// Settings → Focus now.
+    public var settingsScreen: FocusSettingsScreen {
+        let focus = settings.settings.focus
+        let canRemove = canRemoveBreakOption
+        return FocusSettingsScreen(
+            focusLength: focus.focusLength, snoozeMinutes: focus.snoozeMinutes, openHudOnEnd: focus.openHudOnEnd,
+            autoStartNextFocus: focus.autoStartNextFocus,
+            options: focus.breakOptions.map { option in
+                FocusSettingsScreen.OptionChip(
+                    id: option.id, label: option.label, glyph: option.icon.glyph,
+                    length: Strings.FocusSettings.minutesShort(option.length), canRemove: canRemove)
+            })
+    }
+
+    /// Whether Add would add an option with this label: anything but blanks.
+    public static func canAddBreakOption(label: String) -> Bool {
+        !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// False while only one option is left.
+    public var canRemoveBreakOption: Bool {
+        settings.settings.focus.breakOptions.count > 1
+    }
+
+    /// Stop in a focus, End break in a break.
+    public func stopRun() {
+        switch phase {
+        case .focus: stop()
+        case .rest: endBreak()
+        default: break
+        }
+    }
+
+    /// Pause or Resume, whichever applies.
+    public func togglePause() {
+        switch phase {
+        case .focus(let run), .rest(let run, _):
+            if run.isPaused { resume() } else { pause() }
+        default:
+            break
+        }
+    }
+
+    // MARK: Building the screens
+
+    private func idleScreen() -> FocusScreen.Idle {
+        FocusScreen.Idle(
+            label: Strings.Focus.idleLabel, timer: Format.clock(Double(focusLength) * 60),
+            today: Strings.Focus.todayStats(today),
+            lengths: FocusSettings.focusLengths.map { minutes in
+                FocusScreen.LengthCard(
+                    minutes: minutes, title: Strings.Focus.minutes(minutes), hint: Strings.Focus.lengthHint(minutes),
+                    isSelected: minutes == focusLength)
+            },
+            breaksOffer: Strings.Focus.breaksOffer(settings.settings.focus.breakOptions),
+            start: Strings.Focus.startFocus)
+    }
+
+    private func runningScreen(
+        _ run: FocusRun, now: Date, label: String, subtitle: String, stopTitle: String
+    ) -> FocusScreen.Running {
+        let left = run.timeLeft(at: now)
+        return FocusScreen.Running(
+            label: label, timer: Format.clock(left),
+            timerAccessibility: Strings.Focus.timeLeftAccessibility(Format.spokenMinutes(left, rounding: .up)),
+            subtitle: subtitle, progress: run.progress(at: now), stopTitle: stopTitle,
+            pauseTitle: run.isPaused ? Strings.Focus.resume : Strings.Focus.pause,
+            pauseGlyph: run.isPaused ? .play : .pause)
+    }
+
+    private func breakPromptScreen(manual: Bool) -> FocusScreen.BreakPrompt {
+        let options = settings.settings.focus.breakOptions
+        let selected = activity.id
+        let label =
+            if let minutes = promptMinutes, !manual {
+                Strings.Focus.sessionDone(minutes: minutes, today: today.sessions)
+            } else if today.sessions == 0 {
+                Strings.Focus.noSessionsYet
+            } else {
+                Strings.Focus.todayStats(today)
+            }
+        return FocusScreen.BreakPrompt(
+            label: label, title: Strings.Focus.timeForABreak,
+            options: options.map { option in
+                FocusScreen.OptionCard(
+                    id: option.id, label: option.label, glyph: option.icon.glyph,
+                    length: Strings.Focus.minutes(option.length), isSelected: option.id == selected)
+            },
+            lengths: FocusSettings.breakLengths.map { minutes in
+                FocusScreen.LengthChoice(
+                    minutes: minutes, title: Strings.Focus.minutes(minutes), isSelected: minutes == breakLength)
+            },
+            selectedLength: breakLength,
+            keepWorking: manual ? nil : Strings.Focus.keepWorking, keepWorkingHelp: Strings.Focus.keepWorkingHelp,
+            snooze: Strings.Focus.snooze(settings.settings.focus.snoozeMinutes),
+            startBreak: Strings.Focus.startBreak(breakLength))
+    }
+
+    /// A time of day as the user's clock shows it: "3:30 PM", or "15:30" in 24-hour locales.
+    static func clockTime(_ date: Date, locale: Locale, timeZone: TimeZone) -> String {
+        var style = Date.FormatStyle(date: .omitted, time: .shortened)
+        style.locale = locale
+        style.timeZone = timeZone
+        return date.formatted(style)
+    }
+}

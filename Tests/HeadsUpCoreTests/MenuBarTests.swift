@@ -267,14 +267,16 @@ private func status(
 
         model.statusItemClicked()  // closed → open on Focus
         #expect(model.hud.isOpen && model.hud.tab == .focus)
-        // On Focus the prompt is seen: no longer orange, and a click closes.
+        // With the HUD open the prompt isn't dismissed: no longer orange, and a click closes.
         #expect(model.statusItem.parts == [.timer(glyph: .timer, text: "Break due", warning: false)])
         model.statusItemClicked()
         #expect(!model.hud.isOpen)
 
-        model.hud.open(tab: .chat)  // open elsewhere → switches to Focus, stays open
+        // Open on another tab, a waiting prompt isn't orange either (Yuki, slice 3): a plain toggle.
+        model.hud.open(tab: .chat)
+        #expect(model.statusItem.parts == [.timer(glyph: .timer, text: "Break due", warning: false)])
         model.statusItemClicked()
-        #expect(model.hud.isOpen && model.hud.tab == .focus)
+        #expect(!model.hud.isOpen)
     }
 
     @Test func aPausedTimerClickAlsoLeadsToFocus() {
@@ -431,7 +433,7 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
-                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), dataFolder: nil))
+                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil))
         failing.setOpenAtLogin(true)
         #expect(failing.openAtLogin == .disabled)
         #expect(failing.openAtLoginError?.hasPrefix("HeadsUp couldn't change Open at Login") == true)
@@ -444,7 +446,8 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
-                loginItem: FakeLoginItem(status: .requiresApproval), systemSettings: links, dataFolder: nil))
+                loginItem: FakeLoginItem(status: .requiresApproval), systemSettings: links, notifier: FakeNotifier(),
+                dataFolder: nil))
         #expect(model.openAtLogin == .requiresApproval)
         model.openLoginItemsSettings()
         model.openKeyboardShortcutsSettings()
@@ -460,7 +463,7 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
-                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), dataFolder: nil))
+                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil))
         try? fake.setEnabled(true)  // changed in System Settings
         #expect(model.openAtLogin == .disabled)
         model.hud.showSettings(.general)
@@ -557,7 +560,7 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: files, loginItem: item,
-                systemSettings: FakeSystemSettingsLinks(), dataFolder: nil))
+                systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil))
     }
 
     @Test func anAppOutsideApplicationsAsksToBeMovedAfterTheSwitchFails() {

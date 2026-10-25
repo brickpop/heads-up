@@ -6,6 +6,7 @@
 #   3. Info.plist holds only known keys: no URL schemes, document types or scripting (F19),
 #      no App Transport Security exceptions besides local networking (F9), and no privacy
 #      usage string besides the four the app asks for.
+#   4. The debug quick timers appear only behind `#if DEBUG && HEADSUP_QUICK_TIMERS`.
 #
 # The plists are read with grep, so they must stay simple: every key written as
 # <key>Name</key> on one line, with no CDATA. Anything else fails, rather than risk a
@@ -51,6 +52,14 @@ plist_is_simple() {
     fi
     return "$simple"
 }
+
+# 4. The debug quick timers (`just app-quick`) may appear in the sources only as the exact
+# condition `#if DEBUG && HEADSUP_QUICK_TIMERS`, so a release build can never contain them.
+while IFS= read -r hit; do
+    line=$(printf '%s\n' "${hit#*:*:}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    [ "$line" = "#if DEBUG && HEADSUP_QUICK_TIMERS" ] ||
+        fail "${hit%%:*}: HEADSUP_QUICK_TIMERS may only appear as '#if DEBUG && HEADSUP_QUICK_TIMERS'"
+done < <(grep -rn --include='*.swift' HEADSUP_QUICK_TIMERS "$root/Sources" 2>/dev/null || true)
 
 # Prints the key names of a simple plist, one per line, sorted.
 plist_keys() {

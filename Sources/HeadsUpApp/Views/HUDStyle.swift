@@ -28,6 +28,10 @@ enum HUDStyle {
             Color(nsColor: fills == .stronger ? .tertiarySystemFill : .quaternarySystemFill)
         }
         /// `--danger`: failures, as an icon, a dot or short text, never a large fill.
+        /// `--raise2`: the footer pills, and the model chip while its menu is open.
+        static var raise2: Color { Color(nsColor: .secondarySystemFill) }
+        /// `--track`: the empty part of a progress bar.
+        static var track: Color { Color(nsColor: .tertiarySystemFill) }
         static var alert: Color { .red }
         /// `--warn`: something the user should act on, as an icon or short text.
         static var warn: Color { .orange }
@@ -150,6 +154,47 @@ enum HUDStyle {
         static let spacing: CGFloat = 16
         static let stepIconSize: CGFloat = 18
         static let stepsMaxWidth: CGFloat = 440
+    }
+
+    enum Focus {
+        static let topPadding: CGFloat = 22
+        static let sidePadding: CGFloat = 24
+        static let bottomPadding: CGFloat = 24
+        /// The space between a view's blocks.
+        static let gap: CGFloat = 20
+        static let labelSize: CGFloat = 11
+        /// The big timer: SF Pro Display Light, tabular, tracking −1.5.
+        static let timerSize: CGFloat = 64
+        static let timerTracking: CGFloat = -1.5
+        /// "Time for a break", "Ready to get back to it?"
+        static let titleSize: CGFloat = 28
+        /// "Prompt returns in 4:12"
+        static let snoozedTitleSize: CGFloat = 22
+        static let statsSize: CGFloat = 13
+        static let cardCornerRadius: CGFloat = 12
+        static let cardPadding: CGFloat = 14
+        static let cardGap: CGFloat = 10
+        static let cardNumberSize: CGFloat = 22
+        static let cardHintSize: CGFloat = 12
+        /// The selected card's accent border.
+        static let selectedBorder: CGFloat = 2
+        static let optionMinWidth: CGFloat = 150
+        static let optionChipSize: CGFloat = 30
+        static let progressHeight: CGFloat = 6
+    }
+
+    enum Pill {
+        static let height: CGFloat = 22
+        static let padding: CGFloat = 8
+        static let gap: CGFloat = 8
+        static let iconGap: CGFloat = 4
+    }
+
+    enum FocusSettings {
+        static let chipHeight: CGFloat = 30
+        static let chipPadding: CGFloat = 10
+        static let chipGap: CGFloat = 8
+        static let lengthPillPadding: CGFloat = 6
     }
 
     enum Keycap {

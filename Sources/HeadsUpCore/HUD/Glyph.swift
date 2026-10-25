@@ -9,4 +9,8 @@ public enum Glyph: String, CaseIterable, Sendable {
     case pause
     // Settings
     case folder
+    // Break options
+    case eye, activity, people, utensils, dot
+    // Focus
+    case play
 }

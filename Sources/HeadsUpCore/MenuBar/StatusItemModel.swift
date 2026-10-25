@@ -25,8 +25,8 @@ public struct StatusItemModel: Equatable, Sendable {
     public let nextChange: Date?
 
     /// - Parameters:
-    ///   - promptVisible: the HUD is open on the Focus tab, so a waiting prompt is seen
-    ///     and its item isn't orange.
+    ///   - promptVisible: the HUD is open. A waiting prompt counts as dismissed, and its item
+    ///     turns orange, only once the HUD closes without an answer (Yuki, slice 3).
     ///   - showSeconds: Settings → General → Show seconds in the menu bar.
     public init(
         focus: FocusSnapshot, caffeine: CaffeineSnapshot, now: Date, promptVisible: Bool, showSeconds: Bool

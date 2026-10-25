@@ -37,6 +37,15 @@ app:
 app:
     @echo "just app needs macOS with Xcode. On Linux, use just test and just lint." >&2; exit 1
 
+# Builds "HeadsUp Quick", a separate debug app where one timer minute lasts 5 seconds, for quick checks.
+[macos]
+app-quick:
+    tools/make-app.sh quick "{{ bundle_id }}" "{{ version }}" "{{ build_number }}"
+
+[linux]
+app-quick:
+    @echo "just app-quick needs macOS with Xcode. On Linux, use just test and just lint." >&2; exit 1
+
 # Builds build/HeadsUp.app signed with $HEADSUP_SIGN_ID, and build/HeadsUp.dmg.
 [macos]
 build:

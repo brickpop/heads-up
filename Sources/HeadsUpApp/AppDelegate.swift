@@ -11,19 +11,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: HUDPanel?
     private var statusItem: StatusItemController?
     private var keyLabeler: KeyLabeler?
+    private var notifier: UserNotifier?
+    private var wakeObserver: NSObjectProtocol?
+    private var clockObserver: NSObjectProtocol?
     private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make()
 
         let scheduler = SystemScheduler()
+        // Answers from Notification Center go to the model, once it exists.
+        let notifier = UserNotifier { [weak self] category, action in
+            self?.model?.handleNotification(category: category, action: action)
+        }
         let model = AppModel(
             ports: AppModel.Ports(
                 clock: SystemClock(), scheduler: scheduler, hotkeys: hotkeys,
                 appearance: SystemAppearanceAdapter(), files: FinderRevealer(), loginItem: LoginItemAdapter(),
-                systemSettings: SystemSettingsAdapter(),
-                dataFolder: SettingsStore.defaultFolder))
+                systemSettings: SystemSettingsAdapter(), notifier: notifier,
+                dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
+                focusSecondsPerMinute: Self.focusSecondsPerMinute))
         self.model = model
+        self.notifier = notifier
+
+        // After sleep, or when the system clock changes, timers that ended meanwhile move on at
+        // once (ADR-001 §4.3).
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak model] _ in
+            MainActor.assumeIsolated { model?.clockJumped() }
+        }
+        clockObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemClockDidChange, object: nil, queue: .main
+        ) { [weak model] _ in
+            MainActor.assumeIsolated { model?.clockJumped() }
+        }
 
         let panel = HUDPanel(hud: model.hud, content: HUDRootView(model: model))
         model.hud.attach(window: panel)
@@ -52,6 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         model.launch()
+        #if DEBUG && HEADSUP_QUICK_TIMERS
+            log.notice("HeadsUp quick timers: one timer minute lasts 5 seconds")
+        #endif
         let keyLabeler = KeyLabeler { [weak self, weak model] in
             guard let model, let labeler = self?.keyLabeler else { return }
             model.hud.shortcutLabelChanged(labeler.label(for: model.settings.settings.general.shortcut.keyCode))
@@ -65,6 +90,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .failed(let status): log.error("wake shortcut not registered: OSStatus \(status, privacy: .public)")
         }
     }
+
+    #if DEBUG && HEADSUP_QUICK_TIMERS
+        /// `just app-quick`: one timer minute lasts 5 seconds, so the CEO can check a whole Focus round
+        /// in minutes. A release build can't contain this: the lint and make-app.sh check it.
+        /// It also keeps its own data folder, HeadsUp-Quick, so it never touches the real data.
+        private static let quickTimers = true
+        private static let focusSecondsPerMinute: TimeInterval = 5
+    #else
+        private static let quickTimers = false
+        private static let focusSecondsPerMinute: TimeInterval = 60
+    #endif
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeys.invalidate()

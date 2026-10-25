@@ -5,6 +5,8 @@ import Observation
 @MainActor
 public protocol Navigator: AnyObject {
     func open(tab: Tab?, makeKey: Bool)
+    /// A timer ended and wants to show its prompt, without disturbing what the user is doing.
+    func autoOpen(tab: Tab, announcement: String)
     func showSettings(_ section: SettingsSection)
     func close()
 }
@@ -481,6 +483,32 @@ extension HUDStore {
         guard let position = selectable.firstIndex(of: index) else { return row.title }
         return Strings.Suggestions.accessibilityRow(
             title: row.title, kind: row.kindLabel, position: position + 1, count: selectable.count)
+    }
+}
+
+// MARK: Auto-open
+
+extension HUDStore {
+    /// A Focus session or break ended and its prompt wants to show (Yuki, slice 3):
+    /// - HUD closed: opens on `tab` without taking the keyboard, with a clean input and no
+    ///   model menu, so the prompt shows as designed.
+    /// - HUD open and key: the user may be typing, so it stays as it is (tab, text, focus)
+    ///   and `announcement` shows as a toast, which VoiceOver reads.
+    /// - HUD open but not key: switches to `tab`, keeps the text, doesn't take the keyboard.
+    /// - Already on `tab`: the prompt shows in place.
+    public func autoOpen(tab: Tab, announcement: String) {
+        if !isOpen {
+            modelMenuOpen = false
+            input = ""
+            selectedIndex = nil
+            open(tab: tab, makeKey: false)
+        } else if self.tab == tab {
+            return
+        } else if isKey {
+            toast(announcement)
+        } else {
+            switchTab(to: tab)
+        }
     }
 }
 

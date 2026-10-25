@@ -3,10 +3,12 @@ import SwiftUI
 
 /// The footer: keyboard hints on the left, or a toast in their place, and room on the
 /// right for the Focus and Caffeine pills.
-struct HUDFooter: View {
+struct HUDFooter<Pills: View>: View {
     let left: FooterLeft
     /// Goes up with every toast, so a toast with the same text as the last is announced again.
     var toastID = 0
+    /// The status pills on the right.
+    @ViewBuilder var pills: Pills
 
     var body: some View {
         HStack(spacing: HUDStyle.Footer.hintGap) {
@@ -19,7 +21,7 @@ struct HUDFooter: View {
                 ToastView(text: text)
             }
             Spacer(minLength: 0)
-            // The Focus and Caffeine pills go here, in their slices.
+            pills
         }
         .font(.system(size: HUDStyle.Footer.fontSize))
         .foregroundStyle(.tertiary)
@@ -29,6 +31,13 @@ struct HUDFooter: View {
                 AccessibilityNotification.Announcement(text).post()
             }
         }
+    }
+}
+
+extension HUDFooter where Pills == EmptyView {
+    /// A footer with no pills, for previews.
+    init(left: FooterLeft, toastID: Int = 0) {
+        self.init(left: left, toastID: toastID, pills: { EmptyView() })
     }
 }
 
