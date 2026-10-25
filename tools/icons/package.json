@@ -1,0 +1,8 @@
+{
+  "name": "headsup-make-icons",
+  "private": true,
+  "description": "Pinned dependency of tools/make-icons.sh. Not part of the app build.",
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2"
+  }
+}

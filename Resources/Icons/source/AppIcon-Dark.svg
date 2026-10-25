@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#3A3C43"/><stop offset="1" stop-color="#17181B"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(255,255,255,0.20)"/><stop offset="1" stop-color="rgba(255,255,255,0.10)"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <clipPath id="squircle"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <!-- caret -->
+    <polyline points="420,352 512,268 604,352" fill="none" stroke="#0A84FF" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- the HUD panel -->
+    <g filter="url(#shadow)">
+      <rect x="192" y="430" width="640" height="300" rx="64" fill="url(#glass)" stroke="rgba(255,255,255,0.26)" stroke-width="3"/>
+    </g>
+    <!-- active tab chip and prompt -->
+    <rect x="244" y="486" width="76" height="76" rx="20" fill="#0A84FF"/>
+    <rect x="352" y="508" width="300" height="32" rx="16" fill="rgba(235,235,245,0.38)"/>
+    <!-- footer hints -->
+    <rect x="244" y="628" width="190" height="24" rx="12" fill="rgba(235,235,245,0.20)"/>
+    <rect x="458" y="628" width="110" height="24" rx="12" fill="rgba(235,235,245,0.20)"/>
+  </g>
+</svg>
