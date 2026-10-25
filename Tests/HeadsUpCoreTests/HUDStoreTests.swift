@@ -8,8 +8,13 @@ import Testing
 private final class FakeChat: HUDChat {
     var askTarget: AskTarget = .model(name: "Llama 3.1 8B")
     var hasMessages = false
+    var isBusy = false
     var sent: [String] = []
+    var stops = 0
+    var newChats = 0
     func send(_ text: String) { sent.append(text) }
+    func stop() { stops += 1 }
+    func newChat() { newChats += 1 }
 }
 
 /// A HUDStore with fake ports, a fake window that reports key changes, and settings in memory.

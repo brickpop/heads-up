@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
                 folderPicker: OpenPanelFolderPicker(), terminalLauncher: SystemTerminalLauncher(),
                 secrets: KeychainSecretStore(), httpClient: URLSessionHTTPClient(),
+                linkOpener: WorkspaceLinkOpener(), pasteboard: GeneralPasteboard(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
                 focusSecondsPerMinute: Self.focusSecondsPerMinute))
         self.model = model

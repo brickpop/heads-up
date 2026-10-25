@@ -39,7 +39,8 @@ private final class EndpointsHarness {
                 systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), serviceLauncher: launcher,
                 portProbe: probe, folderPicker: FakeFolderPicker(), terminalLauncher: FakeTerminalLauncher(),
-                secrets: other?.secrets ?? secrets, httpClient: server, dataFolder: folder, home: root.path,
+                secrets: other?.secrets ?? secrets, httpClient: server, linkOpener: FakeLinkOpener(),
+                pasteboard: FakePasteboard(), dataFolder: folder, home: root.path,
                 environment: [:]),
             settings: settings)
         model.launch()

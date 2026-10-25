@@ -60,6 +60,13 @@ enum Symbols {
     /// The default-endpoint radio, off and on.
     static let radioOff = "circle"
     static let radioOn = "largecircle.fill.circle"
+    /// The Copy button on a code block.
+    static let copy = "doc.on.doc"
+    /// The info icon on a problem row that is not a failure (the step limit).
+    static let info = "info.circle"
+    /// Task-list markers, unchecked and checked.
+    static let taskOff = "square"
+    static let taskOn = "checkmark.square"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

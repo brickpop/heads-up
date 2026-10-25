@@ -31,13 +31,14 @@ public final class SystemScheduler: Scheduler {
     }
 }
 
-/// The HUD's chat until the chat slice: no messages, and Ask names the active model.
+/// The HUD's chat until AppModel attaches the real one: no model, no messages.
 @MainActor
 public final class NoChat: HUDChat {
-    /// The active model's name, set by AppModel once the endpoints exist.
-    var activeModel: @MainActor () -> String? = { nil }
     public init() {}
-    public var askTarget: AskTarget { activeModel().map { .model(name: $0) } ?? .noModel }
+    public var askTarget: AskTarget { .noModel }
     public var hasMessages: Bool { false }
+    public var isBusy: Bool { false }
     public func send(_ text: String) {}
+    public func stop() {}
+    public func newChat() {}
 }

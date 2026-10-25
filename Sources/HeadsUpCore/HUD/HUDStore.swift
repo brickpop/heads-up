@@ -17,13 +17,17 @@ public protocol Toaster: AnyObject {
     func toast(_ text: String)
 }
 
-/// What the HUD needs from the chat: who Ask asks, whether a conversation shows, and sending.
-/// `NoChat` stands in until the chat slice.
+/// What the HUD needs from the chat: who Ask asks, whether a conversation shows, sending,
+/// and the keys that stop it or start again.
 @MainActor
 public protocol HUDChat: AnyObject {
     var askTarget: AskTarget { get }
     var hasMessages: Bool { get }
+    /// A reply is coming: Enter waits, and ⌘. stops it.
+    var isBusy: Bool { get }
     func send(_ text: String)
+    func stop()
+    func newChat()
 }
 
 /// Something that happened in the HUD, reported to AppModel through `HUDStore.onEvent`.
@@ -83,7 +87,7 @@ public final class HUDStore: Navigator, Toaster {
     @ObservationIgnored private let registry: ActionRegistry
     @ObservationIgnored private let settings: SettingsStore
     @ObservationIgnored private let hotkeys: HotkeyRegistrar
-    @ObservationIgnored private let chat: HUDChat
+    @ObservationIgnored private var chat: HUDChat
 
     public init(
         clock: Clock, scheduler: Scheduler, registry: ActionRegistry, settings: SettingsStore,
@@ -94,6 +98,11 @@ public final class HUDStore: Navigator, Toaster {
         self.registry = registry
         self.settings = settings
         self.hotkeys = hotkeys
+        self.chat = chat
+    }
+
+    /// Connects the chat, once AppModel has created it.
+    func attach(chat: HUDChat) {
         self.chat = chat
     }
 
@@ -131,7 +140,8 @@ public final class HUDStore: Navigator, Toaster {
         if !rows.isEmpty {
             return .hints(rows.first?.isSelectable == false ? Strings.Hints.noMatch : Strings.Hints.suggestions)
         }
-        return .hints(tab == .chat ? Strings.Hints.chat : Strings.Hints.otherTab)
+        guard tab == .chat else { return .hints(Strings.Hints.otherTab) }
+        return .hints(chat.isBusy ? Strings.Hints.chatBusy : Strings.Hints.chat)
     }
 
     /// The Chat tab shows a conversation with messages.
@@ -328,6 +338,8 @@ public final class HUDStore: Navigator, Toaster {
     private func ask() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        // Enter waits while a reply comes: no queue, and nothing is cancelled.
+        guard !chat.isBusy else { return }
         if chat.askTarget == .noModel {
             showSettings(.models)
             return
@@ -364,8 +376,13 @@ public final class HUDStore: Navigator, Toaster {
             showSettings(settingsSection)
             return true
         case KeyCode.n:
-            // The chat slice also starts a new chat here.
             selectTab(.chat)
+            chat.newChat()
+            return true
+        case KeyCode.period:
+            // ⌘. stops a reply; Esc never does.
+            guard chat.isBusy else { return false }
+            chat.stop()
             return true
         default:
             return false

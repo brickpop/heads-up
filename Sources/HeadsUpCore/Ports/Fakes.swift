@@ -166,6 +166,22 @@ import Foundation
         }
     }
 
+    /// Remembers the links opened.
+    @MainActor
+    public final class FakeLinkOpener: LinkOpener {
+        public private(set) var opened: [URL] = []
+        public init() {}
+        public func open(_ url: URL) { opened.append(url) }
+    }
+
+    /// Remembers what was copied.
+    @MainActor
+    public final class FakePasteboard: Pasteboard {
+        public private(set) var copied: [String] = []
+        public init() {}
+        public func copy(_ text: String) { copied.append(text) }
+    }
+
     /// A folder panel that answers what the test says, and remembers where it opened.
     @MainActor
     public final class FakeFolderPicker: FolderPicker {
@@ -375,6 +391,45 @@ import Foundation
             continuation.yield(Array(body.utf8))
             continuation.finish()
             return HTTPResponse(status: status, headers: [:], body: stream)
+        }
+    }
+
+    /// A model the test speaks for: each request opens a stream the test feeds with `say`,
+    /// `finish` or `fail`, and the request's messages are kept.
+    public final class FakeLLMProvider: LLMProvider, @unchecked Sendable {
+        private let lock = NSLock()
+        private var streams: [AsyncThrowingStream<LLMEvent, Error>.Continuation] = []
+        private var sent: [[LLMMessage]] = []
+
+        public init() {}
+
+        public func stream(endpoint: Endpoint, messages: [LLMMessage], tools: [LLMTool])
+            -> AsyncThrowingStream<LLMEvent, Error>
+        {
+            let (stream, continuation) = AsyncThrowingStream<LLMEvent, Error>.makeStream()
+            lock.withLock {
+                streams.append(continuation)
+                sent.append(messages)
+            }
+            return stream
+        }
+
+        /// The messages of each request, in order.
+        public var requests: [[LLMMessage]] { lock.withLock { sent } }
+
+        private var current: AsyncThrowingStream<LLMEvent, Error>.Continuation? { lock.withLock { streams.last } }
+
+        public func say(_ events: LLMEvent...) {
+            for event in events { current?.yield(event) }
+        }
+
+        public func finish(_ reason: StopReason = .stop) {
+            current?.yield(.finished(reason, nil))
+            current?.finish()
+        }
+
+        public func fail(_ error: ChatError) {
+            current?.finish(throwing: error)
         }
     }
 

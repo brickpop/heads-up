@@ -54,7 +54,8 @@ private final class ServicesHarness {
                 notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: realLauncher ? POSIXServiceLauncher() : launcher, portProbe: probe,
                 folderPicker: picker, terminalLauncher: terminals, secrets: MemorySecretStore(),
-                httpClient: FakeHTTPClient(), dataFolder: folder, loginShell: loginShell,
+                httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
+                dataFolder: folder, loginShell: loginShell,
                 home: root.path, environment: ["PATH": "/usr/bin"]),
             settings: settings)
         model.launch()

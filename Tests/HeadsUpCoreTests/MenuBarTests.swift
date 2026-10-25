@@ -440,6 +440,7 @@ private func status(
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
+                linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
         failing.setOpenAtLogin(true)
         #expect(failing.openAtLogin == .disabled)
@@ -457,6 +458,7 @@ private func status(
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
+                linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
         #expect(model.openAtLogin == .requiresApproval)
         model.openLoginItemsSettings()
@@ -477,6 +479,7 @@ private func status(
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
+                linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
         try? fake.setEnabled(true)  // changed in System Settings
         #expect(model.openAtLogin == .disabled)
@@ -579,6 +582,7 @@ private func status(
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
+                linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
     }
 

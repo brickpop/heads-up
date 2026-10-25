@@ -26,6 +26,11 @@ public final class AppModel {
         public var secrets: SecretStore
         /// Requests to model servers, under `HTTPTransport`.
         public var httpClient: HTTPClient
+        /// Opens links from replies; copies text.
+        public var linkOpener: LinkOpener
+        public var pasteboard: Pasteboard
+        /// The model API; nil is the OpenAI-compatible provider over `httpClient`. Tests give a fake.
+        public var llmProvider: LLMProvider?
         /// The user's login shell, home folder and environment, for services.
         public var loginShell: String
         public var home: String
@@ -40,7 +45,8 @@ public final class AppModel {
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
             powerAssertions: PowerAssertions, powerSource: PowerSource, serviceLauncher: ServiceLauncher,
             portProbe: PortProbe, folderPicker: FolderPicker, terminalLauncher: TerminalLauncher, secrets: SecretStore,
-            httpClient: HTTPClient, dataFolder: URL?,
+            httpClient: HTTPClient, linkOpener: LinkOpener, pasteboard: Pasteboard, llmProvider: LLMProvider? = nil,
+            dataFolder: URL?,
             focusSecondsPerMinute: TimeInterval = 60,
             loginShell: String = UserAccount.loginShell, home: String = NSHomeDirectory(),
             environment: [String: String] = ProcessInfo.processInfo.environment
@@ -61,6 +67,9 @@ public final class AppModel {
             self.terminalLauncher = terminalLauncher
             self.secrets = secrets
             self.httpClient = httpClient
+            self.linkOpener = linkOpener
+            self.pasteboard = pasteboard
+            self.llmProvider = llmProvider
             self.loginShell = loginShell
             self.home = home
             self.environment = environment
@@ -77,6 +86,7 @@ public final class AppModel {
     public let services: ServiceStore
     public let commands: CommandStore
     public let endpoints: EndpointService
+    public let chat: ChatStore
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
@@ -180,7 +190,19 @@ public final class AppModel {
             transport: HTTPTransport(client: ports.httpClient, secrets: ports.secrets), ports: ports.portProbe,
             services: services, clock: ports.clock, scheduler: ports.scheduler, toaster: hud)
         self.endpoints = endpoints
-        chat.activeModel = { [weak endpoints] in endpoints?.active?.name }
+        let chatStore = ChatStore(
+            endpoints: endpoints,
+            provider: ports.llmProvider ?? OpenAICompatibleProvider(transport: endpoints.transport),
+            clock: ports.clock, scheduler: ports.scheduler, ports: ports.portProbe, links: ports.linkOpener,
+            pasteboard: ports.pasteboard, toaster: hud)
+        self.chat = chatStore
+        hud.attach(chat: chatStore)
+        // F6, S2: a guarded button acts only while the HUD is key, 600 ms after it appeared and
+        // 600 ms after the HUD became key (ActionGuard).
+        chatStore.armedAt = { [weak hud] shownAt in
+            guard let hud, hud.isKey else { return nil }
+            return ActionGuard.armedAt(shownAt: shownAt, keySince: hud.keySince)
+        }
         self.clock = ports.clock
         loginItem = ports.loginItem
         systemSettings = ports.systemSettings
@@ -205,7 +227,7 @@ public final class AppModel {
         }
         registry.add(.model) { [weak self, weak hud] in
             guard let self, let hud else { return [] }
-            return ShellActions.addModel(hud: hud, chat: chat)
+            return ShellActions.addModel(hud: hud, chat: self.chat)
                 + ModelActions.make(endpoints: endpoints) { [weak self] id in self?.selectModel(id) }
         }
         registry.add(.command) { [weak self] in
@@ -221,6 +243,8 @@ public final class AppModel {
         switch event {
         case .closed:
             if settingsNotice != nil { noticeSeen = settings.fileProblem }
+            // Closing never stops a reply, unless the chat is cleared on close: then it stops first.
+            if settings.settings.general.clearOnClose { chat.newChat() }
             endWelcome()
             focus.cancelSnoozeHide()
         case .tabChanged(let tab):
@@ -463,7 +487,8 @@ public final class AppModel {
                     powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                     serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
                     folderPicker: FakeFolderPicker(), terminalLauncher: FakeTerminalLauncher(),
-                    secrets: MemorySecretStore(), httpClient: FakeHTTPClient(), dataFolder: nil),
+                    secrets: MemorySecretStore(), httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(),
+                    pasteboard: FakePasteboard(), dataFolder: nil),
                 settings: settings)
             if let settingsFileProblem { model.settings.showProblemForPreview(settingsFileProblem) }
             model.launch()
@@ -489,6 +514,8 @@ public enum HUDBody: Equatable, Sendable {
     case settings
     /// The model menu, over any tab body (ADR-001 §4.1).
     case modelMenu
+    /// The Chat tab's conversation, once it has a message.
+    case conversation
     /// The first-run welcome, on Chat.
     case welcome
     /// Nothing: the HUD collapses to its header and footer.
@@ -506,6 +533,7 @@ extension AppModel {
         if hud.tab == .services { return .services }
         if hud.tab == .commands { return .commands }
         if hud.tab == .settings { return .settings }
+        if hud.tab == .chat && hud.chatView == .conversation && chat.hasMessages { return .conversation }
         if hud.tab == .chat && showsWelcome { return .welcome }
         return .empty
     }
@@ -708,5 +736,52 @@ extension AppModel {
         } else {
             manageEndpoints()
         }
+    }
+}
+
+extension AppModel {
+    // MARK: Chat
+
+    /// A problem row's button. Each joins the chat with the endpoints, the services or the HUD.
+    /// False when nothing happened: the row is gone or answered, Try again still waits for a rate
+    /// limit, or the F6 guard ignored Continue.
+    @discardableResult
+    public func recover(_ rowID: Problem.ID, _ action: ProblemAction) -> Bool {
+        guard let row = chat.problem(rowID), !row.isSuperseded, row.starting == nil else { return false }
+        let endpointID: Endpoint.ID? =
+            switch row.kind {
+            case .error(_, let id), .stepLimit(_, let id, _): id
+            case .noEndpoint: nil
+            }
+        switch action {
+        case .tryAgain:
+            if case .error(.rateLimited(let wait?), _) = row.kind,
+                clock.now < row.shownAt.addingTimeInterval(TimeInterval(wait.components.seconds))
+            {
+                return false
+            }
+            // The user asks again: the keychain may prompt again.
+            if case .error(.keychainDenied, let id) = row.kind { endpoints.transport.allowKeychainRead(id) }
+            chat.retry()
+        case .editEndpoint:
+            hud.showSettings(.models)
+            if let endpointID { endpoints.editEndpoint(endpointID) }
+        case .startService:
+            guard let endpoint = endpointID.flatMap(endpoints.endpoint), let service = endpoints.service(for: endpoint),
+                let port = EndpointService.port(endpoint.baseURL)
+            else { return false }
+            services.start(service.id)
+            chat.waitForServer(rowID, service: service.name, port: port)
+        case .newChat:
+            chat.newChat()
+        case .switchModel:
+            hud.selectTab(.chat)
+            if !hud.modelMenuOpen { hud.toggleModelMenu() }
+        case .openSettings:
+            hud.showSettings(.models)
+        case .continueAfterLimit:
+            return chat.continueAfterLimit(rowID)
+        }
+        return true
     }
 }

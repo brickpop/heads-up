@@ -85,10 +85,16 @@ public enum Strings {
             Hint(keys: ["↓"], label: "ask instead"),
             Hint(keys: ["esc"], label: "clear"),
         ]
+        /// ⌘P pin joins with pinned chats.
         public static let chat = [
             Hint(keys: ["⏎"], label: "send"),
             Hint(keys: ["/"], label: "actions"),
-            Hint(keys: ["⌘P"], label: "pin"),
+            Hint(keys: ["⌘N"], label: "new"),
+        ]
+        /// While a reply comes (UX part 1, §5). ⌘P joins with pinned chats.
+        public static let chatBusy = [
+            Hint(keys: ["⌘."], label: "stop"),
+            Hint(keys: ["/"], label: "actions"),
             Hint(keys: ["⌘N"], label: "new"),
         ]
         public static let otherTab = [
@@ -937,6 +943,94 @@ public enum Strings {
         public static let start = "Start"
         public static let noModel = "No model"
         public static func chipLabel(_ name: String) -> String { "Model: \(name)" }
+    }
+
+    /// The conversation (Chat spec; UX part 1, §4, §5, §8; addenda 3–4). Copy marked
+    /// "placeholder" waits for Yuki.
+    public enum Chat {
+        // The toolbar
+        public static let new = "New"
+        public static let newHelp = "New chat (⌘N)"
+        public static let stop = "Stop"
+
+        // A reply
+        public static func thinking(_ model: String) -> String { "Thinking with \(model)…" }
+        public static let stopped = "Stopped"
+        // VoiceOver (Yuki's chat copy)
+        public static func youSaid(_ text: String) -> String { "You: \(text)" }
+        /// "GPT-4o mini: …", the blocks read in order; ", stopped" after Stop.
+        public static func modelSaid(_ model: String, blocks: [String], stopped: Bool) -> String {
+            "\(model): " + blocks.joined(separator: " ") + (stopped ? ", stopped" : "")
+        }
+        public static func codeBlockSpoken(language: String?) -> String {
+            language.map { "Code block, \($0):" } ?? "Code block:"
+        }
+        public static func tableSpoken(columns: Int, rows: Int) -> String { "Table, \(columns) columns, \(rows) rows" }
+        public static func linkSpoken(_ host: String) -> String { "link, \(host)" }
+        public static func replyStarted(_ model: String) -> String { "\(model) is answering" }
+        public static func replyEnded(_ model: String) -> String { "\(model) answered" }
+        public static let replyStopped = "Reply stopped"
+        public static let code = "code"
+        public static let copy = "Copy"
+        public static let copyAsMarkdown = "Copy as Markdown"
+        public static let copied = "Copied to clipboard"
+
+        // The link ask (addendum 3, F2)
+        public static let openLinkQuestion = "Open this link?"
+        public static let cancel = "Cancel"
+        public static let open = "Open"
+
+        // Problem rows (UX part 1, §4)
+        public static let tryAgain = "Try again"
+        public static let editEndpoint = "Edit endpoint…"
+        public static let openSettings = "Open Settings"
+        public static let newChat = "New chat"
+        public static let switchModel = "Switch model"
+        public static func start(_ service: String) -> String { "Start \(service)" }
+        public static func starting(_ service: String) -> String { "Starting \(service)…" }
+        public static let theModel = "The model"
+        public static let offlineTitle = "Can't connect to the internet"
+        public static let offlineText = "Check your connection, then try again."
+        public static func unreachableTitle(_ host: String) -> String { "Can't reach \(host)" }
+        public static let unreachableText = "The server didn't answer."
+        public static func timeoutTitle(_ model: String) -> String { "\(model) took too long to answer" }
+        public static func tokenTitle(_ model: String) -> String { "\(model) rejected the API token" }
+        public static let badTokenText = "The token may be wrong or expired."
+        public static let needsTokenText = "This server needs an API token."
+        public static func busyTitle(_ model: String) -> String { "\(model) is busy" }
+        public static func busyText(seconds: Int?) -> String {
+            seconds.map { "Too many requests. You can try again in \($0) s." } ?? "Too many requests."
+        }
+        public static func notRunningTitle(_ server: String) -> String { "\(server) isn't running" }
+        public static let notRunningText = "Start it, then try again."
+        public static func modelMissingTitle(_ id: String) -> String { "\(id) isn't on this server" }
+        public static let modelMissingText = "Choose another model id."
+        public static func tooLongTitle(_ model: String) -> String { "This chat is too long for \(model)" }
+        public static let tooLongText = "Start a new chat, or switch to a model that takes longer chats."
+        public static func redirectedTitle(_ model: String, host: String) -> String {
+            "\(model)'s server redirected to \(host)"
+        }
+        public static let redirectedText =
+            "HeadsUp doesn't follow redirects, so your token isn't sent there. Check the URL."
+        public static func serverTitle(_ model: String, status: Int) -> String {
+            "\(model) returned an error (\(status))"
+        }
+        public static func badResponseTitle(_ model: String) -> String { "\(model) sent a reply HeadsUp can't read" }
+        public static let badResponseText = "The server may not be fully OpenAI-compatible."
+        public static let keychainDeniedTitle = "Your keychain didn't let HeadsUp read the token"
+        public static let keychainDeniedText = "If macOS asks, allow HeadsUp, then try again."
+        public static let noModelTitle = "No model is set up"
+        public static let noModelText = "Add an OpenAI-compatible URL in Settings → Models, then try again."
+        /// The disclosure with the server's own message.
+        public static let details = "Details"
+
+        // The step limit (addendum 4)
+        public static func stepLimitTitle(_ model: String, steps: Int) -> String {
+            "\(model) stopped after \(steps) tool calls"
+        }
+        public static let stepLimitText = "It may need more steps to finish."
+        public static let continueTitle = "Continue"
+        public static func stepLimitRecord(steps: Int) -> String { "Stopped after \(steps) tool calls · Continued" }
     }
 
     public enum Hotkey {

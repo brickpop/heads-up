@@ -25,6 +25,7 @@ private struct CaffeineHarness {
                 notifier: FakeNotifier(), powerAssertions: assertions, powerSource: power,
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
+                linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil),
             settings: settings)
         model.launch()

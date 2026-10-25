@@ -26,6 +26,7 @@ struct HUDRootView: View {
                 }
                 switch hudBody {
                 case .modelMenu: ModelMenuView(model: model, screen: model.modelMenu)
+                case .conversation: ConversationView(model: model)
                 case .suggestions: SuggestionList(hud: hud)
                 case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
                 case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
@@ -142,6 +143,11 @@ private enum AccessibilityOrder {
                         $0.hud.toggleModelMenu()
                     }
                     .previewDisplayName("Model menu, no endpoint")
+                    hud {
+                        $0.hud.selectTab(.chat)
+                        $0.chat.showPreviewConversation()
+                    }
+                    .previewDisplayName("Conversation")
                     hud { $0.hud.showSettings(.models) }.previewDisplayName("Settings → Models")
                 }
                 .preferredColorScheme(scheme)

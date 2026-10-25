@@ -52,6 +52,16 @@ enum HUDStyle {
         case lighter, stronger
     }
 
+    /// The extra space between lines that makes the line height `lineHeight` times the font size,
+    /// from the system font's own metrics (SwiftUI's lineSpacing adds to the natural height).
+    static func lineSpacing(size: CGFloat, lineHeight: CGFloat, monospaced: Bool = false) -> CGFloat {
+        let font =
+            monospaced
+            ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular) : NSFont.systemFont(ofSize: size)
+        let natural = font.ascender - font.descender + font.leading
+        return max(0, size * lineHeight - natural)
+    }
+
     /// The width of a hairline: one device pixel, or a full point with Increase Contrast.
     static func lineWidth(contrast: ColorSchemeContrast, displayScale: CGFloat) -> CGFloat {
         contrast == .increased ? 1 : 1 / displayScale
@@ -254,6 +264,65 @@ enum HUDStyle {
         static let formPadding: CGFloat = 14
         static let gridGap: CGFloat = 10
         static let tagPadding: CGFloat = 6
+    }
+
+    enum Outline {
+        static let height: CGFloat = 24
+        static let padding: CGFloat = 8
+        static let cornerRadius: CGFloat = 8
+    }
+
+    enum Chat {
+        /// The conversation's height: its content's, between these two.
+        static let minHeight: CGFloat = 160
+        static let maxHeight: CGFloat = 440
+        static let toolbarHeight: CGFloat = 40
+        static let toolbarPadding: CGFloat = 18
+        static let topPadding: CGFloat = 18
+        static let sidePadding: CGFloat = 20
+        static let bottomPadding: CGFloat = 20
+        static let messageGap: CGFloat = 16
+        static let blockGap: CGFloat = 10
+        static let bodySize: CGFloat = 14
+        /// Line heights, as multiples of the font size: replies, the user's bubble, and code.
+        static let replyLineHeight: CGFloat = 1.55
+        static let bubbleLineHeight: CGFloat = 1.5
+        static let codeLineHeight: CGFloat = 1.6
+        static let headingLineHeight: CGFloat = 1.2
+        static let bubbleVerticalPadding: CGFloat = 9
+        static let bubbleHorizontalPadding: CGFloat = 14
+        static let bubbleRadius: CGFloat = 16
+        /// The bubble's corner next to the user's side.
+        static let bubbleTailRadius: CGFloat = 4
+        static let userMaxWidth: CGFloat = 0.78
+        static let assistantMaxWidth: CGFloat = 0.92
+        static let thinkingDotSize: CGFloat = 7
+        static let codeSize: CGFloat = 12.5
+        /// The space on each side of inline code, inside the text (kerning, not characters).
+        static let codeKern: CGFloat = 3
+        /// How close to the bottom still counts as at the bottom, for following a reply.
+        static let followSlack: CGFloat = 40
+        static let codeHeaderHeight: CGFloat = 30
+        static let codeRadius: CGFloat = 10
+        static let codeVerticalPadding: CGFloat = 12
+        static let codeHorizontalPadding: CGFloat = 14
+        static let listMarkerWidth: CGFloat = 20
+        static let listGap: CGFloat = 10
+        static let listItemGap: CGFloat = 6
+        static let listDotSize: CGFloat = 5
+        static let quoteBarWidth: CGFloat = 3
+        static let quotePadding: CGFloat = 12
+        static let tableRadius: CGFloat = 10
+        static let tableCellVertical: CGFloat = 7
+        static let tableCellHorizontal: CGFloat = 12
+        static let tableHeaderSize: CGFloat = 12
+        static let tableCellSize: CGFloat = 13
+        static let ruleMargin: CGFloat = 8
+        static let rowChipSize: CGFloat = 22
+        static let rowButtonHeight: CGFloat = 26
+        /// Buttons waiting out the F6 guard.
+        static let unarmedOpacity: Double = 0.5
+        static let detailsLineLimit = 6
     }
 
     enum Pill {

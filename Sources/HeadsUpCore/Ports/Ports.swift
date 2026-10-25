@@ -78,6 +78,18 @@ public protocol TerminalLauncher: AnyObject {
     func run(_ plan: TerminalPlan) async -> TerminalRunResult
 }
 
+/// Opens a link from a reply in the default app (F2: only after `LinkPolicy`).
+@MainActor
+public protocol LinkOpener: AnyObject {
+    func open(_ url: URL)
+}
+
+/// The clipboard, for Copy. Plain text only.
+@MainActor
+public protocol Pasteboard: AnyObject {
+    func copy(_ text: String)
+}
+
 /// Asks the user for a folder (the service form's Choose…).
 @MainActor
 public protocol FolderPicker: AnyObject {
