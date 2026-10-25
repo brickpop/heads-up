@@ -14,6 +14,7 @@ struct SuggestionList: View {
     var body: some View {
         let rows = hud.suggestions
         let selection = hud.selection
+        let selectedLabel = selection.map { hud.accessibilityLabel(forRow: $0) }
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
@@ -36,11 +37,13 @@ struct SuggestionList: View {
             // and the panel can size itself from it.
             .frame(height: min(HUDStyle.Suggestions.maxHeight, Self.contentHeight(rows)))
             .onChange(of: selection) { _, selected in
-                guard let selected else { return }
-                proxy.scrollTo(selected)
-                // The pointer user sees the row they point at; keyboard and typing users hear it.
-                if hud.selectionChange != .pointer {
-                    AccessibilityNotification.Announcement(hud.accessibilityLabel(forRow: selected)).post()
+                if let selected { proxy.scrollTo(selected) }
+            }
+            // Keyed on the label, not the index: typing can put a different row at the same place.
+            // The pointer user sees the row they point at; keyboard and typing users hear it.
+            .onChange(of: selectedLabel) { _, label in
+                if let label, hud.selectionChange != .pointer {
+                    AccessibilityNotification.Announcement(label).post()
                 }
             }
         }

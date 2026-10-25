@@ -431,6 +431,96 @@ private struct Harness {
 }
 
 @MainActor
+@Suite struct ShortcutRecorderTests {
+    private let commandK = Shortcut(keyCode: 40, modifiers: .command, key: "K")
+
+    @Test func recordingReleasesTheShortcutUntilItEnds() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.open()
+        h.hud.startRecording()
+        #expect(h.hud.recording)
+        h.hotkeys.press()  // the recorder captures ⌥ Space instead
+        #expect(h.hud.isOpen)
+        h.hud.cancelRecording()
+        h.hotkeys.press()
+        #expect(!h.hud.isOpen)
+    }
+
+    @Test func aNewShortcutIsSavedAndEndsRecording() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.startRecording()
+        h.hud.record(commandK)
+        #expect(!h.hud.recording)
+        #expect(h.hud.recorderProblem == nil)
+        #expect(h.settings.settings.general.shortcut == commandK)
+        #expect(h.hud.hotkey == .ok(commandK))
+        #expect(!h.hotkeys.isSuspended)
+    }
+
+    @Test func aPlainLetterAsksForAModifierAndKeepsListening() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.startRecording()
+        h.hud.record(Shortcut(keyCode: 40, modifiers: .shift, key: "K"))
+        #expect(h.hud.recording)
+        #expect(h.hud.recorderProblem == "Add ⌘, ⌥ or ⌃.")
+        #expect(h.settings.settings.general.shortcut == .wakeDefault)
+    }
+
+    @Test func escCancelsAndKeepsTheCurrentShortcut() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.startRecording()
+        h.hud.record(Shortcut(keyCode: KeyNames.escape, modifiers: [], key: "⎋"))
+        #expect(!h.hud.recording)
+        #expect(h.settings.settings.general.shortcut == .wakeDefault)
+        #expect(!h.hotkeys.isSuspended)
+    }
+
+    @Test func aTakenShortcutSaysSoAndTheOldOneStays() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.startRecording()
+        h.hotkeys.nextStatus = .taken
+        h.hud.record(commandK)
+        #expect(h.hud.recording)
+        #expect(h.hud.recorderProblem == "Another app already uses this shortcut. Choose another.")
+        #expect(h.settings.settings.general.shortcut == .wakeDefault)
+        #expect(h.hud.hotkey == .ok(.wakeDefault))
+        #expect(h.hotkeys.isSuspended)  // still listening
+
+        h.hotkeys.nextStatus = .reservedBySystem
+        h.hud.record(Shortcut(keyCode: KeyCode.space, modifiers: .command, key: "Space"))
+        #expect(h.hud.recorderProblem?.hasPrefix("⌘ Space is used by macOS.") == true)
+    }
+
+    @Test func threeReRecordingsLeaveOnlyTheLastOneWorking() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        for shortcut in [
+            commandK, Shortcut(keyCode: 46, modifiers: .command, key: "M"),
+            Shortcut(keyCode: KeyCode.space, modifiers: .control, key: "Space"),
+        ] {
+            h.hud.startRecording()
+            h.hud.record(shortcut)
+        }
+        #expect(h.hotkeys.registered == Shortcut(keyCode: KeyCode.space, modifiers: .control, key: "Space"))
+        #expect(h.settings.settings.general.shortcut.modifiers == .control)
+    }
+
+    @Test func resetGoesBackToOptionSpace() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.changeShortcut(commandK)
+        h.hud.resetShortcut()
+        #expect(h.settings.settings.general.shortcut == .wakeDefault)
+        #expect(h.hud.recorderProblem == nil)
+    }
+}
+
+@MainActor
 @Suite struct RowPresentationTests {
     @Test func runningARowSelectsAndRunsIt() {
         let h = Harness()
@@ -508,5 +598,34 @@ private struct Harness {
         h.hud.toast("Caffeine off")
         #expect(h.hud.toastID == first + 1)
         #expect(h.hud.footerLeft == .toast("Caffeine off"))
+    }
+}
+
+@MainActor
+@Suite struct RecordingEndsTests {
+    @Test func closingTheHUDEndsARecordingAndTheShortcutWorksAgain() {
+        let h = Harness()
+        h.hud.registerHotkey()
+        h.hud.open()
+        h.hud.startRecording()
+        #expect(h.hotkeys.isSuspended)
+        h.hud.close()
+        #expect(!h.hud.recording)
+        #expect(!h.hotkeys.isSuspended)
+        h.hotkeys.press()
+        #expect(h.hud.isOpen)
+    }
+
+    @Test func losingTheKeyboardEndsARecordingEvenWhenTheHUDStaysOpen() {
+        var settings = Settings()
+        settings.general.closeOnClickOutside = false
+        let h = Harness(settings: settings)
+        h.hud.registerHotkey()
+        h.hud.open()
+        h.hud.startRecording()
+        h.window.clickElsewhere()
+        #expect(h.hud.isOpen)
+        #expect(!h.hud.recording)
+        #expect(!h.hotkeys.isSuspended)
     }
 }

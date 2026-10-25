@@ -9,8 +9,19 @@ public enum SettingsFileProblem: Equatable, Sendable {
     case unreadable(URL)
     /// A newer HeadsUp wrote it. Saving is off, so the newer version keeps its settings.
     case newerVersion(URL)
+    /// The user chose default settings; the old file is kept under this name. Saving works.
+    case defaultsChosen(keptAs: URL)
     /// A later save failed, with the reason in plain words. Changes are kept in memory.
-    case saveFailed(String)
+    /// `keptAs` names the old file if Use Defaults moved it aside before the save failed.
+    case saveFailed(String, keptAs: URL? = nil)
+
+    /// Whether the card shows a ×: only for a file kept aside, the rule `dismissFileProblem()` follows.
+    public var canBeDismissed: Bool {
+        switch self {
+        case .keptAside, .defaultsChosen: true
+        case .unreadable, .newerVersion, .saveFailed: false
+        }
+    }
 }
 
 /// Owns settings.json (ADR-001 §6.1): loads it at launch and writes it after each change.
@@ -31,12 +42,17 @@ public final class SettingsStore {
     public var savingEnabled: Bool {
         switch fileProblem {
         case .unreadable, .newerVersion: false
-        case .keptAside, .saveFailed, nil: true
+        case .keptAside, .defaultsChosen, .saveFailed, nil: true
         }
     }
 
     /// The file, or nil for a store that keeps settings in memory only (previews).
     private let file: URL?
+    @ObservationIgnored private let clock: Clock
+    /// The name chosen when the Use Defaults confirm opened.
+    private var useDefaultsTarget: URL?
+    @ObservationIgnored private weak var toaster: Toaster?
+    @ObservationIgnored private weak var revealer: FileRevealer?
 
     public static let fileName = "settings.json"
 
@@ -48,6 +64,7 @@ public final class SettingsStore {
 
     /// Loads settings.json from `folder`, or keeps settings in memory when `folder` is nil.
     public init(folder: URL?, clock: Clock, initial: Settings = Settings()) {
+        self.clock = clock
         settings = initial
         guard let folder else {
             file = nil
@@ -55,7 +72,7 @@ public final class SettingsStore {
         }
         let file = folder.appendingPathComponent(Self.fileName)
         self.file = file
-        load(file, clock: clock)
+        load(file)
     }
 
     /// Changes settings and saves them.
@@ -75,6 +92,125 @@ public final class SettingsStore {
         update { $0.general.welcomeDone = true }
     }
 
+    /// Refreshes the wake shortcut's keycap label for the current keyboard layout. The shell
+    /// calls it at launch and when the input source changes. It changes the label in memory
+    /// only (amendment 4): saving here would create settings.json on a fresh install. The
+    /// label is written with the next real change.
+    public func updateShortcutLabel(_ key: String) {
+        let current = settings.general.shortcut
+        guard current.key != key else { return }
+        settings.general.shortcut = Shortcut(keyCode: current.keyCode, modifiers: current.modifiers, key: key)
+    }
+
+    // MARK: Settings-file problem actions (amendment 3)
+
+    /// Connects the ports these actions use, once AppModel has them.
+    func attach(toaster: Toaster, revealer: FileRevealer) {
+        self.toaster = toaster
+        self.revealer = revealer
+    }
+
+    /// Show in Finder: the file kept aside, or settings.json, or the folder when there is no file.
+    public func revealSettingsFile() {
+        guard let file else { return }
+        let target: URL =
+            switch fileProblem {
+            case .keptAside(let kept), .defaultsChosen(let kept), .saveFailed(_, let kept?): kept
+            case .unreadable(let url), .newerVersion(let url): url
+            case .saveFailed(_, nil), nil:
+                FileManager.default.fileExists(atPath: file.path) ? file : file.deletingLastPathComponent()
+            }
+        revealer?.reveal(target)
+    }
+
+    /// The inline question before Use Defaults, naming the file the old one will be kept as.
+    /// It is set between `beginUseDefaults()` and the run or cancel, so the name the user
+    /// reads is the name on disk.
+    public var useDefaultsConfirmation: String? {
+        guard let problem = fileProblem, let target = useDefaultsTarget else { return nil }
+        return Strings.SettingsFile.confirm(problem, keptAs: target.lastPathComponent)
+    }
+
+    /// The card's Use Defaults and Save… button: the inline confirm opens, and the name the old
+    /// file will be kept under is chosen now, once.
+    public func beginUseDefaults() {
+        guard let file, let problem = fileProblem, let kind = Self.keptAsideKind(problem) else { return }
+        useDefaultsTarget = keptAsideName(for: file, kind: kind)
+    }
+
+    /// The confirm's Cancel.
+    public func cancelUseDefaults() {
+        useDefaultsTarget = nil
+    }
+
+    /// Use Defaults, after the user confirmed it in the card (Scan L2): first keeps the old file
+    /// under the confirmed name (`settings.newer-<date>.json` or `settings.broken-<date>.json`),
+    /// then writes default settings and turns saving on. If the file can't be moved aside,
+    /// nothing is replaced. If the save fails after the move, the problem still names the kept
+    /// file, so the user can find it.
+    public func useDefaultsAndSave() {
+        guard let file, let problem = fileProblem, let kind = Self.keptAsideKind(problem) else { return }
+        let confirmed = useDefaultsTarget ?? keptAsideName(for: file, kind: kind)
+        useDefaultsTarget = nil
+        var kept: URL?
+        if FileManager.default.fileExists(atPath: file.path) {
+            guard let target = confirmed, !FileManager.default.fileExists(atPath: target.path) else {
+                report(
+                    .saveFailed(Strings.Files.plainWords(errno: EEXIST)), detail: "no free name to keep \(file.path)")
+                return
+            }
+            do {
+                try FileManager.default.moveItem(at: file, to: target)
+                kept = target
+            } catch {
+                let code = ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError)?.code ?? Int(EACCES)
+                report(.saveFailed(Strings.Files.plainWords(errno: Int32(code))), detail: "\(error)")
+                return
+            }
+            #if DEBUG
+                afterMovingAside?()
+            #endif
+        }
+        settings = Settings()
+        fileProblem = kept.map { .defaultsChosen(keptAs: $0) }
+        if save() { toaster?.toast(Strings.SettingsFile.saved) }
+    }
+
+    #if DEBUG
+        /// Runs between the move and the save, so a test can make the save fail there.
+        @ObservationIgnored var afterMovingAside: (() -> Void)?
+    #endif
+
+    /// The old file Use Defaults kept aside, while its card or a later failure shows it.
+    private var keptByUseDefaults: URL? {
+        switch fileProblem {
+        case .defaultsChosen(let kept): kept
+        case .saveFailed(_, let kept): kept
+        default: nil
+        }
+    }
+
+    /// Which kind of file Use Defaults keeps aside, for the problems that offer it.
+    private static func keptAsideKind(_ problem: SettingsFileProblem) -> String? {
+        switch problem {
+        case .unreadable: "broken"
+        case .newerVersion: "newer"
+        case .keptAside, .defaultsChosen, .saveFailed: nil
+        }
+    }
+
+    /// Try Again, after a save failed.
+    public func retrySave() {
+        guard case .saveFailed = fileProblem else { return }
+        if save() { toaster?.toast(Strings.SettingsFile.saved) }
+    }
+
+    /// The × on a card about a file kept aside. Other problems stay until fixed.
+    public func dismissFileProblem() {
+        guard fileProblem?.canBeDismissed == true else { return }
+        fileProblem = nil
+    }
+
     // MARK: Loading
 
     /// Only the version, decoded first: a newer file is recognised even when the rest of it
@@ -83,7 +219,7 @@ public final class SettingsStore {
         var version: Int?
     }
 
-    private func load(_ file: URL, clock: Clock) {
+    private func load(_ file: URL) {
         let data: Data
         do throws(SecureFile.FileError) {
             try SecureFile.checkFolder(file.deletingLastPathComponent())
@@ -104,45 +240,55 @@ public final class SettingsStore {
         do {
             settings = try decoder.decode(Settings.self, from: data)
         } catch {
-            setAside(file, clock: clock, reason: "\(error)")
+            setAside(file, reason: "\(error)")
         }
     }
 
     /// Renames a broken file so it is kept, and the next save starts a new one.
-    private func setAside(_ file: URL, clock: Clock, reason: String) {
+    private func setAside(_ file: URL, reason: String) {
+        guard let target = keptAsideName(for: file, kind: "broken") else {
+            report(.unreadable(file), detail: "\(reason); no free name to move it aside")
+            return
+        }
+        do {
+            try FileManager.default.moveItem(at: file, to: target)
+            report(.keptAside(target), detail: reason)
+        } catch {
+            report(.unreadable(file), detail: "\(reason); then moving it aside failed: \(error)")
+        }
+    }
+
+    /// A free name next to `file` to keep it under: `settings.<kind>-<date>.json`, then `-2`, `-3`…
+    private func keptAsideName(for file: URL, kind: String) -> URL? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         let stamp = formatter.string(from: clock.now)
         let folder = file.deletingLastPathComponent()
-
         for attempt in 1...100 {
             let suffix = attempt == 1 ? "" : "-\(attempt)"
-            let target = folder.appendingPathComponent("settings.broken-\(stamp)\(suffix).json")
-            if FileManager.default.fileExists(atPath: target.path) { continue }
-            do {
-                try FileManager.default.moveItem(at: file, to: target)
-                report(.keptAside(target), detail: reason)
-            } catch {
-                report(.unreadable(file), detail: "\(reason); then moving it aside failed: \(error)")
-            }
-            return
+            let target = folder.appendingPathComponent("settings.\(kind)-\(stamp)\(suffix).json")
+            if !FileManager.default.fileExists(atPath: target.path) { return target }
         }
-        report(.unreadable(file), detail: "\(reason); no free name to move it aside")
+        return nil
     }
 
     // MARK: Saving
 
-    private func save() {
-        guard let file, savingEnabled else { return }
+    /// Writes the settings; returns whether they are on disk now.
+    @discardableResult
+    private func save() -> Bool {
+        guard let file, savingEnabled else { return false }
         do throws(SecureFile.FileError) {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            guard let data = try? encoder.encode(settings) else { return }
+            guard let data = try? encoder.encode(settings) else { return false }
             try SecureFile.write(data, to: file)
-            if case .saveFailed = fileProblem { fileProblem = nil }
+            if case .saveFailed(_, let kept) = fileProblem { fileProblem = kept.map { .defaultsChosen(keptAs: $0) } }
+            return true
         } catch {
-            report(.saveFailed(error.plainWords), detail: error.description)
+            report(.saveFailed(error.plainWords, keptAs: keptByUseDefaults), detail: error.description)
+            return false
         }
     }
 

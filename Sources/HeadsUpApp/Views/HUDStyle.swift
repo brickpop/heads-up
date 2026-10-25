@@ -109,6 +109,49 @@ enum HUDStyle {
         static let fontSize: CGFloat = 13
     }
 
+    enum Settings {
+        /// The Settings tab's height: its content's, between these two.
+        static let minHeight: CGFloat = 380
+        static let maxHeight: CGFloat = 480
+        static let navWidth: CGFloat = 160
+        static let navPadding: CGFloat = 8
+        static let navRowHeight: CGFloat = 34
+        static let navRowCornerRadius: CGFloat = 10
+        static let navIconWidth: CGFloat = 18
+        /// The space between groups of the sub-nav, around their hairline.
+        static let navGroupGap: CGFloat = 6
+        static let paneTopPadding: CGFloat = 16
+        static let paneSidePadding: CGFloat = 20
+        static let paneBottomPadding: CGFloat = 20
+        /// The space between a section's title, its notes, cards and lists.
+        static let sectionSpacing: CGFloat = 12
+        static let titleSize: CGFloat = 18
+        static let listCornerRadius: CGFloat = 12
+        static let rowHorizontalPadding: CGFloat = 12
+        static let rowVerticalPadding: CGFloat = 10
+        static let labelSize: CGFloat = 13
+        static let helpSize: CGFloat = 12
+        /// Card padding, for the settings-file card.
+        static let cardPadding: CGFloat = 16
+    }
+
+    enum Recorder {
+        static let height: CGFloat = 26
+        static let cornerRadius: CGFloat = 8
+        static let padding: CGFloat = 6
+        /// The accent border while recording.
+        static let recordingBorder: CGFloat = 2
+    }
+
+    enum Welcome {
+        static let iconSize: CGFloat = 48
+        static let titleSize: CGFloat = 22
+        static let padding: CGFloat = 24
+        static let spacing: CGFloat = 16
+        static let stepIconSize: CGFloat = 18
+        static let stepsMaxWidth: CGFloat = 440
+    }
+
     enum Keycap {
         static let height: CGFloat = 18
         static let cornerRadius: CGFloat = 4

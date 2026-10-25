@@ -41,3 +41,21 @@ public enum ChatView: Equatable, Sendable {
 public enum SettingsSection: String, CaseIterable, Sendable {
     case models, tools, focus, general, services, commands
 }
+
+extension SettingsSection {
+    public var title: String { Strings.SettingsSections.title(self) }
+
+    public var glyph: Glyph {
+        switch self {
+        case .models: .cpu
+        case .tools: .folder
+        case .focus: .timer
+        case .general: .sliders
+        case .services: .servers
+        case .commands: .terminal
+        }
+    }
+
+    /// The sub-nav's groups, with a gap between them.
+    public static let groups: [[SettingsSection]] = [[.models, .tools], [.focus, .services, .commands], [.general]]
+}

@@ -3,16 +3,17 @@ import SwiftUI
 
 /// The whole HUD, as the panel hosts it: the header, the body and the footer in the frame.
 ///
-/// The body holds the settings-file notice and the suggestions, when there are any, and
-/// is empty otherwise, so the HUD collapses to its header and footer. The panel follows
-/// this view's height and keeps its top edge where it is.
+/// The body holds the settings-file notice, then the suggestions while there are any, or
+/// else the tab's own body: Settings, or the welcome on Chat at first run. With none of
+/// these the body is empty and the HUD collapses to its header and footer. The panel
+/// follows this view's height and keeps its top edge where it is.
 struct HUDRootView: View {
     let model: AppModel
 
     var body: some View {
         let hud = model.hud
-        let showsSuggestions = !hud.suggestions.isEmpty
         let notice = model.settingsNotice
+        let hudBody = model.body
         HUDFrameView {
             HUDHeader(hud: hud, activity: model.tabActivity)
                 .overlay(alignment: .bottom) { Hairline() }
@@ -23,8 +24,11 @@ struct HUDRootView: View {
                 if let notice {
                     SettingsNoticeBar(model: model, text: notice)
                 }
-                if showsSuggestions {
-                    SuggestionList(hud: hud)
+                switch hudBody {
+                case .suggestions: SuggestionList(hud: hud)
+                case .settings: SettingsView(model: model)
+                case .welcome: WelcomeView(model: model)
+                case .empty: EmptyView()
                 }
             }
             .accessibilityElement(children: .contain)
@@ -33,7 +37,7 @@ struct HUDRootView: View {
             HUDFooter(left: hud.footerLeft, toastID: hud.toastID)
                 // With no body, the header's line is the only one.
                 .overlay(alignment: .top) {
-                    if notice != nil || showsSuggestions { Hairline() }
+                    if notice != nil || hudBody != .empty { Hairline() }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilitySortPriority(AccessibilityOrder.footer)
@@ -66,13 +70,24 @@ private enum AccessibilityOrder {
                         .previewDisplayName("Settings notice")
                 }
                 .preferredColorScheme(scheme)
+                Group {
+                    hud { $0.hud.showSettings(.general) }.previewDisplayName("General")
+                    hud(settingsFileProblem: .unreadable(URL(fileURLWithPath: "/tmp/settings.json"))) {
+                        $0.hud.showSettings(.general)
+                    }
+                    .previewDisplayName("General, file problem")
+                    hud { $0.hud.open() }.previewDisplayName("Welcome")
+                    hud(hotkey: .taken) { $0.hud.open() }.previewDisplayName("Welcome, shortcut taken")
+                }
+                .preferredColorScheme(scheme)
             }
         }
 
         private static func hud(
-            settingsFileProblem: SettingsFileProblem? = nil, _ setUp: (AppModel) -> Void
+            settingsFileProblem: SettingsFileProblem? = nil, hotkey: HotkeyStatus? = nil,
+            _ setUp: (AppModel) -> Void
         ) -> some View {
-            let model = AppModel.preview(settingsFileProblem: settingsFileProblem)
+            let model = AppModel.preview(hotkey: hotkey, settingsFileProblem: settingsFileProblem)
             setUp(model)
             return HUDRootView(model: model)
                 .frame(width: HUDLayout.maxWidth)

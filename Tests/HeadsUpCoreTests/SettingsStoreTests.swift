@@ -278,3 +278,223 @@ private func mode(_ url: URL) throws -> Int {
         #expect(store.fileProblem == nil)
     }
 }
+
+@MainActor
+private final class RecordingToaster: Toaster {
+    var toasts: [String] = []
+    func toast(_ text: String) { toasts.append(text) }
+}
+
+/// The Settings → General card's actions (ADR-001 amendment 3).
+@MainActor
+@Suite(.serialized) struct SettingsFileActionTests {
+    private func store(_ folder: TempFolder) -> (SettingsStore, RecordingToaster, FakeFileRevealer) {
+        let store = SettingsStore(folder: folder.data, clock: ManualClock())
+        let toaster = RecordingToaster()
+        let revealer = FakeFileRevealer()
+        store.attach(toaster: toaster, revealer: revealer)
+        return (store, toaster, revealer)
+    }
+
+    @Test func useDefaultsKeepsANewerFileAsideThenSaves() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        let newer = #"{ "version": 99, "general": { "menuSeconds": true } }"#
+        try folder.write(newer)
+        let (store, toaster, revealer) = store(folder)
+        store.update { $0.general.clearOnClose = true }  // not saved: saving is off
+        #expect(store.useDefaultsConfirmation == nil)  // nothing to confirm until the confirm opens
+        store.beginUseDefaults()
+        let confirmation = try #require(store.useDefaultsConfirmation)
+        #expect(confirmation.hasPrefix("Use default settings? The newer version's file is kept as `settings.newer-"))
+
+        store.useDefaultsAndSave()
+        guard case .defaultsChosen(let kept) = store.fileProblem else {
+            Issue.record("expected defaultsChosen, got \(String(describing: store.fileProblem))")
+            return
+        }
+        #expect(kept.lastPathComponent.hasPrefix("settings.newer-"))
+        #expect(confirmation.contains(kept.lastPathComponent))
+        #expect(try String(contentsOf: kept, encoding: .utf8) == newer)
+        #expect(store.savingEnabled)
+        #expect(store.settings == Settings())
+        #expect(toaster.toasts == ["Settings saved"])
+        let saved = try JSONDecoder().decode(Settings.self, from: Data(try folder.read().utf8))
+        #expect(saved == Settings())
+        #expect(Strings.SettingsFile.title(store.fileProblem!) == "HeadsUp is using default settings")
+
+        store.revealSettingsFile()
+        #expect(revealer.revealed == [kept])
+        store.dismissFileProblem()
+        #expect(store.fileProblem == nil)
+    }
+
+    @Test func useDefaultsKeepsAnUnreadableFileAsBroken() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        try folder.write(#"{ "general": {} }"#)
+        // A file HeadsUp may not read is .unreadable at load: it is left in place, not moved.
+        chmod(folder.settingsFile.path, 0o000)
+        let (store, _, _) = store(folder)
+        chmod(folder.settingsFile.path, 0o600)
+        #expect(store.fileProblem == .unreadable(folder.settingsFile))
+        store.beginUseDefaults()
+        #expect(store.useDefaultsConfirmation?.hasPrefix("Start over with default settings?") == true)
+        store.useDefaultsAndSave()
+        guard case .defaultsChosen(let kept) = store.fileProblem else {
+            Issue.record("expected defaultsChosen")
+            return
+        }
+        #expect(kept.lastPathComponent.hasPrefix("settings.broken-"))
+        #expect(try String(contentsOf: kept, encoding: .utf8) == #"{ "general": {} }"#)
+    }
+
+    @Test func useDefaultsReplacesNothingWhenTheOldFileCantBeKept() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        try folder.write(#"{ "version": 99 }"#)
+        let (store, toaster, _) = store(folder)
+        chmod(folder.data.path, 0o500)  // the file can't be moved aside
+        store.useDefaultsAndSave()
+        chmod(folder.data.path, 0o700)
+        #expect(store.fileProblem == .saveFailed("HeadsUp isn't allowed to write to its settings folder."))
+        #expect(toaster.toasts.isEmpty)
+        #expect(try folder.read() == #"{ "version": 99 }"#)
+        #expect(try folder.files() == ["settings.json"])
+    }
+
+    @Test func tryAgainSavesAndClearsTheProblem() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        let (store, toaster, _) = store(folder)
+        store.markWelcomeDone()
+        chmod(folder.data.path, 0o500)
+        store.update { $0.general.menuSeconds = true }
+        #expect(store.fileProblem != nil)
+
+        store.retrySave()  // still read-only
+        #expect(toaster.toasts.isEmpty)
+        chmod(folder.data.path, 0o700)
+        store.retrySave()
+        #expect(store.fileProblem == nil)
+        #expect(toaster.toasts == ["Settings saved"])
+        #expect(try folder.read().contains("\"menuSeconds\" : true"))
+    }
+
+    @Test func onlyTheKeptAsideCardCanBeDismissed() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        try folder.write("not json")
+        let (kept, _, _) = store(folder)
+        kept.dismissFileProblem()
+        #expect(kept.fileProblem == nil)
+
+        try folder.write(#"{ "version": 99 }"#)
+        let (newer, _, _) = store(folder)
+        newer.dismissFileProblem()
+        #expect(newer.fileProblem == .newerVersion(folder.settingsFile))
+    }
+
+    @Test func showInFinderRevealsTheFileThatMatters() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        try folder.write("not json")
+        let (kept, _, revealer) = store(folder)
+        kept.revealSettingsFile()
+        guard case .keptAside(let keptFile) = kept.fileProblem else {
+            Issue.record("expected keptAside")
+            return
+        }
+        #expect(revealer.revealed == [keptFile])
+
+        let fresh = try TempFolder()
+        defer { fresh.remove() }
+        let (empty, _, emptyRevealer) = store(fresh)
+        empty.revealSettingsFile()
+        #expect(emptyRevealer.revealed == [fresh.data])
+    }
+
+    @Test func theShortcutLabelChangesInMemoryAndIsWrittenWithTheNextChange() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        let (fresh, _, _) = store(folder)
+        fresh.updateShortcutLabel("Ж")
+        #expect(fresh.settings.general.shortcut.key == "Ж")
+        // A fresh install still creates nothing.
+        #expect(!FileManager.default.fileExists(atPath: folder.data.path))
+
+        fresh.markWelcomeDone()
+        let reloaded = SettingsStore(folder: folder.data, clock: ManualClock())
+        #expect(reloaded.settings.general.shortcut.key == "Ж")
+    }
+}
+
+/// Slice 2 review NITs: the kept-aside name survives a failed save, and the confirmed name
+/// is the name on disk.
+@MainActor
+@Suite(.serialized) struct UseDefaultsNameTests {
+    @Test func theNameTheUserConfirmedIsTheNameOnDisk() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        try folder.write(#"{ "version": 99 }"#)
+        let clock = ManualClock()
+        let store = SettingsStore(folder: folder.data, clock: clock)
+        store.beginUseDefaults()
+        let confirmation = try #require(store.useDefaultsConfirmation)
+        clock.advance(by: 90)  // the user reads, then clicks a minute and a half later
+        store.useDefaultsAndSave()
+        guard case .defaultsChosen(let kept) = store.fileProblem else {
+            Issue.record("expected defaultsChosen")
+            return
+        }
+        #expect(confirmation.contains(kept.lastPathComponent))
+    }
+
+    @Test func cancelForgetsTheName() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        try folder.write(#"{ "version": 99 }"#)
+        let store = SettingsStore(folder: folder.data, clock: ManualClock())
+        store.beginUseDefaults()
+        store.cancelUseDefaults()
+        #expect(store.useDefaultsConfirmation == nil)
+        #expect(store.fileProblem == .newerVersion(folder.settingsFile))
+    }
+
+    @Test func aSaveThatFailsAfterTheMoveStillNamesTheKeptFile() throws {
+        let folder = try TempFolder()
+        defer { folder.remove() }
+        let newer = #"{ "version": 99 }"#
+        try folder.write(newer)
+        let store = SettingsStore(folder: folder.data, clock: ManualClock())
+        let revealer = FakeFileRevealer()
+        store.attach(toaster: RecordingToaster(), revealer: revealer)
+        store.afterMovingAside = { chmod(folder.data.path, 0o500) }  // read-only after the move
+        store.beginUseDefaults()
+        store.useDefaultsAndSave()
+        chmod(folder.data.path, 0o700)
+
+        guard case .saveFailed(let reason, let kept?) = store.fileProblem else {
+            Issue.record("expected saveFailed with the kept file, got \(String(describing: store.fileProblem))")
+            return
+        }
+        #expect(reason == "HeadsUp isn't allowed to write to its settings folder.")
+        #expect(try String(contentsOf: kept, encoding: .utf8) == newer)
+        #expect(Strings.SettingsFile.text(store.fileProblem!).contains(kept.lastPathComponent))
+        store.revealSettingsFile()
+        #expect(revealer.revealed == [kept])
+
+        // Try Again saves, and the card goes back to "using default settings" with the kept file.
+        store.retrySave()
+        #expect(store.fileProblem == .defaultsChosen(keptAs: kept))
+    }
+
+    @Test func onlyKeptAsideCardsCanBeDismissed() {
+        let file = URL(fileURLWithPath: "/tmp/settings.json")
+        #expect(SettingsFileProblem.keptAside(file).canBeDismissed)
+        #expect(SettingsFileProblem.defaultsChosen(keptAs: file).canBeDismissed)
+        #expect(!SettingsFileProblem.unreadable(file).canBeDismissed)
+        #expect(!SettingsFileProblem.newerVersion(file).canBeDismissed)
+        #expect(!SettingsFileProblem.saveFailed("x", keptAs: file).canBeDismissed)
+    }
+}

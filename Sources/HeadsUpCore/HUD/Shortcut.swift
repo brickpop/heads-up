@@ -63,8 +63,11 @@ public enum KeyCode {
     public static let period: UInt32 = 47
     public static let n: UInt32 = 45
     public static let p: UInt32 = 35
+    public static let q: UInt32 = 12
     /// ⌘1…⌘6, by the keys' position.
     public static let digits: [UInt32] = [18, 19, 20, 21, 23, 22]
+    /// The keys HeadsUp uses with ⌘ alone: ⌘1…⌘6, ⌘, ⌘N ⌘P ⌘. ⌘Q.
+    public static let headsUpCommandKeys: Set<UInt32> = Set(digits + [comma, n, p, period, q])
 }
 
 /// Whether the wake shortcut works, known at launch (ADR-001 §4.1).

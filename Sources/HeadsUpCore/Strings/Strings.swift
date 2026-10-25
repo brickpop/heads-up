@@ -141,17 +141,162 @@ public enum Strings {
         public static let addModelSubtitle = "model · Settings → Models"
     }
 
-    public enum Hotkey {
-        /// The note under General → Wake shortcut and in the welcome (UX addendum 4).
+    /// The menu bar item and its menu (App shell spec; UX part 2, §14 and §16).
+    public enum MenuBar {
+        public static let appName = "HeadsUp"
+        public static let openHUD = "Open HUD"
+        public static let pinnedChats = "Pinned chats"
+        public static let settings = "Settings…"
+        public static let quit = "Quit HeadsUp"
+        public static let paused = "Paused"
+        public static let snoozed = "Snoozed"
+        public static let caffeineOn = "caffeine on"
+
+        public static func startFocus(_ minutes: Int) -> String { "Start \(minutes) min" }
+        /// "2 running", or "None" when nothing runs.
+        public static func running(_ count: Int) -> String { count == 0 ? "None" : "\(count) running" }
+
+        /// "Break due" or "Break over": the words the item and the menu show for a waiting prompt.
+        public static func promptWords(_ prompt: FocusSnapshot.Prompt) -> String {
+            switch prompt {
+            case .breakDue: "Break due"
+            case .breakOver: "Break over"
+            }
+        }
+
+        /// "Focus" or "Break", as a menu value starts.
+        public static func kindTitle(_ kind: FocusSnapshot.Kind) -> String {
+            kind == .focus ? "Focus" : "Break"
+        }
+
+        /// "focus" or "break", inside a VoiceOver sentence.
+        public static func kindName(_ kind: FocusSnapshot.Kind) -> String {
+            kind == .focus ? "focus" : "break"
+        }
+    }
+
+    /// The shortcut recorder (UX part 2, §13; amendment 5).
+    public enum Recorder {
+        public static let prompt = "Type a shortcut…"
+        /// The ×'s VoiceOver label.
+        public static let cancel = "Cancel"
+        public static func reset(_ shortcut: String) -> String { "Reset to \(shortcut)" }
+        public static let accessibilityLabel = "Wake shortcut"
+        public static let needsModifier = "Add ⌘, ⌥ or ⌃."
+        public static let usedByHeadsUp = "HeadsUp uses this shortcut. Choose another."
+
+        /// Why the keys can't be a wake shortcut, before registering them.
+        public static func keysProblem(_ problem: ShortcutProblem) -> String {
+            switch problem {
+            case .needsModifier: needsModifier
+            case .usedByHeadsUp: usedByHeadsUp
+            case .reservedBySystem, .taken, .failed: "That shortcut can't be used. Choose another."
+            }
+        }
+
+        /// Why a shortcut wasn't saved, or nil when it was.
         public static func problem(_ status: HotkeyStatus, shortcut: Shortcut) -> String? {
+            switch status {
+            case .ok: nil
+            case .taken: "Another app already uses this shortcut. Choose another."
+            case .reservedBySystem, .failed: Hotkey.problem(status, shortcut: shortcut)
+            }
+        }
+    }
+
+    /// The first-run welcome (UX part 1, §3; addendum 4).
+    public enum Welcome {
+        public static let title = "Welcome to HeadsUp"
+        public static func pressShortcut(_ name: String) -> String {
+            "Press \(name) in any app to open this. Press it again, or Esc, to hide it."
+        }
+        public static let pressYourShortcut = "Press your shortcut in any app to open this."
+        /// The line before the welcome's recorder when the shortcut doesn't work: the reason for
+        /// its state, then "Choose a shortcut:" (Rev 5).
+        public static func problemLine(_ status: HotkeyStatus, shortcut: Shortcut) -> String? {
+            Hotkey.reason(status, shortcut: shortcut).map { "\($0) Choose a shortcut:" }
+        }
+        public static let addModel = "Add a model to chat with"
+        public static let setUpModel = "Set up a model"
+        public static let openAtLogin = "Open HeadsUp when you log in"
+        public static let changeLater = "You can change both later in Settings."
+    }
+
+    /// Settings → General (Settings spec; UX part 2, §12, §19, §20).
+    public enum General {
+        public static let title = "General"
+        public static let openAtLogin = "Open at Login"
+        public static let openAtLoginHelp = "Starts HeadsUp in the menu bar when you log in."
+        public static let loginNeedsApproval = "Allow HeadsUp in System Settings → General → Login Items."
+        public static let openLoginItems = "Open Login Items"
+        /// The note under Open at Login (Yuki, msg-207): guidance, in --ink-2, not an error.
+        public static func loginNote(_ note: OpenAtLoginNote) -> String {
+            switch note {
+            case .needsApproval: loginNeedsApproval
+            case .moveToApplications:
+                "To open at login, HeadsUp must be in your Applications folder. Move it there, then open it from there."
+            case .couldNotAdd:
+                "macOS couldn't add HeadsUp to your login items. Quit HeadsUp, open it again, then try once more."
+            }
+        }
+        public static let showInFinder = "Show in Finder"
+        public static let loginCouldNotChange =
+            "HeadsUp couldn't change Open at Login. Try again in System Settings → General → Login Items."
+        public static let wakeShortcut = "Wake shortcut"
+        public static let appearance = "Appearance"
+        public static func appearanceName(_ appearance: Appearance) -> String {
+            switch appearance {
+            case .system: "System"
+            case .light: "Light"
+            case .dark: "Dark"
+            }
+        }
+        public static let menuSeconds = "Show seconds in the menu bar"
+        public static let menuSecondsHelp = "Off: focus and caffeine timers show minutes only"
+        public static let clearOnClose = "Clear unpinned chat when the HUD closes"
+        public static let clearOnCloseHelp = "Off: the chat stays until ⌘N or quit"
+        public static let closeOnClickOutside = "Close the HUD when you click elsewhere"
+        public static func closeOnClickOutsideHelp(shortcut: String) -> String {
+            "Off: it stays open until you press Esc or \(shortcut)."
+        }
+        public static let openKeyboardSettings = "Open Keyboard Settings"
+        public static let tryAgain = "Try Again"
+    }
+
+    /// Settings' sub-nav (Settings spec).
+    public enum SettingsSections {
+        public static func title(_ section: SettingsSection) -> String {
+            switch section {
+            case .models: "Models"
+            case .tools: "Tools"
+            case .focus: "Focus"
+            case .general: "General"
+            case .services: "Services"
+            case .commands: "Commands"
+            }
+        }
+    }
+
+    public enum Hotkey {
+        /// What is wrong with the wake shortcut, in one sentence, or nil when it works.
+        public static func reason(_ status: HotkeyStatus, shortcut: Shortcut) -> String? {
             let name = shortcut.displayName
             switch status {
             case .ok: return nil
-            case .taken: return "\(name) is used by another app. Choose another."
+            case .taken: return "\(name) is used by another app."
+            case .reservedBySystem: return "\(name) is used by macOS."
+            case .failed: return "HeadsUp couldn't set up \(name)."
+            }
+        }
+
+        /// The lasting note under General → Wake shortcut (UX addendum 4).
+        public static func problem(_ status: HotkeyStatus, shortcut: Shortcut) -> String? {
+            guard let reason = reason(status, shortcut: shortcut) else { return nil }
+            switch status {
+            case .ok, .taken: return "\(reason) Choose another."
             case .reservedBySystem:
-                return "\(name) is used by macOS. Choose another, or turn it off in "
-                    + "System Settings → Keyboard → Keyboard Shortcuts."
-            case .failed: return "HeadsUp couldn't set up \(name). Choose another shortcut, or try again."
+                return "\(reason) Choose another, or turn it off in System Settings → Keyboard → Keyboard Shortcuts."
+            case .failed: return "\(reason) Choose another shortcut, or try again."
             }
         }
     }
@@ -185,12 +330,14 @@ public enum Strings {
     }
 
     /// The settings-file problem, in the notice bar and in Settings → General (Yuki's copy).
+    /// File names in this copy are wrapped in backticks, so the view can show them in mono.
     public enum SettingsFile {
         public static func title(_ problem: SettingsFileProblem) -> String {
             switch problem {
             case .keptAside: "HeadsUp started with default settings"
             case .unreadable: "Your settings aren't being saved"
             case .newerVersion: "These settings are from a newer version of HeadsUp"
+            case .defaultsChosen: "HeadsUp is using default settings"
             case .saveFailed: "Settings couldn't be saved"
             }
         }
@@ -198,18 +345,42 @@ public enum Strings {
         public static func text(_ problem: SettingsFileProblem) -> String {
             switch problem {
             case .keptAside(let kept):
-                "Your settings file couldn't be read, so HeadsUp kept it as \(kept.lastPathComponent) and started fresh."
+                "Your settings file couldn't be read, so HeadsUp kept it as `\(kept.lastPathComponent)` and started fresh."
             case .unreadable:
                 "HeadsUp couldn't read your settings file or move it aside. It's using default settings for now."
             case .newerVersion:
                 "HeadsUp is using default settings and won't change the file, so the newer version keeps its settings."
-            case .saveFailed(let reason):
+            case .defaultsChosen(let kept):
+                "Your old file is kept as `\(kept.lastPathComponent)`."
+            case .saveFailed(let reason, nil):
                 "\(reason) Changes are kept until you quit."
+            case .saveFailed(let reason, let kept?):
+                "\(reason) Your old file is kept as `\(kept.lastPathComponent)`. Changes are kept until you quit."
             }
         }
 
         public static let savingOffLine = "Changes aren't saved right now. See General."
         public static let saved = "Settings saved"
+        public static let showInFinder = "Show in Finder"
+        public static let useDefaultsAndSave = "Use Defaults and Save…"
+        public static let cancel = "Cancel"
+        /// The confirm's button (no longer red: nothing is lost).
+        public static let useDefaults = "Use Defaults"
+        public static let tryAgain = "Try Again"
+        /// The ×'s VoiceOver label on a card about a file kept aside.
+        public static let dismiss = "Dismiss"
+
+        /// The inline question before Use Defaults (Yuki's update for Scan L2), naming the file
+        /// the old one will be kept as. `SettingsStore.useDefaultsConfirmation` fills it in.
+        public static func confirm(_ problem: SettingsFileProblem, keptAs name: String) -> String {
+            switch problem {
+            case .newerVersion:
+                "Use default settings? The newer version's file is kept as `\(name)`. "
+                    + "That version will also start with these defaults until you put its file back."
+            case .keptAside, .unreadable, .defaultsChosen, .saveFailed:
+                "Start over with default settings? Your current file is kept as `\(name)`."
+            }
+        }
     }
 
     /// The once-per-launch notice bar at the top of the HUD body.

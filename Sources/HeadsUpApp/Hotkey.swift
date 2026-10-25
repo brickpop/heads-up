@@ -25,6 +25,8 @@ final class CarbonHotkeyRegistrar: HotkeyRegistrar {
     private var handler: EventHandlerRef?
     private var current: Registration?
     private var lastID: UInt32 = 0
+    /// The shortcut released by `suspend()`, to register again.
+    private var suspended: (shortcut: Shortcut, pressed: @MainActor () -> Void)?
 
     func register(_ shortcut: Shortcut, pressed: @escaping @MainActor () -> Void) -> HotkeyStatus {
         // The same keys again (Try Again): keep the registration, take the new action.
@@ -32,6 +34,7 @@ final class CarbonHotkeyRegistrar: HotkeyRegistrar {
             current?.pressed = pressed
             return .ok(shortcut)
         }
+        if Self.isReservedBySystem(shortcut) { return .reservedBySystem }
         let installed = installHandler()
         guard installed == noErr else { return .failed(installed) }
 
@@ -50,8 +53,23 @@ final class CarbonHotkeyRegistrar: HotkeyRegistrar {
         return .ok(shortcut)
     }
 
+    /// Releases the keys while the recorder listens; `resume()` registers them again.
+    func suspend() {
+        guard let current else { return }
+        UnregisterEventHotKey(current.ref)
+        suspended = (current.shortcut, current.pressed)
+        self.current = nil
+    }
+
+    func resume() {
+        guard let suspended else { return }
+        self.suspended = nil
+        _ = register(suspended.shortcut, pressed: suspended.pressed)
+    }
+
     /// Releases the shortcut and the event handler. The app calls it when it quits.
     func invalidate() {
+        suspended = nil
         if let current { UnregisterEventHotKey(current.ref) }
         current = nil
         if let handler { RemoveEventHandler(handler) }
@@ -89,6 +107,21 @@ final class CarbonHotkeyRegistrar: HotkeyRegistrar {
             Unmanaged.passUnretained(self).toOpaque(),
             &handler
         )
+    }
+
+    /// Whether macOS itself uses these keys and has them turned on (Spotlight, input sources,
+    /// Mission Control…), from the symbolic hot keys in System Settings → Keyboard Shortcuts.
+    private static func isReservedBySystem(_ shortcut: Shortcut) -> Bool {
+        var unmanaged: Unmanaged<CFArray>?
+        guard CopySymbolicHotKeys(&unmanaged) == noErr,
+            let hotKeys = unmanaged?.takeRetainedValue() as? [[String: Any]]
+        else { return false }
+        let modifiers = Int(carbonModifiers(shortcut.modifiers))
+        return hotKeys.contains { hotKey in
+            (hotKey[kHISymbolicHotKeyEnabled as String] as? Bool) == true
+                && (hotKey[kHISymbolicHotKeyCode as String] as? Int) == Int(shortcut.keyCode)
+                && (hotKey[kHISymbolicHotKeyModifiers as String] as? Int) == modifiers
+        }
     }
 
     private static func carbonModifiers(_ modifiers: Shortcut.Modifiers) -> UInt32 {

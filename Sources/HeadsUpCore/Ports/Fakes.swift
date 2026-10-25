@@ -110,8 +110,14 @@ import Foundation
             return status
         }
 
-        /// The user pressed the wake shortcut.
+        public private(set) var isSuspended = false
+
+        public func suspend() { isSuspended = true }
+        public func resume() { isSuspended = false }
+
+        /// The user pressed the wake shortcut. Nothing happens while it is suspended.
         public func press() {
+            guard !isSuspended else { return }
             pressed?()
         }
     }
@@ -124,6 +130,48 @@ import Foundation
         public init(isDark: Bool = false) {
             self.isDark = isDark
         }
+    }
+
+    /// Records the files it was asked to show.
+    @MainActor
+    public final class FakeFileRevealer: FileRevealer {
+        public private(set) var revealed: [URL] = []
+        public init() {}
+        public func reveal(_ file: URL) { revealed.append(file) }
+    }
+
+    /// A login item that changes when told to, or fails when `failure` is set.
+    @MainActor
+    public final class FakeLoginItem: LoginItem {
+        public var status: LoginItemStatus
+        public var failure: (any Error)?
+        public var appLocation: URL
+
+        public struct NotFound: Error {}
+
+        public init(
+            status: LoginItemStatus = .disabled,
+            appLocation: URL = URL(fileURLWithPath: "/Applications/HeadsUp.app")
+        ) {
+            self.status = status
+            self.appLocation = appLocation
+        }
+
+        /// Like SMAppService: an app macOS can't register stays `.unavailable` and throws.
+        public func setEnabled(_ enabled: Bool) throws {
+            if let failure { throw failure }
+            if status == .unavailable { throw NotFound() }
+            status = enabled ? .enabled : .disabled
+        }
+    }
+
+    /// Records which System Settings panes were opened.
+    @MainActor
+    public final class FakeSystemSettingsLinks: SystemSettingsLinks {
+        public private(set) var opened: [String] = []
+        public init() {}
+        public func openLoginItems() { opened.append("loginItems") }
+        public func openKeyboardShortcuts() { opened.append("keyboardShortcuts") }
     }
 
 #endif

@@ -17,6 +17,8 @@ extension Glyph {
         case .cpu: "cpu"
         case .server: "server.rack"
         case .pin: "pin"
+        case .pause: "pause.circle"
+        case .folder: "folder"
         }
     }
 }
@@ -29,4 +31,6 @@ enum Symbols {
     static let warning = "exclamationmark.triangle.fill"
     /// The ghost × that dismisses a notice.
     static let close = "xmark"
+    /// A numbered step in the welcome: 1 in a circle.
+    static func step(_ number: Int) -> String { "\(number).circle" }
 }

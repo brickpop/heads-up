@@ -24,6 +24,12 @@ public protocol HUDChat: AnyObject {
     func send(_ text: String)
 }
 
+/// Something that happened in the HUD, reported to AppModel through `HUDStore.onEvent`.
+public enum HUDEvent: Equatable, Sendable {
+    case closed
+    case tabChanged(Tab)
+}
+
 /// The HUD's state and everything the user does in it (ADR-001 §4.1, amendment 1).
 @MainActor
 @Observable
@@ -48,6 +54,10 @@ public final class HUDStore: Navigator, Toaster {
     /// How many panels, alerts or permission prompts HeadsUp opened are showing.
     /// While above zero, a click outside doesn't close the HUD.
     public private(set) var modalDepth = 0
+    /// The shortcut recorder is listening for keys.
+    public private(set) var recording = false
+    /// Why the last recorded shortcut wasn't taken, shown under the recorder in --danger.
+    public private(set) var recorderProblem: String?
 
     private var toastText: String?
     private var toastWork: ScheduledWork?
@@ -59,8 +69,9 @@ public final class HUDStore: Navigator, Toaster {
     /// The HUD opened without keyboard focus (auto-open) and hasn't had it since.
     private var notKeySinceAutoOpen = false
 
-    /// Called each time the HUD closes. AppModel uses it for the once-per-launch notice.
-    @ObservationIgnored var onClose: (@MainActor () -> Void)?
+    /// Tells AppModel what happened in the HUD, for rules that join HUD and other state
+    /// (the once-per-launch notice, the welcome). One hook; new needs add cases (amendment 4).
+    @ObservationIgnored var onEvent: (@MainActor (HUDEvent) -> Void)?
     @ObservationIgnored private weak var window: HUDWindow?
     @ObservationIgnored private let clock: Clock
     @ObservationIgnored private let scheduler: Scheduler
@@ -151,6 +162,7 @@ public final class HUDStore: Navigator, Toaster {
     /// Closes the HUD. The input is cleared and the model menu closes; the tab is kept.
     public func close() {
         guard isOpen else { return }
+        cancelRecording()
         isOpen = false
         isKey = false
         keySince = nil
@@ -159,7 +171,7 @@ public final class HUDStore: Navigator, Toaster {
         modelMenuOpen = false
         notKeySinceAutoOpen = false
         window?.hide()
-        onClose?()
+        onEvent?(.closed)
     }
 
     /// The wake shortcut was pressed. It closes an open HUD, except one that opened by itself
@@ -181,6 +193,9 @@ public final class HUDStore: Navigator, Toaster {
     /// The HUD lost keyboard focus, usually to a click elsewhere.
     public func didResignKey() {
         guard isKey else { return }
+        // A recording ends whenever the HUD loses the keyboard (Scan L1): the shortcut must
+        // never stay released.
+        cancelRecording()
         isKey = false
         keySince = nil
         if isOpen && settings.settings.general.closeOnClickOutside && modalDepth == 0 {
@@ -205,11 +220,12 @@ public final class HUDStore: Navigator, Toaster {
     }
 
     public func showSettings(_ section: SettingsSection) {
-        settingsSection = section
+        selectSettingsSection(section)
         selectTab(.settings)
     }
 
     public func selectSettingsSection(_ section: SettingsSection) {
+        if section != settingsSection { cancelRecording() }
         settingsSection = section
     }
 
@@ -227,10 +243,12 @@ public final class HUDStore: Navigator, Toaster {
     }
 
     private func switchTab(to tab: Tab) {
+        if tab != self.tab { cancelRecording() }
         if tab != .chat { chatView = .conversation }
         self.tab = tab
         modelMenuOpen = false
         selectedIndex = nil
+        onEvent?(.tabChanged(tab))
     }
 
     // MARK: Typing
@@ -375,6 +393,71 @@ public final class HUDStore: Navigator, Toaster {
     }
 }
 
+extension HUDStore {
+    /// The keyboard layout changed, or the app launched: the shell gives the wake shortcut's
+    /// keycap label for the current layout, and the menu, the welcome and Settings show it.
+    public func shortcutLabelChanged(_ key: String) {
+        settings.updateShortcutLabel(key)
+        if case .ok(let current) = hotkey, current.key != key {
+            hotkey = .ok(Shortcut(keyCode: current.keyCode, modifiers: current.modifiers, key: key))
+        }
+    }
+}
+
+// MARK: Shortcut recorder (Settings → General → Wake shortcut, and the welcome)
+
+extension HUDStore {
+    /// The recorder field was clicked: it listens for keys, and the wake shortcut is
+    /// released meanwhile, so the recorder can capture the same keys.
+    public func startRecording() {
+        guard !recording else { return }
+        recording = true
+        recorderProblem = nil
+        hotkeys.suspend()
+    }
+
+    /// The × or Esc: the current shortcut stays.
+    public func cancelRecording() {
+        guard recording else { return }
+        recording = false
+        recorderProblem = nil
+        hotkeys.resume()
+    }
+
+    /// Keys pressed while recording. A shortcut that can't be used keeps the recorder
+    /// listening and says why (UX part 2, §13); one that registers is saved and ends it.
+    public func record(_ shortcut: Shortcut) {
+        guard recording else { return }
+        if shortcut.keyCode == KeyNames.escape && shortcut.modifiers.isEmpty {
+            cancelRecording()
+            return
+        }
+        if let problem = shortcut.keysProblem {
+            recorderProblem = Strings.Recorder.keysProblem(problem)
+            return
+        }
+        hotkeys.resume()
+        let status = changeShortcut(shortcut)
+        if case .ok = status {
+            recording = false
+            recorderProblem = nil
+        } else {
+            recorderProblem = Strings.Recorder.problem(status, shortcut: shortcut)
+            hotkeys.suspend()
+        }
+    }
+
+    /// Reset to ⌥ Space.
+    public func resetShortcut() {
+        if recording {
+            record(.wakeDefault)
+            return
+        }
+        let status = changeShortcut(.wakeDefault)
+        recorderProblem = Strings.Recorder.problem(status, shortcut: .wakeDefault)
+    }
+}
+
 // MARK: Rows, for the view
 
 extension HUDStore {
@@ -398,5 +481,31 @@ extension HUDStore {
         guard let position = selectable.firstIndex(of: index) else { return row.title }
         return Strings.Suggestions.accessibilityRow(
             title: row.title, kind: row.kindLabel, position: position + 1, count: selectable.count)
+    }
+}
+
+// MARK: Settings sub-nav and the recorder's Reset
+
+extension HUDStore {
+    /// ↑ (-1) or ↓ (+1) in the Settings sub-nav, in its order. It stops at the first and last
+    /// section, as a macOS sidebar does.
+    public func moveSettingsSection(_ delta: Int) {
+        let order = SettingsSection.groups.flatMap { $0 }
+        guard let current = order.firstIndex(of: settingsSection), delta != 0 else { return }
+        let next = min(max(current + delta, 0), order.count - 1)
+        selectSettingsSection(order[next])
+    }
+
+    /// ↑ and ↓ move the suggestion selection only while there are suggestions. Otherwise the
+    /// focused view keeps its own arrows: the Settings sub-nav (`moveSettingsSection`), a
+    /// segmented control, a text field.
+    public var arrowKeysMoveSelection: Bool {
+        !suggestions.isEmpty
+    }
+
+    /// The recorder's ghost "Reset to ⌥ Space" shows only when the shortcut differs from the
+    /// default and the recorder isn't listening.
+    public var canResetShortcut: Bool {
+        settings.settings.general.shortcut != .wakeDefault && !recording
     }
 }

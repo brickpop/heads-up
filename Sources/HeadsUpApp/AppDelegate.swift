@@ -9,20 +9,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeys = CarbonHotkeyRegistrar()
     private var model: AppModel?
     private var panel: HUDPanel?
+    private var statusItem: StatusItemController?
+    private var keyLabeler: KeyLabeler?
     private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make()
 
+        let scheduler = SystemScheduler()
         let model = AppModel(
             ports: AppModel.Ports(
-                clock: SystemClock(), scheduler: SystemScheduler(), hotkeys: hotkeys,
-                appearance: SystemAppearanceAdapter(), dataFolder: SettingsStore.defaultFolder))
+                clock: SystemClock(), scheduler: scheduler, hotkeys: hotkeys,
+                appearance: SystemAppearanceAdapter(), files: FinderRevealer(), loginItem: LoginItemAdapter(),
+                systemSettings: SystemSettingsAdapter(),
+                dataFolder: SettingsStore.defaultFolder))
         self.model = model
 
         let panel = HUDPanel(hud: model.hud, content: HUDRootView(model: model))
         model.hud.attach(window: panel)
         self.panel = panel
+        statusItem = StatusItemController(model: model, scheduler: scheduler)
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let panel = self.panel, panel.isKeyWindow else { return event }
@@ -46,6 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         model.launch()
+        let keyLabeler = KeyLabeler { [weak self, weak model] in
+            guard let model, let labeler = self?.keyLabeler else { return }
+            model.hud.shortcutLabelChanged(labeler.label(for: model.settings.settings.general.shortcut.keyCode))
+        }
+        self.keyLabeler = keyLabeler
+        model.hud.shortcutLabelChanged(keyLabeler.label(for: model.settings.settings.general.shortcut.keyCode))
         switch model.hud.hotkey {
         case .ok(let shortcut): log.info("wake shortcut registered: \(shortcut.displayName, privacy: .public)")
         case .taken: log.error("wake shortcut not registered: another app uses it")
@@ -58,12 +70,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.invalidate()
     }
 
-    /// The HUD's own keys while it is key: ⌘ shortcuts, ↑ ↓ for the suggestions, Esc.
+    /// The HUD's own keys while it is key: all keys while the shortcut recorder listens,
+    /// else ⌘ shortcuts, ↑ ↓ for the suggestions, Esc.
     /// Returns false for keys it leaves to the text field. Return stays with the field
     /// (`onSubmit`), and while an input method is composing text (Japanese, Chinese…)
     /// ↑ ↓ and Esc belong to its candidate window.
     private func handleKey(_ event: NSEvent, hud: HUDStore, panel: NSPanel) -> Bool {
         let shortcut = Self.shortcut(for: event)
+        if hud.recording {
+            // The shortcut recorder takes every key (amendment 5): Esc cancels, anything else is
+            // recorded with the label the current layout gives it.
+            if shortcut.keyCode == KeyNames.escape && shortcut.modifiers.isEmpty {
+                hud.cancelRecording()
+            } else {
+                let label = keyLabeler?.label(for: shortcut.keyCode) ?? shortcut.key
+                hud.record(Shortcut(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers, key: label))
+            }
+            return true
+        }
         if !shortcut.modifiers.isEmpty {
             return hud.handleShortcut(shortcut)
         }
@@ -71,9 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         switch Int(event.keyCode) {
-        case Key.upArrow:
+        case Key.upArrow where hud.arrowKeysMoveSelection:
             hud.moveSelection(-1)
-        case Key.downArrow:
+        case Key.downArrow where hud.arrowKeysMoveSelection:
             hud.moveSelection(1)
         case Key.escape:
             hud.escape()
