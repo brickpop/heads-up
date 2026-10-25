@@ -1,4 +1,5 @@
 import AppKit
+import HeadsUpCore
 import SwiftUI
 
 /// The HUD's container: a header area, an optional body and a footer area, on the HUD
@@ -26,17 +27,14 @@ struct HUDFrameView<Header: View, Content: View, Footer: View>: View {
         }
         .background(HUDMaterial())
         .clipShape(shape)
-        .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: borderWidth))
+        .overlay(
+            shape.strokeBorder(
+                HUDStyle.Colors.line, lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale)))
     }
 
     // Circular corners, to match the material's mask exactly.
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: HUDMetrics.cornerRadius, style: .circular)
-    }
-
-    // One device pixel, or a full point when Increase Contrast is on.
-    private var borderWidth: CGFloat {
-        contrast == .increased ? 1 : 1 / displayScale
     }
 }
 
@@ -84,7 +82,7 @@ private struct HUDMaterial: NSViewRepresentable {
         static var previews: some View {
             ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
                 HUDFrameView()
-                    .frame(width: HUDMetrics.width)
+                    .frame(width: HUDLayout.maxWidth)
                     .padding(40)
                     .preferredColorScheme(scheme)
                     .previewDisplayName(scheme == .light ? "Light" : "Dark")

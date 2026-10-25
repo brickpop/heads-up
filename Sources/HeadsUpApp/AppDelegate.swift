@@ -1,26 +1,105 @@
 import AppKit
-import Carbon.HIToolbox
+import HeadsUpCore
 import os
 
-/// Creates the HUD panel and the wake shortcut at launch.
+/// Builds the app at launch: the model with the real ports, the HUD panel, the HUD's keys.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HeadsUp", category: "app")
+    private let hotkeys = CarbonHotkeyRegistrar()
+    private var model: AppModel?
     private var panel: HUDPanel?
-    private var hotkey: Hotkey?
+    private var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let panel = HUDPanel()
+        NSApp.mainMenu = MainMenu.make()
+
+        let model = AppModel(
+            ports: AppModel.Ports(
+                clock: SystemClock(), scheduler: SystemScheduler(), hotkeys: hotkeys,
+                appearance: SystemAppearanceAdapter(), dataFolder: SettingsStore.defaultFolder))
+        self.model = model
+
+        let panel = HUDPanel(hud: model.hud, content: HUDRootView(model: model))
+        model.hud.attach(window: panel)
         self.panel = panel
 
-        // ⌥ Space. Slice 1 makes the shortcut a setting and reports a failure in the UI.
-        do {
-            hotkey = try Hotkey(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey)) {
-                panel.toggle()
-            }
-            log.info("wake shortcut registered")
-        } catch {
-            log.error("wake shortcut not registered: OSStatus \(error.status, privacy: .public)")
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let panel = self.panel, panel.isKeyWindow else { return event }
+            return self.handleKey(event, hud: model.hud, panel: panel) ? nil : event
         }
+
+        observe(
+            { model.settings.settings.general.appearance },
+            apply: { appearance in
+                NSApp.appearance =
+                    switch appearance {
+                    case .system: nil
+                    case .light: NSAppearance(named: .aqua)
+                    case .dark: NSAppearance(named: .darkAqua)
+                    }
+            })
+
+        if let problem = model.settings.fileProblem {
+            log.error(
+                "settings: \(String(describing: problem), privacy: .public): \(model.settings.lastErrorDetail ?? "", privacy: .public)"
+            )
+        }
+        model.launch()
+        switch model.hud.hotkey {
+        case .ok(let shortcut): log.info("wake shortcut registered: \(shortcut.displayName, privacy: .public)")
+        case .taken: log.error("wake shortcut not registered: another app uses it")
+        case .reservedBySystem: log.error("wake shortcut not registered: macOS uses it")
+        case .failed(let status): log.error("wake shortcut not registered: OSStatus \(status, privacy: .public)")
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        hotkeys.invalidate()
+    }
+
+    /// The HUD's own keys while it is key: ⌘ shortcuts, ↑ ↓ for the suggestions, Esc.
+    /// Returns false for keys it leaves to the text field. Return stays with the field
+    /// (`onSubmit`), and while an input method is composing text (Japanese, Chinese…)
+    /// ↑ ↓ and Esc belong to its candidate window.
+    private func handleKey(_ event: NSEvent, hud: HUDStore, panel: NSPanel) -> Bool {
+        let shortcut = Self.shortcut(for: event)
+        if !shortcut.modifiers.isEmpty {
+            return hud.handleShortcut(shortcut)
+        }
+        if let editor = panel.firstResponder as? NSTextView, editor.hasMarkedText() {
+            return false
+        }
+        switch Int(event.keyCode) {
+        case Key.upArrow:
+            hud.moveSelection(-1)
+        case Key.downArrow:
+            hud.moveSelection(1)
+        case Key.escape:
+            hud.escape()
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// Virtual key codes (Carbon's kVK_ values) for the keys the monitor handles.
+    private enum Key {
+        static let escape = 53
+        static let downArrow = 125
+        static let upArrow = 126
+    }
+
+    /// The key and modifiers of a key press, as the core's `Shortcut`.
+    private static func shortcut(for event: NSEvent) -> Shortcut {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        var modifiers: Shortcut.Modifiers = []
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.control) { modifiers.insert(.control) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        return Shortcut(
+            keyCode: UInt32(event.keyCode), modifiers: modifiers,
+            key: event.charactersIgnoringModifiers?.uppercased() ?? "")
     }
 }
