@@ -151,3 +151,28 @@ public protocol Notifier: AnyObject {
     /// Removes a shown notification from Notification Center, once its prompt is answered or over.
     func removeDelivered(id: String)
 }
+
+/// What a power assertion keeps from happening.
+public enum PowerAssertionKind: String, CaseIterable, Sendable {
+    /// `PreventUserIdleDisplaySleep`: the display stays on, no screensaver.
+    case displaySleep
+    /// `PreventUserIdleSystemSleep`: the Mac doesn't go to sleep.
+    case systemSleep
+}
+
+/// IOKit power assertions (`IOPMAssertionCreateWithName`). Declarative: the adapter holds
+/// exactly the kinds last asked for, creating and releasing assertions as needed.
+@MainActor
+public protocol PowerAssertions: AnyObject {
+    /// Holds these kinds and releases any others; an empty set releases all. Returns the kinds
+    /// now held, which lacks any that macOS refused.
+    func hold(_ kinds: Set<PowerAssertionKind>) -> Set<PowerAssertionKind>
+}
+
+/// The power source (`IOPSNotificationCreateRunLoopSource`), for "Only on power adapter".
+@MainActor
+public protocol PowerSource: AnyObject {
+    var isOnBattery: Bool { get }
+    /// Calls `changed` each time the Mac switches between battery and the power adapter.
+    func observe(_ changed: @escaping @MainActor () -> Void)
+}

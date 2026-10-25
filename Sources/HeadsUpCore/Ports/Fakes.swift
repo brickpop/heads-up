@@ -198,4 +198,40 @@ import Foundation
         }
     }
 
+    /// Holds what it is asked to, and can be told to refuse.
+    @MainActor
+    public final class FakePowerAssertions: PowerAssertions {
+        public private(set) var held: Set<PowerAssertionKind> = []
+        /// The kinds macOS refuses, as set by the test.
+        public var refused: Set<PowerAssertionKind> = []
+
+        public init() {}
+
+        public func hold(_ kinds: Set<PowerAssertionKind>) -> Set<PowerAssertionKind> {
+            held = kinds.subtracting(refused)
+            return held
+        }
+    }
+
+    /// A power source the test switches between battery and AC.
+    @MainActor
+    public final class FakePowerSource: PowerSource {
+        public private(set) var isOnBattery: Bool
+        private var changed: (@MainActor () -> Void)?
+
+        public init(isOnBattery: Bool = false) {
+            self.isOnBattery = isOnBattery
+        }
+
+        public func observe(_ changed: @escaping @MainActor () -> Void) {
+            self.changed = changed
+        }
+
+        /// The user unplugged (true) or plugged in (false).
+        public func set(onBattery: Bool) {
+            isOnBattery = onBattery
+            changed?()
+        }
+    }
+
 #endif

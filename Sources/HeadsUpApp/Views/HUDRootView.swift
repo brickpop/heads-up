@@ -27,6 +27,7 @@ struct HUDRootView: View {
                 switch hudBody {
                 case .suggestions: SuggestionList(hud: hud)
                 case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
+                case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
                 case .settings: SettingsView(model: model)
                 case .welcome: WelcomeView(model: model)
                 case .empty: EmptyView()
@@ -36,7 +37,7 @@ struct HUDRootView: View {
             .accessibilitySortPriority(AccessibilityOrder.body)
         } footer: {
             HUDFooter(left: hud.footerLeft, toastID: hud.toastID) {
-                StatusPills(focus: model.focus, isOpen: hud.isOpen)
+                StatusPills(focus: model.focus, caffeine: model.caffeine, isOpen: hud.isOpen)
             }
             // With no body, the header's line is the only one.
             .overlay(alignment: .top) {
@@ -101,6 +102,15 @@ private enum AccessibilityOrder {
                         $0.focus.takeBreakNow()
                     }
                     .previewDisplayName("Break prompt")
+                }
+                .preferredColorScheme(scheme)
+                Group {
+                    hud { $0.hud.selectTab(.caffeine) }.previewDisplayName("Caffeine, off")
+                    hud {
+                        $0.hud.selectTab(.caffeine)
+                        $0.caffeine.toggle()
+                    }
+                    .previewDisplayName("Caffeine, on")
                 }
                 .preferredColorScheme(scheme)
             }

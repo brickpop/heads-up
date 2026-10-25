@@ -10,11 +10,12 @@ private func action(_ id: String, in model: AppModel) -> Action? {
 
 @MainActor
 @Suite struct AppModelTests {
-    @Test func theCatalogueListsFocusThenAddAModelThenThemeThenGoTo() {
+    @Test func theCatalogueListsFocusCaffeineAddAModelThemeAndGoTo() {
         let model = AppModel.preview()
         #expect(
             model.registry.actions.map(\.id.rawValue) == [
                 "focus.start:25", "focus.start:40", "focus.start:50", "focus.break",
+                "caffeine.on:oneHour", "caffeine.on:twoHours", "caffeine.on:untilOff",
                 "model.add", "theme.toggle",
                 "view.open:chat", "view.open:focus", "view.open:caffeine",
                 "view.open:services", "view.open:commands", "view.open:settings",

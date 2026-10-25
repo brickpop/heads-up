@@ -58,13 +58,15 @@ public struct StatusItemModel: Equatable, Sendable {
         switch caffeine {
         case .off:
             break
-        case .on(nil):
-            parts.append(.cup(text: nil, accent: true))
-            spoken.append(Strings.MenuBar.caffeineOn)
-        case .on(let endsAt?):
+        case .on(nil, let paused):
+            // Paused on battery: the cup in the menu bar's own colour, not the accent (UX §15).
+            parts.append(.cup(text: nil, accent: !paused))
+            spoken.append(paused ? Strings.MenuBar.caffeinePaused : Strings.MenuBar.caffeineOn)
+        case .on(let endsAt?, let paused):
             let left = endsAt.timeIntervalSince(now)
-            parts.append(.cup(text: Self.caffeineText(left, showSeconds), accent: true))
-            spoken.append("\(Strings.MenuBar.caffeineOn), \(Format.spokenMinutes(left, rounding: .nearest)) left")
+            parts.append(.cup(text: Self.caffeineText(left, showSeconds), accent: !paused))
+            let state = paused ? Strings.MenuBar.caffeinePaused : Strings.MenuBar.caffeineOn
+            spoken.append("\(state), \(Format.spokenMinutes(left, rounding: .nearest)) left")
             if let change = Self.nextCaffeineChange(endsAt: endsAt, now: now, showSeconds: showSeconds) {
                 changes.append(change)
             }

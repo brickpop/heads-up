@@ -151,6 +151,7 @@ public enum Strings {
         public static let paused = "Paused"
         public static let snoozed = "Snoozed"
         public static let caffeineOn = "caffeine on"
+        public static let caffeinePaused = "caffeine paused on battery"
 
         public static func startFocus(_ minutes: Int) -> String { "Start \(minutes) min" }
         /// "2 running", or "None" when nothing runs.
@@ -416,6 +417,101 @@ public enum Strings {
         public static func minutesShort(_ minutes: Int) -> String { "\(minutes)m" }
         /// The segmented choices: "25 min", "2 min".
         public static func minutes(_ minutes: Int) -> String { "\(minutes) min" }
+    }
+
+    /// The Caffeine tab, its toasts, pill and actions (Caffeine spec; footer spec; UX §15).
+    public enum Caffeine {
+        // Toasts
+        public static let onBySwitch = "Caffeine on. Your Mac stays awake"
+        /// Turned on while "Only on power adapter" holds it on battery.
+        public static let onPausedBySwitch = "Caffeine on · paused until you plug in"
+        /// "Caffeine on · 1 hour · paused until you plug in"
+        public static func onPaused(_ label: String) -> String { "Caffeine on · \(label) · paused until you plug in" }
+        public static let off = "Caffeine off"
+        /// A duration card picked while off: "Caffeine on · 15 min".
+        public static func onByCard(_ duration: CaffeineDuration) -> String { "Caffeine on · \(cardTitle(duration))" }
+        /// An autocomplete action: "Caffeine on · for 1 hour".
+        public static func onByAction(_ duration: CaffeineDuration) -> String {
+            "Caffeine on · \(actionSuffix(duration))"
+        }
+        public static func extended(_ minutes: Int) -> String {
+            minutes == 60 ? "Caffeine extended by 1 hour" : "Caffeine extended by \(minutes) min"
+        }
+
+        // Footer pill
+        public static func pillAwake(_ left: String?) -> String { left.map { "Awake \($0)" } ?? "Awake" }
+        public static func pillPaused(_ left: String?) -> String { left.map { "Paused \($0)" } ?? "Paused" }
+
+        // Header
+        public static let titleOn = "Staying awake"
+        public static let titleOff = "Caffeine is off"
+        public static let titlePaused = "Paused on battery"
+        public static let subtitleOff = "Your Mac sleeps and starts the screensaver as usual."
+        public static let subtitleUntilOff = "Until you turn it off"
+        /// "45m left · ends at 3:30 PM"
+        public static func subtitleLeft(_ left: String, endsAt: String) -> String { "\(left) left · ends at \(endsAt)" }
+        public static let resumesOnPower = "Resumes on power"
+        /// "Resumes on power · 45m left · ends at 3:30 PM"
+        public static func subtitlePaused(_ left: String, endsAt: String) -> String {
+            "\(resumesOnPower) · \(subtitleLeft(left, endsAt: endsAt))"
+        }
+        public static let switchLabel = "Caffeine"
+
+        // Extend row
+        public static let needLonger = "Need a bit longer?"
+        public static let plusTen = "+10 min"
+        public static let plusHour = "+1 h"
+
+        // Durations
+        public static let keepAwakeFor = "Keep awake for"
+        public static func cardTitle(_ duration: CaffeineDuration) -> String {
+            switch duration {
+            case .fifteenMinutes: "15 min"
+            case .oneHour: "1 hour"
+            case .twoHours: "2 hours"
+            case .untilOff: "Until off"
+            }
+        }
+
+        // Options
+        public static let keepDisplayOn = "Keep the display on"
+        public static let keepDisplayOnHelp = "Blocks the screensaver and display sleep"
+        public static let preventSystemSleep = "Prevent system sleep"
+        public static let preventSystemSleepHelp = "Keeps background jobs and services running"
+        public static let onlyOnAC = "Only on power adapter"
+        public static let onlyOnACHelp = "Pauses automatically on battery"
+        /// The tooltip on the one option that can't be turned off.
+        public static let keepOneOn = "Keep at least one on."
+        /// The --danger note under the header when macOS refuses (Yuki), with Try Again.
+        public static func assertionNote(_ problem: CaffeineAssertionProblem) -> String {
+            switch problem {
+            case .refused: "macOS didn't let HeadsUp keep your Mac awake."
+            case .displayRefused: "macOS didn't let HeadsUp keep the display on."
+            case .systemRefused: "macOS didn't let HeadsUp keep your Mac from sleeping."
+            }
+        }
+        public static let tryAgain = "Try Again"
+
+        // Actions
+        public static func keepAwakeAction(_ duration: CaffeineDuration) -> String {
+            "Keep awake \(actionSuffix(duration))"
+        }
+        public static let keepAwakeSubtitle = "caffeine · prevent sleep"
+        public static func extendAction(_ minutes: Int) -> String {
+            minutes == 60 ? "Add 1 hour to caffeine" : "Add \(minutes) min to caffeine"
+        }
+        public static let extendSubtitle = "caffeine · extend current timer"
+        public static let offAction = "Caffeine off"
+        public static let offSubtitle = "allow sleep again"
+
+        static func actionSuffix(_ duration: CaffeineDuration) -> String {
+            switch duration {
+            case .fifteenMinutes: "for 15 min"
+            case .oneHour: "for 1 hour"
+            case .twoHours: "for 2 hours"
+            case .untilOff: "until turned off"
+            }
+        }
     }
 
     public enum Hotkey {

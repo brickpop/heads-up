@@ -8,6 +8,7 @@ public struct Settings: Equatable, Codable, Sendable {
     public var version: Int = Settings.currentVersion
     public var general = General()
     public var focus = FocusSettings()
+    public var caffeine = CaffeineSettings()
 
     public init() {}
 
@@ -16,6 +17,7 @@ public struct Settings: Equatable, Codable, Sendable {
         version = try container.decodeIfPresent(Int.self, forKey: .version) ?? Settings.currentVersion
         general = try container.decodeIfPresent(General.self, forKey: .general) ?? General()
         focus = try container.decodeIfPresent(FocusSettings.self, forKey: .focus) ?? FocusSettings()
+        caffeine = try container.decodeIfPresent(CaffeineSettings.self, forKey: .caffeine) ?? CaffeineSettings()
     }
 }
 

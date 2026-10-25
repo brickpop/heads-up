@@ -183,6 +183,18 @@ enum HUDStyle {
         static let progressHeight: CGFloat = 6
     }
 
+    enum Caffeine {
+        static let chipSize: CGFloat = 56
+        static let chipCornerRadius: CGFloat = 14
+        static let chipIconSize: CGFloat = 24
+        /// The pause badge on the chip while paused on battery.
+        static let badgeSize: CGFloat = 20
+        static let titleSize: CGFloat = 24
+        static let headerGap: CGFloat = 14
+        static let extendPadding: CGFloat = 12
+        static let extendCornerRadius: CGFloat = 10
+    }
+
     enum Pill {
         static let height: CGFloat = 22
         static let padding: CGFloat = 8

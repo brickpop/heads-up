@@ -433,7 +433,8 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
-                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil))
+                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
         failing.setOpenAtLogin(true)
         #expect(failing.openAtLogin == .disabled)
         #expect(failing.openAtLoginError?.hasPrefix("HeadsUp couldn't change Open at Login") == true)
@@ -447,7 +448,7 @@ private func status(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: FakeLoginItem(status: .requiresApproval), systemSettings: links, notifier: FakeNotifier(),
-                dataFolder: nil))
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
         #expect(model.openAtLogin == .requiresApproval)
         model.openLoginItemsSettings()
         model.openKeyboardShortcutsSettings()
@@ -463,7 +464,8 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
-                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil))
+                loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
         try? fake.setEnabled(true)  // changed in System Settings
         #expect(model.openAtLogin == .disabled)
         model.hud.showSettings(.general)
@@ -560,7 +562,8 @@ private func status(
             ports: AppModel.Ports(
                 clock: ManualClock(), scheduler: ManualScheduler(clock: ManualClock()),
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: files, loginItem: item,
-                systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil))
+                systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
+                powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil))
     }
 
     @Test func anAppOutsideApplicationsAsksToBeMovedAfterTheSwitchFails() {

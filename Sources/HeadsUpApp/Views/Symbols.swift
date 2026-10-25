@@ -39,6 +39,8 @@ enum Symbols {
     static let close = "xmark"
     /// The bell on Snooze buttons.
     static let snooze = "bell"
+    /// The badge on the Caffeine chip while paused on battery.
+    static let pauseBadge = "pause.circle.fill"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

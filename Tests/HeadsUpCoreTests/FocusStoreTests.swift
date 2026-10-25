@@ -22,7 +22,8 @@ private struct FocusHarness {
             ports: AppModel.Ports(
                 clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
-                notifier: notifier, dataFolder: nil),
+                notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                dataFolder: nil),
             settings: settings)
         window.hud = model.hud
         model.hud.attach(window: window)

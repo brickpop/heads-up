@@ -16,6 +16,8 @@ public final class AppModel {
         public var loginItem: LoginItem
         public var systemSettings: SystemSettingsLinks
         public var notifier: Notifier
+        public var powerAssertions: PowerAssertions
+        public var powerSource: PowerSource
         /// Where settings.json lives; nil keeps settings in memory only.
         public var dataFolder: URL?
         /// How long a timer minute lasts: 60 s, except in a debug build made with `just app-quick`.
@@ -24,7 +26,8 @@ public final class AppModel {
         public init(
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
-            dataFolder: URL?, focusSecondsPerMinute: TimeInterval = 60
+            powerAssertions: PowerAssertions, powerSource: PowerSource, dataFolder: URL?,
+            focusSecondsPerMinute: TimeInterval = 60
         ) {
             self.clock = clock
             self.scheduler = scheduler
@@ -34,6 +37,8 @@ public final class AppModel {
             self.loginItem = loginItem
             self.systemSettings = systemSettings
             self.notifier = notifier
+            self.powerAssertions = powerAssertions
+            self.powerSource = powerSource
             self.dataFolder = dataFolder
             self.focusSecondsPerMinute = focusSecondsPerMinute
         }
@@ -43,23 +48,26 @@ public final class AppModel {
     public let hud: HUDStore
     public let registry: ActionRegistry
     public let focus: FocusStore
+    public let caffeine: CaffeineStore
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
     private var noticeSeen: SettingsFileProblem?
 
     /// The activity dot on each tab (amendment 1). Focus: a focus or break runs or is paused,
-    /// a prompt waits, or it is snoozed. Caffeine and Services add theirs in their slices;
+    /// a prompt waits, or it is snoozed. Caffeine: on. Services adds its own in slice 5;
     /// Chat, Commands and Settings never have one.
     public var tabActivity: [Tab: TabActivity] {
         var activity: [Tab: TabActivity] = [:]
         if focus.phase != .idle { activity[.focus] = .active }
+        if caffeine.isOn { activity[.caffeine] = .active }
         return activity
     }
 
     /// The Mac woke up: timers that ended while it slept move on now (ADR-001 §4.3).
     public func clockJumped() {
         focus.clockJumped()
+        caffeine.clockJumped()
     }
 
     /// An answer from Notification Center, by the category and action identifiers the shell
@@ -98,6 +106,10 @@ public final class AppModel {
             clock: ports.clock, scheduler: ports.scheduler, settings: settings, history: history,
             notifier: ports.notifier, navigator: hud, toaster: hud, secondsPerMinute: ports.focusSecondsPerMinute)
         self.focus = focus
+        let caffeine = CaffeineStore(
+            clock: ports.clock, scheduler: ports.scheduler, settings: settings, assertions: ports.powerAssertions,
+            power: ports.powerSource, toaster: hud)
+        self.caffeine = caffeine
         self.clock = ports.clock
         loginItem = ports.loginItem
         systemSettings = ports.systemSettings
@@ -109,6 +121,7 @@ public final class AppModel {
             guard let focus, let hud else { return [] }
             return FocusActions.make(focus: focus, hud: hud)
         }
+        registry.add(.caffeine) { [weak caffeine] in caffeine.map { CaffeineActions.make(caffeine: $0) } ?? [] }
         registry.add(.model) { [weak hud] in hud.map { ShellActions.addModel(hud: $0, chat: chat) } ?? [] }
         registry.add(.theme) { [weak settings] in
             settings.map { ShellActions.theme(settings: $0, appearance: ports.appearance) } ?? []
@@ -119,6 +132,7 @@ public final class AppModel {
             self?.handle(event)
         }
         focusSource = { [weak focus] in focus?.snapshot ?? .idle(nextLength: 25) }
+        caffeineSource = { [weak caffeine] in caffeine?.snapshot ?? .off }
     }
 
     private func handle(_ event: HUDEvent) {
@@ -312,7 +326,7 @@ public final class AppModel {
         case .focus:
             hud.selectTab(.focus)
         case .toggleCaffeine:
-            break  // CaffeineStore (slice 4) toggles with the last-used duration and toasts.
+            caffeine.toggle()
         case .services:
             hud.selectTab(.services)
         case .pinned:
@@ -352,7 +366,8 @@ public final class AppModel {
                     hotkeys: FakeHotkeyRegistrar(nextStatus: hotkey),
                     appearance: FixedAppearance(isDark: systemIsDark), files: FakeFileRevealer(),
                     loginItem: FakeLoginItem(status: loginItem),
-                    systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(), dataFolder: nil),
+                    systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
+                    powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), dataFolder: nil),
                 settings: settings)
             if let settingsFileProblem { model.settings.showProblemForPreview(settingsFileProblem) }
             model.launch()
@@ -368,6 +383,8 @@ public enum HUDBody: Equatable, Sendable {
     case suggestions
     /// The Focus tab: it always has a body (idle, running, a prompt, snoozed).
     case focus
+    /// The Caffeine tab: it always has a body.
+    case caffeine
     /// The Settings tab.
     case settings
     /// The first-run welcome, on Chat.
@@ -377,11 +394,12 @@ public enum HUDBody: Equatable, Sendable {
 }
 
 extension AppModel {
-    /// The body, by precedence: suggestions, then Focus, then Settings, then the welcome on Chat.
+    /// The body, by precedence: suggestions, then Focus, then Caffeine, then Settings, then the welcome on Chat.
     /// The model menu joins this rule in the chat slice.
     public var body: HUDBody {
         if !hud.suggestions.isEmpty { return .suggestions }
         if hud.tab == .focus { return .focus }
+        if hud.tab == .caffeine { return .caffeine }
         if hud.tab == .settings { return .settings }
         if hud.tab == .chat && showsWelcome { return .welcome }
         return .empty

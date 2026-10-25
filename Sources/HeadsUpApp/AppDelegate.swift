@@ -7,6 +7,7 @@ import os
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HeadsUp", category: "app")
     private let hotkeys = CarbonHotkeyRegistrar()
+    private let powerAssertions = IOKitPowerAssertions()
     private var model: AppModel?
     private var panel: HUDPanel?
     private var statusItem: StatusItemController?
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 clock: SystemClock(), scheduler: scheduler, hotkeys: hotkeys,
                 appearance: SystemAppearanceAdapter(), files: FinderRevealer(), loginItem: LoginItemAdapter(),
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
+                powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
                 focusSecondsPerMinute: Self.focusSecondsPerMinute))
         self.model = model
@@ -104,6 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeys.invalidate()
+        // Assertions die with the process anyway; releasing them first is tidier.
+        _ = powerAssertions.hold([])
     }
 
     /// The HUD's own keys while it is key: all keys while the shortcut recorder listens,
