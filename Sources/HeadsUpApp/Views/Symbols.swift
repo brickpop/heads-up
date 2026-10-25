@@ -53,6 +53,13 @@ enum Symbols {
     static let minus = "minus"
     /// The terminal pill on a command row: it opens in another app.
     static let externalLink = "arrow.up.right.square"
+    /// The chevron on the model chip.
+    static let chevronDown = "chevron.down"
+    /// The check on the active model.
+    static let check = "checkmark"
+    /// The default-endpoint radio, off and on.
+    static let radioOff = "circle"
+    static let radioOn = "largecircle.fill.circle"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

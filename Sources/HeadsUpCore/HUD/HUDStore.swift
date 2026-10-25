@@ -30,6 +30,9 @@ public protocol HUDChat: AnyObject {
 public enum HUDEvent: Equatable, Sendable {
     case closed
     case tabChanged(Tab)
+    /// The model menu opened: local servers are asked whether they run.
+    case modelMenuOpened
+    case settingsSectionChanged(SettingsSection)
 }
 
 /// The HUD's state and everything the user does in it (ADR-001 §4.1, amendment 1).
@@ -235,13 +238,21 @@ public final class HUDStore: Navigator, Toaster {
     }
 
     public func selectSettingsSection(_ section: SettingsSection) {
-        if section != settingsSection { cancelRecording() }
+        guard section != settingsSection else { return }
+        cancelRecording()
         settingsSection = section
+        onEvent?(.settingsSectionChanged(section))
     }
 
     public func toggleModelMenu() {
         guard tab == .chat else { return }
         modelMenuOpen.toggle()
+        if modelMenuOpen { onEvent?(.modelMenuOpened) }
+    }
+
+    /// The model menu closes: a model was picked, or Manage endpoints… was chosen.
+    func closeModelMenu() {
+        modelMenuOpen = false
     }
 
     /// Shows or leaves the Pinned chats list. It clears the input.

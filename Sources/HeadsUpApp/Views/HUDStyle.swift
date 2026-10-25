@@ -238,6 +238,24 @@ enum HUDStyle {
         static let envKeyWidth: CGFloat = 160
     }
 
+    enum ModelChip {
+        static let height: CGFloat = 28
+        static let padding: CGFloat = 10
+        static let chevronSize: CGFloat = 9
+    }
+
+    enum ModelMenu {
+        static let chipSize: CGFloat = 32
+        static let rowPadding: CGFloat = 8
+    }
+
+    enum Endpoints {
+        static let formCornerRadius: CGFloat = 12
+        static let formPadding: CGFloat = 14
+        static let gridGap: CGFloat = 10
+        static let tagPadding: CGFloat = 6
+    }
+
     enum Pill {
         static let height: CGFloat = 22
         static let padding: CGFloat = 8

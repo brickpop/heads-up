@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 #if DEBUG
     // Stand-ins for the ports, for tests and SwiftUI previews. Each one does what the
     // real port does, in memory, and lets the caller set what happens.
@@ -335,6 +339,43 @@ import Foundation
         public init(port: Int? = nil) { self.port = port }
         public func listeningPort(group: Int32) async -> Int? { port }
         public func answers(port: Int) async -> Bool { answering.contains(port) }
+    }
+
+    /// A model server the test scripts by path ending: "models" → (200, `{"data":[…]}`). It
+    /// records every request as sent, `Authorization` included.
+    public final class FakeHTTPClient: HTTPClient, @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [URLRequest] = []
+        private var scripted: [String: (status: Int, body: String)] = [:]
+        private var failing: HTTPError?
+
+        public init() {}
+
+        /// Answers requests whose path ends with `path`.
+        public func answer(_ path: String, status: Int = 200, body: String = "") {
+            lock.withLock { scripted[path] = (status, body) }
+        }
+
+        /// Makes every request fail, or succeed again with nil.
+        public func fail(with error: HTTPError?) {
+            lock.withLock { failing = error }
+        }
+
+        public var requests: [URLRequest] { lock.withLock { recorded } }
+
+        public func send(_ request: URLRequest) async throws -> HTTPResponse {
+            let (failure, answer) = lock.withLock { () -> (HTTPError?, (status: Int, body: String)?) in
+                recorded.append(request)
+                let path = request.url?.path ?? ""
+                return (failing, scripted.first { path.hasSuffix($0.key) }?.value)
+            }
+            if let failure { throw failure }
+            let (status, body) = answer ?? (404, "")
+            let (stream, continuation) = AsyncThrowingStream<[UInt8], Error>.makeStream()
+            continuation.yield(Array(body.utf8))
+            continuation.finish()
+            return HTTPResponse(status: status, headers: [:], body: stream)
+        }
     }
 
 #endif

@@ -76,8 +76,8 @@ public final class SystemPortProbe: PortProbe {
         let socketFD = socket(family, stream, 0)
         guard socketFD >= 0 else { return false }
         defer { close(socketFD) }
-        // Loopback answers at once; this only bounds a connect that hangs.
-        var timeout = timeval(tv_sec: 1, tv_usec: 0)
+        // Loopback answers at once; this only bounds a connect that hangs, to 300 ms.
+        var timeout = timeval(tv_sec: 0, tv_usec: 300_000)
         _ = setsockopt(socketFD, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 
         if family == AF_INET {

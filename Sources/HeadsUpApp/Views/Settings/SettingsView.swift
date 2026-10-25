@@ -106,7 +106,9 @@ private struct SettingsPane: View {
             ServicesSection(model: model)
         case .commands:
             CommandsSection(model: model)
-        case .models, .tools:
+        case .models:
+            ModelsSection(model: model)
+        case .tools:
             VStack(alignment: .leading, spacing: HUDStyle.Settings.sectionSpacing) {
                 SettingsTitle(text: section.title)
                 SavingOffLine(settings: model.settings)

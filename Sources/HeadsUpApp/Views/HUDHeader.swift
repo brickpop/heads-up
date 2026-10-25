@@ -6,6 +6,8 @@ import SwiftUI
 struct HUDHeader: View {
     let hud: HUDStore
     let activity: [Tab: TabActivity]
+    /// The model chip, shown in the Chat tab before the prompt.
+    var chip: ModelChip?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -16,7 +18,12 @@ struct HUDHeader: View {
                     tab: tab, isSelected: hud.tab == tab, activity: activity[tab],
                     select: { hud.selectTab(tab) }
                 ) {
-                    PromptField(hud: hud)
+                    HStack(spacing: HUDStyle.Tabs.gap) {
+                        if let chip {
+                            ModelChipButton(chip: chip, toggle: hud.toggleModelMenu)
+                        }
+                        PromptField(hud: hud)
+                    }
                 }
             }
         }

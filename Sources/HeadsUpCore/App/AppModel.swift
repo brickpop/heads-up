@@ -22,6 +22,10 @@ public final class AppModel {
         public var portProbe: PortProbe
         public var folderPicker: FolderPicker
         public var terminalLauncher: TerminalLauncher
+        /// Endpoint tokens: the Keychain on macOS.
+        public var secrets: SecretStore
+        /// Requests to model servers, under `HTTPTransport`.
+        public var httpClient: HTTPClient
         /// The user's login shell, home folder and environment, for services.
         public var loginShell: String
         public var home: String
@@ -35,7 +39,8 @@ public final class AppModel {
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
             powerAssertions: PowerAssertions, powerSource: PowerSource, serviceLauncher: ServiceLauncher,
-            portProbe: PortProbe, folderPicker: FolderPicker, terminalLauncher: TerminalLauncher, dataFolder: URL?,
+            portProbe: PortProbe, folderPicker: FolderPicker, terminalLauncher: TerminalLauncher, secrets: SecretStore,
+            httpClient: HTTPClient, dataFolder: URL?,
             focusSecondsPerMinute: TimeInterval = 60,
             loginShell: String = UserAccount.loginShell, home: String = NSHomeDirectory(),
             environment: [String: String] = ProcessInfo.processInfo.environment
@@ -54,6 +59,8 @@ public final class AppModel {
             self.portProbe = portProbe
             self.folderPicker = folderPicker
             self.terminalLauncher = terminalLauncher
+            self.secrets = secrets
+            self.httpClient = httpClient
             self.loginShell = loginShell
             self.home = home
             self.environment = environment
@@ -69,10 +76,13 @@ public final class AppModel {
     public let caffeine: CaffeineStore
     public let services: ServiceStore
     public let commands: CommandStore
+    public let endpoints: EndpointService
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
     private var noticeSeen: SettingsFileProblem?
+    /// The model menu's keyboard selection: a row, or Manage endpoints… after the last.
+    private var modelMenuSelection = 0
 
     /// The activity dot on each tab (amendment 1). Focus: a focus or break runs or is paused,
     /// a prompt waits, or it is snoozed. Caffeine: on. Services adds its own in slice 5;
@@ -165,6 +175,12 @@ public final class AppModel {
         commands = CommandStore(
             folder: ports.dataFolder, launcher: ports.terminalLauncher, files: ports.files, settings: settings,
             toaster: hud, loginShell: ports.loginShell, home: ports.home)
+        let endpoints = EndpointService(
+            settings: settings, secrets: ports.secrets,
+            transport: HTTPTransport(client: ports.httpClient, secrets: ports.secrets), ports: ports.portProbe,
+            services: services, clock: ports.clock, scheduler: ports.scheduler, toaster: hud)
+        self.endpoints = endpoints
+        chat.activeModel = { [weak endpoints] in endpoints?.active?.name }
         self.clock = ports.clock
         loginItem = ports.loginItem
         systemSettings = ports.systemSettings
@@ -179,7 +195,6 @@ public final class AppModel {
         }
         registry.add(.caffeine) { [weak caffeine] in caffeine.map { CaffeineActions.make(caffeine: $0) } ?? [] }
         registry.add(.service) { [weak services] in services.map { ServiceActions.make(services: $0) } ?? [] }
-        registry.add(.model) { [weak hud] in hud.map { ShellActions.addModel(hud: $0, chat: chat) } ?? [] }
         registry.add(.theme) { [weak settings] in
             settings.map { ShellActions.theme(settings: $0, appearance: ports.appearance) } ?? []
         }
@@ -187,6 +202,11 @@ public final class AppModel {
 
         hud.onEvent = { [weak self] event in
             self?.handle(event)
+        }
+        registry.add(.model) { [weak self, weak hud] in
+            guard let self, let hud else { return [] }
+            return ShellActions.addModel(hud: hud, chat: chat)
+                + ModelActions.make(endpoints: endpoints) { [weak self] id in self?.selectModel(id) }
         }
         registry.add(.command) { [weak self] in
             guard let self else { return [] }
@@ -211,6 +231,12 @@ public final class AppModel {
             if tab != .chat { endWelcome() }
             // The user may have changed Open at Login in System Settings meanwhile.
             if tab == .settings { refreshOpenAtLogin() }
+            if tab == .settings && hud.settingsSection == .models { endpoints.probeLocal() }
+        case .modelMenuOpened:
+            modelMenuSelection = endpoints.endpoints.firstIndex { $0.id == endpoints.activeID } ?? 0
+            endpoints.probeLocal()
+        case .settingsSectionChanged(let section):
+            if section == .models { endpoints.probeLocal() }
         }
     }
 
@@ -436,7 +462,8 @@ public final class AppModel {
                     systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                     powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                     serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
-                    folderPicker: FakeFolderPicker(), terminalLauncher: FakeTerminalLauncher(), dataFolder: nil),
+                    folderPicker: FakeFolderPicker(), terminalLauncher: FakeTerminalLauncher(),
+                    secrets: MemorySecretStore(), httpClient: FakeHTTPClient(), dataFolder: nil),
                 settings: settings)
             if let settingsFileProblem { model.settings.showProblemForPreview(settingsFileProblem) }
             model.launch()
@@ -460,6 +487,8 @@ public enum HUDBody: Equatable, Sendable {
     case commands
     /// The Settings tab.
     case settings
+    /// The model menu, over any tab body (ADR-001 §4.1).
+    case modelMenu
     /// The first-run welcome, on Chat.
     case welcome
     /// Nothing: the HUD collapses to its header and footer.
@@ -467,9 +496,10 @@ public enum HUDBody: Equatable, Sendable {
 }
 
 extension AppModel {
-    /// The body, by precedence: suggestions, then Focus, then Caffeine, then Services, then
-    /// Commands, then Settings, then the welcome on Chat. The model menu joins this rule in the chat slice.
+    /// The body, by precedence: the model menu, then suggestions, then Focus, then Caffeine,
+    /// then Services, then Commands, then Settings, then the welcome on Chat.
     public var body: HUDBody {
+        if hud.modelMenuOpen { return .modelMenu }
         if !hud.suggestions.isEmpty { return .suggestions }
         if hud.tab == .focus { return .focus }
         if hud.tab == .caffeine { return .caffeine }
@@ -578,6 +608,9 @@ extension AppModel {
             services.cancelForm()
         } else if body == .settings && hud.settingsSection == .commands && commands.form != nil {
             commands.cancelForm()
+        } else if body == .settings && hud.settingsSection == .models && endpoints.form.tokenHostQuestion != nil {
+            // Esc closes the token-host question; nothing is tested or saved.
+            endpoints.dismissTokenHostQuestion()
         } else {
             hud.escape()
         }
@@ -591,6 +624,89 @@ extension AppModel {
             let folder = await folderPicker.chooseFolder(startingAt: start)
             hud.endModal()
             if let folder { chosen(folder) }
+        }
+    }
+}
+
+extension AppModel {
+    // MARK: Models
+
+    /// The model chip in the Chat header; nil on other tabs.
+    public var modelChip: ModelChip? {
+        guard hud.tab == .chat else { return nil }
+        let name = endpoints.active?.name
+        return ModelChip(
+            title: name ?? Strings.ModelMenu.noModel, isPlaceholder: name == nil, isOpen: hud.modelMenuOpen,
+            accessibilityLabel: Strings.ModelMenu.chipLabel(name ?? Strings.ModelMenu.noModel))
+    }
+
+    /// The model menu, while open.
+    public var modelMenu: ModelMenuScreen {
+        let list = endpoints.endpoints
+        let selection = min(modelMenuSelection, list.count)
+        return ModelMenuScreen(
+            label: Strings.ModelMenu.label, emptyLine: list.isEmpty ? Strings.ModelMenu.empty : nil,
+            rows: list.enumerated().map { index, endpoint in
+                let notRunning = endpoints.isRunning(endpoint) == false
+                var detail = Strings.Models.detail(provider: endpoint.tag.providerText, model: endpoint.model)
+                if notRunning { detail += " · " + Strings.ModelMenu.notRunning }
+                return ModelMenuScreen.Row(
+                    id: endpoint.id, name: endpoint.name,
+                    localTag: endpoint.tag.isLocal ? Strings.Models.localTag : nil,
+                    detail: detail, isActive: endpoint.id == endpoints.activeID, isSelected: index == selection,
+                    start: notRunning && endpoints.service(for: endpoint) != nil ? Strings.ModelMenu.start : nil)
+            }, manage: Strings.ModelMenu.manage, manageSelected: selection == list.count)
+    }
+
+    /// Picking a model, in the menu or with "Switch model to …": it chats from now on, the menu
+    /// closes, and the toast names it. The default stays as it is.
+    public func selectModel(_ id: Endpoint.ID) {
+        guard let endpoint = endpoints.endpoint(id) else { return }
+        endpoints.setActive(id)
+        hud.closeModelMenu()
+        hud.toast(Strings.Models.active(endpoint.name))
+    }
+
+    /// Start, on a menu row whose local server isn't running: starts its service.
+    public func startEndpointService(_ id: Endpoint.ID) {
+        guard let endpoint = endpoints.endpoint(id), let service = endpoints.service(for: endpoint) else { return }
+        services.start(service.id)
+    }
+
+    /// Start <service>, on a Test connection result: starts the draft's service, and the test
+    /// runs again once its port answers.
+    public func startTestService() {
+        guard let service = endpoints.draftService() else { return }
+        services.start(service.id)
+        endpoints.waitForService(service)
+    }
+
+    /// Open Services, after a service didn't start: the Services tab with its log open.
+    public func openTestServiceLogs() {
+        guard let service = endpoints.draftService() else { return }
+        hud.selectTab(.services)
+        services.showLogs(service.id)
+    }
+
+    /// Manage endpoints…: Settings → Models.
+    public func manageEndpoints() {
+        hud.showSettings(.models)
+    }
+
+    /// ↑ ↓ in the model menu, over the rows and Manage endpoints….
+    public func moveModelMenuSelection(_ delta: Int) {
+        let last = endpoints.endpoints.count
+        modelMenuSelection = max(0, min(last, min(modelMenuSelection, last) + delta))
+    }
+
+    /// Return in the model menu: the selected model, or Manage endpoints…, which is also what
+    /// Return does with no endpoint.
+    public func chooseModelMenuSelection() {
+        let list = endpoints.endpoints
+        if modelMenuSelection < list.count {
+            selectModel(list[modelMenuSelection].id)
+        } else {
+            manageEndpoints()
         }
     }
 }

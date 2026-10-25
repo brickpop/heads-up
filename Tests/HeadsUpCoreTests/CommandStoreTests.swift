@@ -49,7 +49,8 @@ private final class CommandsHarness {
                 appearance: FixedAppearance(), files: revealer, loginItem: FakeLoginItem(),
                 systemSettings: systemSettings, notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(),
                 powerSource: FakePowerSource(), serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
-                folderPicker: picker, terminalLauncher: terminals, dataFolder: folder, loginShell: loginShell,
+                folderPicker: picker, terminalLauncher: terminals, secrets: MemorySecretStore(),
+                httpClient: FakeHTTPClient(), dataFolder: folder, loginShell: loginShell,
                 home: home, environment: ["PATH": "/usr/bin"]),
             settings: settings)
         model.launch()

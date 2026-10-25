@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
                 folderPicker: OpenPanelFolderPicker(), terminalLauncher: SystemTerminalLauncher(),
+                secrets: KeychainSecretStore(), httpClient: URLSessionHTTPClient(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
                 focusSecondsPerMinute: Self.focusSecondsPerMinute))
         self.model = model
@@ -148,10 +149,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The HUD's own keys while it is key: all keys while the shortcut recorder listens,
-    /// else ⌘ shortcuts, ↑ ↓ for the suggestions, Esc.
+    /// else ⌘ shortcuts, ↑ ↓ and Return for the open model menu, ↑ ↓ for the suggestions, Esc.
     /// Returns false for keys it leaves to the text field. Return stays with the field
-    /// (`onSubmit`), and while an input method is composing text (Japanese, Chinese…)
-    /// ↑ ↓ and Esc belong to its candidate window.
+    /// (`onSubmit`) unless the model menu is open. While an input method is composing text
+    /// (Japanese, Chinese…), ↑ ↓ and Esc belong to its candidate window.
     private func handleKey(_ event: NSEvent, model: AppModel, panel: NSPanel) -> Bool {
         let hud = model.hud
         let shortcut = Self.shortcut(for: event)
@@ -173,6 +174,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         switch Int(event.keyCode) {
+        // The model menu, while open, takes ↑ ↓ and Return.
+        case Key.upArrow where hud.modelMenuOpen:
+            model.moveModelMenuSelection(-1)
+        case Key.downArrow where hud.modelMenuOpen:
+            model.moveModelMenuSelection(1)
+        case Key.returnKey where hud.modelMenuOpen, Key.keypadEnter where hud.modelMenuOpen:
+            model.chooseModelMenuSelection()
         case Key.upArrow where hud.arrowKeysMoveSelection:
             hud.moveSelection(-1)
         case Key.downArrow where hud.arrowKeysMoveSelection:
@@ -187,6 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Virtual key codes (Carbon's kVK_ values) for the keys the monitor handles.
     private enum Key {
+        static let returnKey = 36
+        static let keypadEnter = 76
         static let escape = 53
         static let downArrow = 125
         static let upArrow = 126

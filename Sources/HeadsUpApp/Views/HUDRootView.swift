@@ -15,7 +15,7 @@ struct HUDRootView: View {
         let notice = model.settingsNotice
         let hudBody = model.body
         HUDFrameView {
-            HUDHeader(hud: hud, activity: model.tabActivity)
+            HUDHeader(hud: hud, activity: model.tabActivity, chip: model.modelChip)
                 .overlay(alignment: .bottom) { Hairline() }
                 .accessibilityElement(children: .contain)
                 .accessibilitySortPriority(AccessibilityOrder.header)
@@ -25,6 +25,7 @@ struct HUDRootView: View {
                     SettingsNoticeBar(model: model, text: notice)
                 }
                 switch hudBody {
+                case .modelMenu: ModelMenuView(model: model, screen: model.modelMenu)
                 case .suggestions: SuggestionList(hud: hud)
                 case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
                 case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
@@ -133,6 +134,15 @@ private enum AccessibilityOrder {
                         $0.commands.editCommand(nil)
                     }
                     .previewDisplayName("New command form")
+                }
+                .preferredColorScheme(scheme)
+                Group {
+                    hud {
+                        $0.hud.selectTab(.chat)
+                        $0.hud.toggleModelMenu()
+                    }
+                    .previewDisplayName("Model menu, no endpoint")
+                    hud { $0.hud.showSettings(.models) }.previewDisplayName("Settings → Models")
                 }
                 .preferredColorScheme(scheme)
             }

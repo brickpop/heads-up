@@ -796,6 +796,149 @@ public enum Strings {
         public static let valuePlaceholder = "value"
     }
 
+    /// Settings → Models (Model endpoints spec; UX part 1, §2; addendum 3, F7 and F9). Copy
+    /// marked "placeholder" waits for Yuki.
+    public enum Models {
+        public static let title = "Model endpoints"
+        public static let intro = "Any OpenAI-compatible URL. Switch from the HUD with “/model”."
+        public static let emptyCard = "Add an OpenAI-compatible URL below. Ollama and LM Studio run on this Mac."
+        public static func quickAdd(_ kind: QuickAddKind) -> String {
+            switch kind {
+            case .openAI: "OpenAI"
+            case .ollama: "Ollama"
+            case .lmStudio: "LM Studio"
+            case .other: "Other"
+            }
+        }
+        public static let runningOnThisMac = "Running on this Mac"
+        /// The provider tag in Settings, and its tooltip.
+        public static func tag(_ tag: ProviderTag) -> String {
+            switch tag {
+            case .ollama: "Ollama"
+            case .lmStudio: "LM Studio"
+            case .local: "Local"
+            case .custom: "Custom"
+            }
+        }
+        public static let localTag = "Local"
+        public static let localTagHelp = "Runs on this Mac"
+        public static let noToken = "no token"
+        /// The ×'s tooltip, with a saved token, and without.
+        public static let removeHelp = "Remove (the token is deleted from the Keychain)"
+        public static let removeHelpNoToken = "Remove"
+        /// The row's question before removing an endpoint with a saved token.
+        public static func removeQuestion(_ name: String) -> String {
+            "Remove \(name)? Its token is deleted from the Keychain."
+        }
+        public static let cancel = "Cancel"
+        public static let remove = "Remove"
+        /// The radio, for VoiceOver; the value is the row's name.
+        public static let defaultModel = "Default model"
+        /// "https://api.openai.com/v1 · gpt-4o-mini"
+        public static func urlLine(_ url: String, model: String) -> String { "\(url) · \(model)" }
+
+        // Toasts
+        public static func added(_ name: String) -> String { "Added \(name)" }
+        public static func saved(_ name: String) -> String { "Saved \(name)" }
+        public static func removed(_ name: String) -> String { "Removed \(name)" }
+        public static func active(_ name: String) -> String { "Model: \(name)" }
+
+        // Actions
+        public static func switchAction(_ name: String) -> String { "Switch model to \(name)" }
+        /// "Ollama · llama3.1:8b"
+        public static func detail(provider: String, model: String) -> String { "\(provider) · \(model)" }
+    }
+
+    /// The endpoint form in Settings → Models (UX part 1, §2; addendum 3).
+    public enum EndpointForm {
+        public static let addLabel = "Add endpoint"
+        public static func editLabel(_ name: String) -> String { "Edit \(name)" }
+        public static let name = "Name"
+        public static let modelID = "Model id"
+        public static let baseURL = "Base URL"
+        public static let baseURLPlaceholder = "https://api.example.com/v1"
+        public static let token = "API token"
+        public static let tokenPlaceholder = "API token (stored in Keychain)"
+        public static func tokenSavedPlaceholder(_ mask: String) -> String {
+            "Saved in Keychain (\(mask)). Type to replace."
+        }
+        public static let tokenHelp = "Optional. Local servers usually don't need one."
+        public static let tokenNeedsHTTPS = "Use https to add a token."
+        public static let removeToken = "Remove token"
+        public static let images = "Can see images"
+        public static let tools = "Can use tools"
+        public static let optionsHelp = "Turn off if the model doesn't support it."
+        public static let service = "Service"
+        public static let serviceNone = "None"
+        public static let test = "Test connection"
+        public static let add = "Add endpoint"
+        public static let save = "Save"
+        public static let cancel = "Cancel"
+        public static let setDefault = "Set as default"
+        public static let details = "Details"
+
+        // Notes under Base URL (F9)
+        public static let urlNotValid = "Enter a full URL, like https://api.example.com/v1"
+        public static let notEncrypted = "Not encrypted: anyone on this network can read your chats."
+        public static let needsHTTPS = "Use https:// for servers outside your Mac and your network."
+
+        // The token-host question (F7)
+        public static func tokenHostQuestion(_ host: String) -> String { "Send your saved token to \(host)?" }
+        public static let keepToken = "Keep token"
+
+        // Test connection results
+        public static let testing = "Testing…"
+        public static func ok(model: String, seconds: Double) -> String {
+            "Connected · \(model) answered in \(String(format: "%.1f", seconds)) s"
+        }
+        public static let chooseModel = "Connected. Choose a model:"
+        public static func modelNotOnServer(_ model: String) -> String {
+            "Connected, but “\(model)” isn't on this server."
+        }
+        public static let needsToken = "The server needs an API token."
+        public static func badToken(status: Int) -> String { "The server rejected the token (\(status))." }
+        public static func unreachable(_ hostPort: String) -> String { "Can't reach \(hostPort)." }
+        public static func start(_ service: String) -> String { "Start \(service)" }
+        public static func starting(_ service: String) -> String { "Starting \(service)…" }
+        public static func startTimedOut(_ service: String) -> String {
+            "\(service) didn't start. Check its log in Services."
+        }
+        public static let openServices = "Open Services"
+        /// `withToken`: a saved or typed token was sent with the request.
+        public static func redirected(_ host: String, withToken: Bool) -> String {
+            withToken
+                ? "The server redirected to \(host). HeadsUp doesn't follow redirects, so your token isn't sent there. Check the URL."
+                : "The server redirected to \(host). HeadsUp doesn't follow redirects. Check the URL."
+        }
+        /// The keychain refused to give the saved token.
+        public static let keychainDenied = "Your keychain didn't let HeadsUp read the token."
+        public static let tryAgain = "Try Again"
+        /// The first, empty choice of the model popup.
+        public static let chooseModelPrompt = "Choose a model"
+        public static func serverError(status: Int) -> String { "The server answered with an error (\(status))." }
+        /// Under the API token field, when the keychain wouldn't save the token.
+        public static let keychainFailed =
+            "Couldn't save the token in your keychain, so the endpoint isn't saved. Try again."
+        /// Under the API token field, or under the list after removing an endpoint, when the
+        /// keychain kept the token.
+        public static let removeFailed =
+            "Couldn't delete the token from your keychain. Try again, or search for HeadsUp in Keychain Access to delete it."
+        /// Under the token field after Remove token, in --ink-2, with Keep Token.
+        public static let tokenRemovalNote = "The saved token is deleted when you save."
+        public static let keepSavedToken = "Keep Token"
+    }
+
+    /// The model menu and its chip (Model endpoints spec; UX part 1, §2).
+    public enum ModelMenu {
+        public static let label = "Model"
+        public static let manage = "Manage endpoints…"
+        public static let empty = "No models yet. Add an OpenAI-compatible URL, local or in the cloud."
+        public static let notRunning = "not running"
+        public static let start = "Start"
+        public static let noModel = "No model"
+        public static func chipLabel(_ name: String) -> String { "Model: \(name)" }
+    }
+
     public enum Hotkey {
         /// What is wrong with the wake shortcut, in one sentence, or nil when it works.
         public static func reason(_ status: HotkeyStatus, shortcut: Shortcut) -> String? {
