@@ -14,7 +14,7 @@ import Testing
 private final class CommandsHarness {
     let clock = ManualClock()
     let terminals: FakeTerminalLauncher
-    let picker = FakeFolderPicker()
+    let picker = FakeOpenPanels()
     let revealer = FakeFileRevealer()
     let systemSettings = FakeSystemSettingsLinks()
     let folder: URL
@@ -49,7 +49,8 @@ private final class CommandsHarness {
                 appearance: FixedAppearance(), files: revealer, loginItem: FakeLoginItem(),
                 systemSettings: systemSettings, notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(),
                 powerSource: FakePowerSource(), serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
-                folderPicker: picker, terminalLauncher: terminals, secrets: MemorySecretStore(),
+                openPanels: picker, imageProcessor: FakeImageProcessor(), terminalLauncher: terminals,
+                secrets: MemorySecretStore(),
                 httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: folder, loginShell: loginShell,
                 home: home, environment: ["PATH": "/usr/bin"]),

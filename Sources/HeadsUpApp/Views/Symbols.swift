@@ -67,6 +67,12 @@ enum Symbols {
     /// Task-list markers, unchecked and checked.
     static let taskOff = "square"
     static let taskOn = "checkmark.square"
+    /// The header's Attach image button.
+    static let paperclip = "paperclip"
+    /// A thumbnail with no preview, and the drop zone.
+    static let photo = "photo"
+    /// Pinned · N in the chat toolbar.
+    static let list = "list.bullet"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

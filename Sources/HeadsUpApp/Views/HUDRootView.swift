@@ -1,5 +1,6 @@
 import HeadsUpCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The whole HUD, as the panel hosts it: the header, the body and the footer in the frame.
 ///
@@ -10,23 +11,34 @@ import SwiftUI
 struct HUDRootView: View {
     let model: AppModel
 
+    /// What the HUD would do with the items dragged over it, while they are.
+    @State private var dropZone: DropZone?
+
     var body: some View {
         let hud = model.hud
         let notice = model.settingsNotice
         let hudBody = model.body
         HUDFrameView {
-            HUDHeader(hud: hud, activity: model.tabActivity, chip: model.modelChip)
-                .overlay(alignment: .bottom) { Hairline() }
-                .accessibilityElement(children: .contain)
-                .accessibilitySortPriority(AccessibilityOrder.header)
+            HUDHeader(
+                hud: hud, activity: model.tabActivity, chip: model.modelChip, attachments: model.chat.attachments,
+                removeAttachment: { model.chat.removeAttachment($0) }, buttons: model.chatButtons,
+                attach: { model.pickImages() }
+            )
+            .overlay(alignment: .bottom) { Hairline() }
+            .accessibilityElement(children: .contain)
+            .accessibilitySortPriority(AccessibilityOrder.header)
         } content: {
             VStack(spacing: 0) {
+                // One notice at a time: the settings file's wins, since it shows once per launch.
                 if let notice {
                     SettingsNoticeBar(model: model, text: notice)
+                } else if let attachmentNotice = model.chat.attachmentNotice {
+                    AttachmentNoticeBar(model: model, notice: attachmentNotice)
                 }
                 switch hudBody {
                 case .modelMenu: ModelMenuView(model: model, screen: model.modelMenu)
                 case .conversation: ConversationView(model: model)
+                case .pinnedList: PinnedListView(model: model)
                 case .suggestions: SuggestionList(hud: hud)
                 case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
                 case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
@@ -37,6 +49,8 @@ struct HUDRootView: View {
                 case .empty: EmptyView()
                 }
             }
+            // A collapsed HUD grows to 160 pt while something is dragged over it.
+            .frame(minHeight: dropZone == nil ? nil : HUDStyle.Attachments.dropMinHeight - HUDMetrics.collapsedHeight)
             .accessibilityElement(children: .contain)
             .accessibilitySortPriority(AccessibilityOrder.body)
         } footer: {
@@ -50,6 +64,10 @@ struct HUDRootView: View {
             .accessibilityElement(children: .contain)
             .accessibilitySortPriority(AccessibilityOrder.footer)
         }
+        .overlay {
+            if let dropZone { DropZoneOverlay(zone: dropZone) }
+        }
+        .onDrop(of: [.item], delegate: ImageDropTarget(chat: model.chat, zone: $dropZone))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Strings.HUD.accessibilityLabel)
     }
@@ -148,6 +166,7 @@ private enum AccessibilityOrder {
                         $0.chat.showPreviewConversation()
                     }
                     .previewDisplayName("Conversation")
+                    hud { $0.hud.togglePinnedList() }.previewDisplayName("Pinned chats, empty")
                     hud { $0.hud.showSettings(.models) }.previewDisplayName("Settings → Models")
                 }
                 .preferredColorScheme(scheme)

@@ -40,5 +40,8 @@ public final class NoChat: HUDChat {
     public var isBusy: Bool { false }
     public func send(_ text: String) {}
     public func stop() {}
+    public var hasAttachments: Bool { false }
+    public var isSendBlocked: Bool { false }
     public func newChat() {}
+    public func togglePin() {}
 }

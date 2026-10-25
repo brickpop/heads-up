@@ -197,3 +197,21 @@ private func mode(_ path: String) throws -> Int {
         #expect(throws: Database.Failure.self) { _ = try Database(file: file) }
     }
 }
+
+/// Scan I6: bytes go in and come out whole, zero bytes included.
+@Suite struct DatabaseBlobTests {
+    @Test func blobsRoundTrip() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("headsup-blob-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let database = try Database(file: folder.appendingPathComponent("headsup.sqlite"))
+        let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x00, 0xFF, 0x00, 0x41])
+        try database.execute("INSERT INTO chat VALUES ('c', 'T', 'M', 1, 1)", [])
+        try database.execute(
+            "INSERT INTO image VALUES (?, ?, ?, ?)", [.text("i"), .text("c"), .text("image/png"), .blob(bytes)])
+        let rows = try database.query("SELECT bytes FROM image WHERE id = ?", [.text("i")])
+        #expect(rows.first?.first == .blob(bytes))
+        try database.execute(
+            "INSERT INTO image VALUES (?, ?, ?, ?)", [.text("e"), .text("c"), .text("image/png"), .blob(Data())])
+        #expect(try database.query("SELECT bytes FROM image WHERE id = 'e'").first?.first == .blob(Data()))
+    }
+}

@@ -438,7 +438,8 @@ private func status(
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
-                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
+                imageProcessor: FakeImageProcessor(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
@@ -456,7 +457,8 @@ private func status(
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: FakeLoginItem(status: .requiresApproval), systemSettings: links, notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
-                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
+                imageProcessor: FakeImageProcessor(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
@@ -477,7 +479,8 @@ private func status(
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: FakeFileRevealer(),
                 loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
-                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
+                imageProcessor: FakeImageProcessor(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))
@@ -580,7 +583,8 @@ private func status(
                 hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(), files: files, loginItem: item,
                 systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
-                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
+                imageProcessor: FakeImageProcessor(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil))

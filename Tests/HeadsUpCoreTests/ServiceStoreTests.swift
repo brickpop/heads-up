@@ -17,7 +17,7 @@ private final class ServicesHarness {
     let launcher = FakeServiceLauncher()
     let probe = FakePortProbe()
     let notifier = FakeNotifier()
-    let picker = FakeFolderPicker()
+    let picker = FakeOpenPanels()
     let terminals = FakeTerminalLauncher()
     let revealer = FakeFileRevealer()
     let folder: URL
@@ -53,7 +53,8 @@ private final class ServicesHarness {
                 files: revealer, loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: realLauncher ? POSIXServiceLauncher() : launcher, portProbe: probe,
-                folderPicker: picker, terminalLauncher: terminals, secrets: MemorySecretStore(),
+                openPanels: picker, imageProcessor: FakeImageProcessor(), terminalLauncher: terminals,
+                secrets: MemorySecretStore(),
                 httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: folder, loginShell: loginShell,
                 home: root.path, environment: ["PATH": "/usr/bin"]),

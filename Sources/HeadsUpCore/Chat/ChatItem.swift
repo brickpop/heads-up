@@ -1,7 +1,7 @@
 import Foundation
 
 /// One message of a conversation (ADR-001 §8.2): what the user wrote, or the model's reply as
-/// Markdown. Codable, so a pin can keep it later.
+/// Markdown. Codable: a pinned chat keeps it as JSON (§6.3).
 public struct ChatMessage: Equatable, Codable, Sendable, Identifiable {
     public typealias ID = String
 
@@ -23,19 +23,37 @@ public struct ChatMessage: Equatable, Codable, Sendable, Identifiable {
     public internal(set) var state: State
     /// For a reply: the model that wrote it, for "Thinking with GPT-4o mini…".
     public let model: String?
-    /// For a reply: the tools it asked for, sent back to the model with their results.
+    /// For a user message: its images, by id, in the order they were attached. The chat holds
+    /// the images; a pinned chat keeps them as BLOBs.
+    public let imageIDs: [String]
+    /// For a reply: the tools it asked for, sent back to the model with their results. Not
+    /// kept in a pin: the results that answer them aren't either.
     var toolCalls: [LLMMessage.ToolCall] = []
 
-    init(id: ID = UUID().uuidString, role: Role, text: String, state: State = .done, model: String? = nil) {
+    init(
+        id: ID = UUID().uuidString, role: Role, text: String, state: State = .done, model: String? = nil,
+        imageIDs: [String] = []
+    ) {
         self.id = id
         self.role = role
         self.text = text
         self.state = state
         self.model = model
+        self.imageIDs = imageIDs
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, role, text, state, model
+        case id, role, text, state, model, imageIDs
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(ID.self, forKey: .id)
+        role = try container.decode(Role.self, forKey: .role)
+        text = try container.decode(String.self, forKey: .text)
+        state = try container.decode(State.self, forKey: .state)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        imageIDs = try container.decodeIfPresent([String].self, forKey: .imageIDs) ?? []
     }
 }
 

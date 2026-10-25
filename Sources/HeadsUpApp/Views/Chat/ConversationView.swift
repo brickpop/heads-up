@@ -23,7 +23,7 @@ struct ConversationView: View {
         let screen = chat.screen
         let height = min(max(contentHeight, HUDStyle.Chat.minHeight), HUDStyle.Chat.maxHeight)
         VStack(spacing: 0) {
-            ChatToolbar(toolbar: screen.toolbar, chat: chat)
+            ChatToolbar(toolbar: screen.toolbar, chat: chat, hud: model.hud)
             Hairline()
             ScrollViewReader { proxy in
                 ScrollView {
@@ -77,14 +77,46 @@ struct ConversationView: View {
     @State private var contentHeightAtOffset: CGFloat = 0
 }
 
-/// Stop while the model answers, and New.
+/// The chat toolbar: whether the chat is kept, Pinned · N, Pin, Stop while the model answers,
+/// and New.
 private struct ChatToolbar: View {
     let toolbar: ChatScreen.Toolbar
     let chat: ChatStore
+    let hud: HUDStore
 
     var body: some View {
         HStack(spacing: HUDStyle.Footer.keyGap) {
+            if let problem = toolbar.problem {
+                // Saving the pinned copy failed: said here, never as a toast.
+                Image(systemName: Symbols.failedDot)
+                    .foregroundStyle(HUDStyle.Colors.alert)
+                    .accessibilityHidden(true)
+                Text(problem.text)
+                    .foregroundStyle(HUDStyle.Colors.alert)
+                    .lineLimit(1)
+                    // The line is cut to fit the toolbar, so the whole text is in the tooltip.
+                    .help(problem.text)
+                    .onAppear { AccessibilityNotification.Announcement(problem.text).post() }
+                Button(problem.tryAgain) { chat.retryPin() }
+                    .buttonStyle(.borderless)
+            } else {
+                // Whether this chat is kept: a gray dot when it isn't, an accent one when pinned.
+                Circle()
+                    .fill(toolbar.saved == .pinned ? Color.accentColor : HUDStyle.Colors.track)
+                    .frame(width: HUDStyle.Pinned.saveDotSize, height: HUDStyle.Pinned.saveDotSize)
+                    .accessibilityHidden(true)
+                Text(toolbar.saveLabel)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             Spacer()
+            Button {
+                hud.togglePinnedList()
+            } label: {
+                Label(toolbar.pinnedList, systemImage: Symbols.list)
+            }
+            .buttonStyle(.borderless)
+            PinToggle(pin: toolbar.pin) { chat.togglePin() }
             if let stop = toolbar.stop {
                 Button {
                     chat.stop()
@@ -114,11 +146,19 @@ private struct MessageView: View {
 
     var body: some View {
         switch message {
-        case .user(let id, let text, let label):
-            UserBubble(text: text)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(label)
-                .contextMenu { CopyMenu(chat: model.chat, id: id) }
+        case .user(let id, let text, let images, let label):
+            VStack(alignment: .trailing, spacing: HUDStyle.Attachments.gap) {
+                if !images.isEmpty {
+                    BubbleImages(thumbs: images)
+                }
+                // A message may be images only.
+                if !text.isEmpty {
+                    UserBubble(text: text)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(label)
+            .contextMenu { CopyMenu(chat: model.chat, id: id) }
         case .assistant(let reply):
             AssistantMessageView(chat: model.chat, reply: reply)
         case .problem(let row):
@@ -367,6 +407,29 @@ private struct ArmedTimeline<Content: View>: View {
     var body: some View {
         TimelineView(.explicit(armedAt.map { [$0] } ?? [])) { context in
             content(armedAt.map { context.date >= $0 } ?? false)
+        }
+    }
+}
+
+/// Pin / Pinned: an outline "Pin" while off, an accent "Pinned" while on (⌘P).
+private struct PinToggle: View {
+    let pin: ChatScreen.Toolbar.Pin
+    let toggle: @MainActor () -> Void
+
+    var body: some View {
+        if pin.isOn {
+            Button(action: toggle) {
+                Label(pin.title, systemImage: Glyph.pin.symbolName)
+            }
+            .buttonStyle(.borderedProminent)
+            .help(pin.help)
+            .accessibilityAddTraits(.isSelected)
+        } else {
+            Button(action: toggle) {
+                Label(pin.title, systemImage: Glyph.pin.symbolName)
+            }
+            .buttonStyle(.outline)
+            .help(pin.help)
         }
     }
 }

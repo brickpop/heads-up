@@ -325,6 +325,29 @@ enum HUDStyle {
         static let detailsLineLimit = 6
     }
 
+    enum Attachments {
+        /// A thumbnail in the header, before the prompt.
+        static let headerSize: CGFloat = 30
+        static let headerRadius: CGFloat = 6
+        /// A thumbnail above the user's bubble.
+        static let bubbleWidth: CGFloat = 120
+        static let bubbleHeight: CGFloat = 80
+        static let bubbleRadius: CGFloat = 10
+        static let gap: CGFloat = 6
+        static let badgeSize: CGFloat = 10
+        /// The Pinned and Attach buttons in the Chat tab.
+        static let buttonSize: CGFloat = 28
+        /// The drop ring around the HUD while an image is dragged over it.
+        static let dropRing: CGFloat = 2
+        /// A collapsed HUD grows to this while something is dragged over it.
+        static let dropMinHeight: CGFloat = 160
+        static let dropIconSize: CGFloat = 28
+    }
+
+    enum Pinned {
+        static let saveDotSize: CGFloat = 6
+    }
+
     enum Pill {
         static let height: CGFloat = 22
         static let padding: CGFloat = 8

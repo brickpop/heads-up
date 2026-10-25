@@ -8,6 +8,12 @@ struct HUDHeader: View {
     let activity: [Tab: TabActivity]
     /// The model chip, shown in the Chat tab before the prompt.
     var chip: ModelChip?
+    /// The images waiting to be sent, before the prompt on any tab, and their × .
+    var attachments: [Thumb] = []
+    var removeAttachment: @MainActor (Thumb.ID) -> Void = { _ in }
+    /// Pinned chats and Attach image, after the prompt in the Chat tab.
+    var buttons: ChatButtons?
+    var attach: @MainActor () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -22,7 +28,13 @@ struct HUDHeader: View {
                         if let chip {
                             ModelChipButton(chip: chip, toggle: hud.toggleModelMenu)
                         }
+                        if !attachments.isEmpty {
+                            AttachmentThumbs(thumbs: attachments, remove: removeAttachment)
+                        }
                         PromptField(hud: hud)
+                        if let buttons {
+                            ChatHeaderButtons(buttons: buttons, togglePinned: hud.togglePinnedList, attach: attach)
+                        }
                     }
                 }
             }

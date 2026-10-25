@@ -84,17 +84,14 @@ public protocol LinkOpener: AnyObject {
     func open(_ url: URL)
 }
 
-/// The clipboard, for Copy. Plain text only.
+/// The clipboard: Copy writes plain text only; ⌘V can read images (F17).
 @MainActor
 public protocol Pasteboard: AnyObject {
     func copy(_ text: String)
-}
-
-/// Asks the user for a folder (the service form's Choose…).
-@MainActor
-public protocol FolderPicker: AnyObject {
-    /// The folder's path, or nil if the user cancelled. The panel opens on `path`.
-    func chooseFolder(startingAt path: String) async -> String?
+    /// The clipboard holds images, or image files: ⌘V attaches them rather than pasting text.
+    var hasImages: Bool { get }
+    /// The first `limit` of those images, read, and how many there are in all.
+    func readImages(limit: Int) -> OfferedImages
 }
 
 /// Whether HeadsUp opens at login, as macOS reports it.

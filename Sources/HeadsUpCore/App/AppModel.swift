@@ -20,7 +20,9 @@ public final class AppModel {
         public var powerSource: PowerSource
         public var serviceLauncher: ServiceLauncher
         public var portProbe: PortProbe
-        public var folderPicker: FolderPicker
+        public var openPanels: OpenPanels
+        /// Decodes and cleans chat images (F17): ImageIO on macOS.
+        public var imageProcessor: ImageProcessor
         public var terminalLauncher: TerminalLauncher
         /// Endpoint tokens: the Keychain on macOS.
         public var secrets: SecretStore
@@ -37,6 +39,8 @@ public final class AppModel {
         public var environment: [String: String]
         /// Where settings.json lives; nil keeps settings in memory only.
         public var dataFolder: URL?
+        /// Where pinned chats are kept; nil is headsup.sqlite in `dataFolder`, or memory without one.
+        public var pinnedChats: PinnedChats?
         /// How long a timer minute lasts: 60 s, except in a debug build made with `just app-quick`.
         public var focusSecondsPerMinute: TimeInterval
 
@@ -44,7 +48,8 @@ public final class AppModel {
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
             powerAssertions: PowerAssertions, powerSource: PowerSource, serviceLauncher: ServiceLauncher,
-            portProbe: PortProbe, folderPicker: FolderPicker, terminalLauncher: TerminalLauncher, secrets: SecretStore,
+            portProbe: PortProbe, openPanels: OpenPanels, imageProcessor: ImageProcessor,
+            terminalLauncher: TerminalLauncher, secrets: SecretStore,
             httpClient: HTTPClient, linkOpener: LinkOpener, pasteboard: Pasteboard, llmProvider: LLMProvider? = nil,
             dataFolder: URL?,
             focusSecondsPerMinute: TimeInterval = 60,
@@ -63,7 +68,8 @@ public final class AppModel {
             self.powerSource = powerSource
             self.serviceLauncher = serviceLauncher
             self.portProbe = portProbe
-            self.folderPicker = folderPicker
+            self.openPanels = openPanels
+            self.imageProcessor = imageProcessor
             self.terminalLauncher = terminalLauncher
             self.secrets = secrets
             self.httpClient = httpClient
@@ -87,6 +93,9 @@ public final class AppModel {
     public let commands: CommandStore
     public let endpoints: EndpointService
     public let chat: ChatStore
+    /// The pinned chats: the list, its screen, unpinning and loading.
+    public let pins: PinsStore
+    @ObservationIgnored private let imageProcessor: ImageProcessor
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
@@ -190,12 +199,21 @@ public final class AppModel {
             transport: HTTPTransport(client: ports.httpClient, secrets: ports.secrets), ports: ports.portProbe,
             services: services, clock: ports.clock, scheduler: ports.scheduler, toaster: hud)
         self.endpoints = endpoints
+        let pins = PinsStore(
+            store: ports.pinnedChats ?? ports.dataFolder.map { SQLitePinnedChats(folder: $0) } ?? MemoryPinnedChats(),
+            clock: ports.clock)
+        self.pins = pins
+        imageProcessor = ports.imageProcessor
         let chatStore = ChatStore(
             endpoints: endpoints,
             provider: ports.llmProvider ?? OpenAICompatibleProvider(transport: endpoints.transport),
             clock: ports.clock, scheduler: ports.scheduler, ports: ports.portProbe, links: ports.linkOpener,
-            pasteboard: ports.pasteboard, toaster: hud)
+            pasteboard: ports.pasteboard, imageProcessor: ports.imageProcessor,
+            pins: pins, toaster: hud)
         self.chat = chatStore
+        chatStore.pinCount = { [weak pins] in pins?.count ?? 0 }
+        pins.loadedID = { [weak chatStore] in chatStore?.pinnedID }
+        pins.didDelete = { [weak chatStore] id in chatStore?.pinDeleted(id) }
         hud.attach(chat: chatStore)
         // F6, S2: a guarded button acts only while the HUD is key, 600 ms after it appeared and
         // 600 ms after the HUD became key (ActionGuard).
@@ -207,7 +225,8 @@ public final class AppModel {
         loginItem = ports.loginItem
         systemSettings = ports.systemSettings
         files = ports.files
-        folderPicker = ports.folderPicker
+        openPanels = ports.openPanels
+        pasteboard = ports.pasteboard
         openAtLogin = ports.loginItem.status
         settings.attach(toaster: hud, revealer: ports.files)
 
@@ -234,6 +253,10 @@ public final class AppModel {
             guard let self else { return [] }
             return CommandActions.make(commands: commands) { [weak self] id in self?.runCommand(id) }
         }
+        registry.add(.chat) { [weak chatStore, weak pins, weak hud] in
+            guard let chatStore, let pins, let hud else { return [] }
+            return ChatActions.make(chat: chatStore, pins: pins, hud: hud)
+        }
         focusSource = { [weak focus] in focus?.snapshot ?? .idle(nextLength: 25) }
         caffeineSource = { [weak caffeine] in caffeine?.snapshot ?? .off }
         servicesSource = { [weak services] in services?.snapshot ?? ServicesSnapshot() }
@@ -243,8 +266,9 @@ public final class AppModel {
         switch event {
         case .closed:
             if settingsNotice != nil { noticeSeen = settings.fileProblem }
-            // Closing never stops a reply, unless the chat is cleared on close: then it stops first.
-            if settings.settings.general.clearOnClose { chat.newChat() }
+            // Closing never stops a reply, unless an unpinned chat is cleared on close: then it
+            // stops first. A pinned chat stays.
+            if settings.settings.general.clearOnClose && !chat.isPinned { chat.newChat() }
             endWelcome()
             focus.cancelSnoozeHide()
         case .tabChanged(let tab):
@@ -309,7 +333,8 @@ public final class AppModel {
     @ObservationIgnored private let loginItem: LoginItem
     @ObservationIgnored private let systemSettings: SystemSettingsLinks
     @ObservationIgnored private let files: FileRevealer
-    @ObservationIgnored private let folderPicker: FolderPicker
+    @ObservationIgnored private let openPanels: OpenPanels
+    @ObservationIgnored private let pasteboard: Pasteboard
 
     /// Open at Login, as macOS reports it.
     public private(set) var openAtLogin: LoginItemStatus
@@ -375,17 +400,15 @@ public final class AppModel {
     /// The menu bar menu is open.
     public private(set) var menuOpen = false
 
-    /// What Focus, Caffeine, Services and Pinned chats report to the menu bar. Their slices
-    /// (3, 4, 5, 9) point these at their stores; until then they report idle. Tests set them.
+    /// What Focus, Caffeine and Services report to the menu bar. AppModel points these at their
+    /// stores; tests set them.
     @ObservationIgnored var focusSource: @MainActor () -> FocusSnapshot = { .idle(nextLength: 25) }
     @ObservationIgnored var caffeineSource: @MainActor () -> CaffeineSnapshot = { .off }
     @ObservationIgnored var servicesSource: @MainActor () -> ServicesSnapshot = { ServicesSnapshot() }
-    @ObservationIgnored var pinnedChatsSource: @MainActor () -> Int = { 0 }
 
     var focusSnapshot: FocusSnapshot { focusSource() }
     var caffeineSnapshot: CaffeineSnapshot { caffeineSource() }
     var servicesSnapshot: ServicesSnapshot { servicesSource() }
-    var pinnedChats: Int { pinnedChatsSource() }
 
     /// The menu bar item now. The shell redraws it when this changes, and at `nextChange`.
     public var statusItem: StatusItemModel {
@@ -401,7 +424,7 @@ public final class AppModel {
     public var menu: MenuModel {
         MenuModel(
             hotkey: hud.hotkey, focus: focusSnapshot, caffeine: caffeineSnapshot, services: servicesSnapshot,
-            pinnedChats: pinnedChats, now: clock.now)
+            pinnedChats: pins.count, now: clock.now)
     }
 
     /// A left click on the menu bar item. An orange Focus item leads to the Focus tab
@@ -486,7 +509,8 @@ public final class AppModel {
                     systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                     powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                     serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
-                    folderPicker: FakeFolderPicker(), terminalLauncher: FakeTerminalLauncher(),
+                    openPanels: FakeOpenPanels(), imageProcessor: FakeImageProcessor(),
+                    terminalLauncher: FakeTerminalLauncher(),
                     secrets: MemorySecretStore(), httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(),
                     pasteboard: FakePasteboard(), dataFolder: nil),
                 settings: settings)
@@ -516,6 +540,8 @@ public enum HUDBody: Equatable, Sendable {
     case modelMenu
     /// The Chat tab's conversation, once it has a message.
     case conversation
+    /// The Pinned list, in place of the conversation.
+    case pinnedList
     /// The first-run welcome, on Chat.
     case welcome
     /// Nothing: the HUD collapses to its header and footer.
@@ -524,7 +550,8 @@ public enum HUDBody: Equatable, Sendable {
 
 extension AppModel {
     /// The body, by precedence: the model menu, then suggestions, then Focus, then Caffeine,
-    /// then Services, then Commands, then Settings, then the welcome on Chat.
+    /// then Services, then Commands, then Settings, then the Pinned list, then the conversation,
+    /// then the welcome on Chat.
     public var body: HUDBody {
         if hud.modelMenuOpen { return .modelMenu }
         if !hud.suggestions.isEmpty { return .suggestions }
@@ -533,6 +560,7 @@ extension AppModel {
         if hud.tab == .services { return .services }
         if hud.tab == .commands { return .commands }
         if hud.tab == .settings { return .settings }
+        if hud.tab == .chat && hud.chatView == .pinned { return .pinnedList }
         if hud.tab == .chat && hud.chatView == .conversation && chat.hasMessages { return .conversation }
         if hud.tab == .chat && showsWelcome { return .welcome }
         return .empty
@@ -649,7 +677,7 @@ extension AppModel {
     private func chooseFolder(startingAt start: String, then chosen: @escaping (String) -> Void) -> Task<Void, Never> {
         hud.beginModal()
         return Task { @MainActor in
-            let folder = await folderPicker.chooseFolder(startingAt: start)
+            let folder = await openPanels.chooseFolder(startingAt: start)
             hud.endModal()
             if let folder { chosen(folder) }
         }
@@ -740,6 +768,75 @@ extension AppModel {
 }
 
 extension AppModel {
+    // MARK: Images and pins
+
+    /// The header's Pinned chats and Attach image buttons; nil off the Chat tab.
+    public var chatButtons: ChatButtons? {
+        guard hud.tab == .chat else { return nil }
+        return ChatButtons(
+            pinned: ChatButtons.Pinned(
+                help: Strings.Attachments.pinnedChats, accessibilityLabel: Strings.Attachments.pinnedChats,
+                isOn: hud.chatView == .pinned),
+            attach: ChatButtons.Attach(
+                help: Strings.Attachments.attachHelp, accessibilityLabel: Strings.Attachments.attach))
+    }
+
+    /// Attach image: the open panel for images. The HUD stays open while it shows. Only what
+    /// fits is read; the chat counts the rest for the notice.
+    @discardableResult
+    public func pickImages() -> Task<Void, Never> {
+        hud.beginModal()
+        let limit = chat.imageRoom
+        return Task { @MainActor in
+            let picked = await openPanels.chooseImages(limit: limit)
+            hud.endModal()
+            await chat.attach(picked.inputs, offered: picked.offered)?.value
+        }
+    }
+
+    /// ⌘V while the clipboard holds images (the key monitor asks `pasteboard.hasImages` first;
+    /// text paste stays the prompt's own). False when there were none.
+    @discardableResult
+    public func pasteImages() -> Bool {
+        guard pasteboard.hasImages else { return false }
+        let pasted = pasteboard.readImages(limit: chat.imageRoom)
+        chat.attach(pasted.inputs, offered: pasted.offered)
+        return true
+    }
+
+    /// Whether ⌘V should attach images rather than paste text.
+    public var clipboardHasImages: Bool { pasteboard.hasImages }
+
+    /// A button on the image notice.
+    public func performAttachmentNotice(_ kind: NoticeAction.Kind) {
+        switch kind {
+        case .switchModel(let id): selectModel(id)
+        case .removeImages: chat.removeAllAttachments()
+        case .openSettings: hud.showSettings(.models)
+        }
+    }
+
+    /// A row of the Pinned list: the chat replaces the conversation (a reply stops first), the
+    /// list closes and the prompt is cleared.
+    /// A chat that can't be read stays out, and the list says so. Its thumbnails are made once,
+    /// off the main actor, after it shows (Rev 4): the stored images are full size.
+    @discardableResult
+    public func loadPinned(_ id: String) -> Task<Void, Never>? {
+        guard let stored = pins.open(id) else { return nil }
+        chat.restore(stored)
+        if hud.chatView == .pinned { hud.togglePinnedList() }
+        hud.setInput("")
+        let images = stored.images.mapValues(\.data)
+        guard !images.isEmpty else { return nil }
+        let processor = imageProcessor
+        return Task { [weak self] in
+            let previews = await Task.detached(priority: .userInitiated) {
+                images.compactMapValues { data in try? processor.preview(data) }
+            }.value
+            self?.chat.setPreviews(previews)
+        }
+    }
+
     // MARK: Chat
 
     /// A problem row's button. Each joins the chat with the endpoints, the services or the HUD.

@@ -178,20 +178,62 @@ import Foundation
     @MainActor
     public final class FakePasteboard: Pasteboard {
         public private(set) var copied: [String] = []
+        /// The images on the clipboard.
+        public var images: [ImageInput] = []
         public init() {}
         public func copy(_ text: String) { copied.append(text) }
+        public var hasImages: Bool { !images.isEmpty }
+        public func readImages(limit: Int) -> OfferedImages {
+            OfferedImages(inputs: Array(images.prefix(limit)), offered: images.count)
+        }
     }
 
     /// A folder panel that answers what the test says, and remembers where it opened.
     @MainActor
-    public final class FakeFolderPicker: FolderPicker {
+    public final class FakeOpenPanels: OpenPanels {
         /// The folder the user picks; nil is Cancel.
         public var answer: String?
         public private(set) var openedAt: [String] = []
+        /// The images the user picks; empty is Cancel.
+        public var images: [ImageInput] = []
+        public private(set) var imageLimits: [Int] = []
         public init() {}
         public func chooseFolder(startingAt path: String) async -> String? {
             openedAt.append(path)
             return answer
+        }
+        public func chooseImages(limit: Int) async -> OfferedImages {
+            imageLimits.append(limit)
+            return OfferedImages(inputs: Array(images.prefix(limit)), offered: images.count)
+        }
+    }
+
+    /// Images "processed" without ImageIO: the data comes back as it went in, as a JPEG. Its
+    /// "header" is a PNG of 100 × 80, or what data starting "hdr:<type>:<width>x<height>;" says,
+    /// and it goes through the same `ImageLimits` as the real one. Data starting "bad" is not an
+    /// image. It records each input it was given.
+    public final class FakeImageProcessor: ImageProcessor, @unchecked Sendable {
+        private let lock = NSLock()
+        private var seen: [ImageInput] = []
+        public init() {}
+        public var processed: [ImageInput] { lock.withLock { seen } }
+        public func process(_ input: ImageInput) throws(ImageError) -> ProcessedImage {
+            lock.withLock { seen.append(input) }
+            if input.data.starts(with: Array("bad".utf8)) { throw .notAnImage }
+            let (type, width, height) = Self.header(input.data)
+            try ImageLimits.check(type: type, width: width, height: height)
+            return ProcessedImage(
+                data: input.data, mime: .jpeg, pixelWidth: min(width, 2048), pixelHeight: min(height, 2048),
+                preview: Data("preview".utf8))
+        }
+        public func preview(_ data: Data) throws(ImageError) -> Data { Data("preview".utf8) }
+
+        private static func header(_ data: Data) -> (String, Int, Int) {
+            let text = String(decoding: data.prefix(80), as: UTF8.self)
+            guard text.hasPrefix("hdr:"), let end = text.firstIndex(of: ";") else { return ("public.png", 100, 80) }
+            let parts = text[text.index(text.startIndex, offsetBy: 4)..<end].split(separator: ":")
+            let size = parts.last?.split(separator: "x").compactMap { Int($0) } ?? []
+            return (String(parts.first ?? ""), size.first ?? 0, size.last ?? 0)
         }
     }
 

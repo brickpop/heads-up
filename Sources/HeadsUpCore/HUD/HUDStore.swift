@@ -18,16 +18,22 @@ public protocol Toaster: AnyObject {
 }
 
 /// What the HUD needs from the chat: who Ask asks, whether a conversation shows, sending,
-/// and the keys that stop it or start again.
+/// and the keys that stop it, start again or pin it.
 @MainActor
 public protocol HUDChat: AnyObject {
     var askTarget: AskTarget { get }
     var hasMessages: Bool { get }
     /// A reply is coming: Enter waits, and ⌘. stops it.
     var isBusy: Bool { get }
+    /// Images wait to be sent: Enter sends even with an empty prompt.
+    var hasAttachments: Bool { get }
+    /// The model can't see the attached images: Enter does nothing.
+    var isSendBlocked: Bool { get }
     func send(_ text: String)
     func stop()
     func newChat()
+    /// ⌘P: pins the chat, or unpins it.
+    func togglePin()
 }
 
 /// Something that happened in the HUD, reported to AppModel through `HUDStore.onEvent`.
@@ -334,16 +340,19 @@ public final class HUDStore: Navigator, Toaster {
         }
     }
 
-    /// Sends the input to the chat; with no model, opens Settings → Models and keeps the text.
+    /// Sends the input, and the images attached, to the chat; with no model, opens Settings →
+    /// Models and keeps the text. Images alone are a message too.
     private func ask() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || chat.hasAttachments else { return }
         // Enter waits while a reply comes: no queue, and nothing is cancelled.
         guard !chat.isBusy else { return }
         if chat.askTarget == .noModel {
             showSettings(.models)
             return
         }
+        // The model can't see the images: the vision notice says so, and the text stays.
+        guard !chat.isSendBlocked else { return }
         selectTab(.chat)
         setInput("")
         chat.send(text)
@@ -378,6 +387,11 @@ public final class HUDStore: Navigator, Toaster {
         case KeyCode.n:
             selectTab(.chat)
             chat.newChat()
+            return true
+        case KeyCode.p:
+            // ⌘P pins or unpins the chat, on the Chat tab.
+            guard tab == .chat else { return false }
+            chat.togglePin()
             return true
         case KeyCode.period:
             // ⌘. stops a reply; Esc never does.

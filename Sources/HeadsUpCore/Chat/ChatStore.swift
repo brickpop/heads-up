@@ -57,10 +57,27 @@ public final class ChatStore: HUDChat {
         case streaming
     }
 
-    public private(set) var items: [ChatItem] = []
+    public internal(set) var items: [ChatItem] = []
     public private(set) var phase: Phase = .idle
     /// "Open this link?", waiting for an answer.
     public private(set) var pendingLink: PendingLink?
+
+    /// The images waiting to be sent with the next message, in the order attached
+    /// (ChatAttachments.swift).
+    var pending: [Attachment] = []
+    /// Images still being read: they count towards the 5.
+    var processing = 0
+    /// Why images weren't added, until the ×, a removed image or the next message.
+    var attachmentProblem: AttachmentProblem?
+    /// The conversation's images, by id: sent with their message, kept in a pin.
+    var images: [String: ProcessedImage] = [:]
+
+    /// The pinned chat this conversation is linked to, if any (ChatPins.swift).
+    var pin: PinLink?
+    /// A pin, save or unpin that failed, until the next success (ChatPins.swift).
+    var pinProblem: PinProblem?
+    /// The 240 × 160 thumbnails of the conversation's images, by id.
+    var previews: [String: Data] = [:]
 
     /// How many times a reply may ask for tools before the step-limit row.
     static let maxSteps = 8
@@ -74,11 +91,18 @@ public final class ChatStore: HUDChat {
     @ObservationIgnored private let provider: LLMProvider
     @ObservationIgnored private let tools: ToolRunner
     @ObservationIgnored let clock: Clock
-    @ObservationIgnored private let scheduler: Scheduler
+    @ObservationIgnored let scheduler: Scheduler
     @ObservationIgnored private let ports: PortProbe
     @ObservationIgnored private let links: LinkOpener
     @ObservationIgnored private let pasteboard: Pasteboard
-    @ObservationIgnored private weak var toaster: Toaster?
+    @ObservationIgnored let imageProcessor: ImageProcessor
+    @ObservationIgnored let pins: PinSaving
+    /// When the pin was last written, and the write waiting for the 500 ms to pass.
+    /// How many chats are pinned, for "Pinned · N". AppModel points it at the pins store.
+    @ObservationIgnored var pinCount: @MainActor () -> Int = { 0 }
+    @ObservationIgnored var lastPinSave: Date?
+    @ObservationIgnored var pinSave: ScheduledWork?
+    @ObservationIgnored weak var toaster: Toaster?
     /// When a guarded button shown at `shownAt` starts taking input, or nil while the HUD isn't
     /// key (`ActionGuard`, F6, S2). AppModel sets it.
     @ObservationIgnored var armedAt: @MainActor (_ shownAt: Date) -> Date? = { $0 }
@@ -102,7 +126,9 @@ public final class ChatStore: HUDChat {
 
     init(
         endpoints: EndpointService, provider: LLMProvider, tools: ToolRunner = NoTools(), clock: Clock,
-        scheduler: Scheduler, ports: PortProbe, links: LinkOpener, pasteboard: Pasteboard, toaster: Toaster
+        scheduler: Scheduler, ports: PortProbe, links: LinkOpener, pasteboard: Pasteboard,
+        imageProcessor: ImageProcessor,
+        pins: PinSaving, toaster: Toaster
     ) {
         self.endpoints = endpoints
         self.provider = provider
@@ -112,6 +138,8 @@ public final class ChatStore: HUDChat {
         self.ports = ports
         self.links = links
         self.pasteboard = pasteboard
+        self.imageProcessor = imageProcessor
+        self.pins = pins
         self.toaster = toaster
     }
 
@@ -120,21 +148,34 @@ public final class ChatStore: HUDChat {
     public var askTarget: AskTarget { endpoints.active.map { .model(name: $0.name) } ?? .noModel }
     public var hasMessages: Bool { !items.isEmpty }
     public var isBusy: Bool { phase != .idle }
+    public var hasAttachments: Bool { !pending.isEmpty }
+    /// Images are attached and the model can't see them: Enter doesn't send (UX part 1, §6).
+    public var isSendBlocked: Bool { !pending.isEmpty && endpoints.active?.images != true }
 
     // MARK: Sending
 
-    /// Enter, or Ask <model>. Nothing happens while a reply is coming: Enter waits.
+    /// Enter, or Ask <model>, with the images attached; a message may be images only. Nothing
+    /// happens while a reply is coming (Enter waits), or while the model can't see the images.
     public func send(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !isBusy, !text.isEmpty else { return }
+        guard !isBusy, !text.isEmpty || !pending.isEmpty else { return }
+        guard !isSendBlocked else { return }
         supersedeRows()
         pendingLink = nil
-        items.append(.message(ChatMessage(role: .user, text: text)))
+        for attachment in pending {
+            images[attachment.id] = attachment.image
+            previews[attachment.id] = attachment.image.preview
+        }
+        items.append(.message(ChatMessage(role: .user, text: text, imageIDs: pending.map(\.id))))
+        pending = []
+        attachmentProblem = nil
         guard let endpoint = endpoints.active else {
             items.append(.problem(Problem(kind: .noEndpoint, shownAt: clock.now)))
+            savePin()
             return
         }
         start(endpoint, steps: Self.maxSteps)
+        savePin()
     }
 
     /// ⌘. or Stop: the reply keeps its text and ends with "Stopped".
@@ -144,14 +185,29 @@ public final class ChatStore: HUDChat {
         flushText()
         updateReply { $0.state = .stopped }
         phase = .idle
+        savePin()
     }
 
-    /// ⌘N: stops, then forgets the conversation.
+    /// ⌘N: stops, then forgets the conversation and the images waiting to be sent. A pinned
+    /// chat stays pinned; this one is no longer linked to it.
     public func newChat() {
         stop()
+        clearConversation()
+    }
+
+    /// Forgets the conversation, its images and its link to a pin.
+    func clearConversation() {
         cancelRun()
         startWait?.cancel()
+        pinSave?.cancel()
+        pinSave = nil
         items = []
+        images = [:]
+        previews = [:]
+        pinProblem = nil
+        pending = []
+        attachmentProblem = nil
+        pin = nil
         pendingLink = nil
         streamingParsers = [:]
         parsed = [:]
@@ -222,7 +278,7 @@ public final class ChatStore: HUDChat {
     private func loop(_ endpoint: Endpoint, steps: Int, run id: UUID) async {
         for step in 1...steps {
             let reply = ChatMessage(role: .assistant, text: "", state: .streaming, model: endpoint.name)
-            let context = conversation()
+            let context = conversation(for: endpoint)
             items.append(.message(reply))
             phase = .waiting
             var calls: [ToolCall] = []
@@ -266,6 +322,8 @@ public final class ChatStore: HUDChat {
                 guard run == id, !Task.isCancelled else { return }
                 items.append(.toolResult(id: UUID().uuidString, callID: call.id, envelope: outcome.envelope))
             }
+            // A finished step is kept at once in a pinned chat.
+            savePin()
             if step == steps {
                 items.append(
                     .problem(
@@ -293,18 +351,34 @@ public final class ChatStore: HUDChat {
         run = nil
         task = nil
         phase = .idle
+        savePin()
     }
 
     /// The system prompt, then every message, with tool calls and their results, as the model
-    /// reads them. Rows and the reply being written aren't sent.
-    private func conversation() -> [LLMMessage] {
+    /// reads them. Rows and the reply being written aren't sent. Only the newest user message
+    /// sends its images, and only to a model that sees images; any other image is sent as
+    /// "[image omitted]" (ADR-001 §8.2).
+    private func conversation(for endpoint: Endpoint) -> [LLMMessage] {
         var messages = [
             LLMMessage.text(.system, SystemPrompt.v1(now: clock.now, timeZone: .current, locale: .current))
         ]
+        let newestUser = items.last { if case .message(let m) = $0 { m.role == .user } else { false } }?.id
         for item in items {
             switch item {
             case .message(let message) where message.role == .user:
-                messages.append(.text(.user, message.text))
+                guard !message.imageIDs.isEmpty else {
+                    messages.append(.text(.user, message.text))
+                    continue
+                }
+                let sent = message.id == newestUser && endpoint.images ? message.imageIDs.compactMap { images[$0] } : []
+                if sent.isEmpty {
+                    let omitted = Array(repeating: Strings.Chat.imageOmitted, count: message.imageIDs.count)
+                    let text = ([message.text] + omitted).filter { !$0.isEmpty }.joined(separator: "\n")
+                    messages.append(.text(.user, text))
+                } else {
+                    let text: [LLMMessage.Part] = message.text.isEmpty ? [] : [.text(message.text)]
+                    messages.append(LLMMessage(role: .user, parts: text + sent.map { .imageDataURL($0.dataURL) }))
+                }
             case .message(let message) where message.state != .streaming:
                 guard !message.text.isEmpty || !message.toolCalls.isEmpty else { continue }
                 messages.append(
@@ -351,6 +425,7 @@ public final class ChatStore: HUDChat {
         let text = pendingText
         pendingText = ""
         updateReply { $0.text += text }
+        savePinSoon()
     }
 
     /// A new message takes the buttons off the rows before it.

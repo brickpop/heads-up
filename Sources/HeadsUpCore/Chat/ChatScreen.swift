@@ -12,11 +12,33 @@ public struct ChatScreen: Equatable, Sendable {
         public let newHelp: String
         /// "Stop", while a reply comes: `chat.stop()`, also ⌘.
         public let stop: String?
+        /// Whether the chat is kept: a gray dot, or an accent one when pinned.
+        public let saved: Saved
+        /// "Not saved · cleared on ⌘N or quit", or "Pinned · kept until you unpin it".
+        public let saveLabel: String
+        /// "Pinned · 3": `hud.togglePinnedList()`.
+        public let pinnedList: String
+        /// Pin / Pinned: `chat.togglePin()`, also ⌘P.
+        public let pin: Pin
+        /// A pin, save or unpin that failed: shown in place of `saveLabel`, never as a toast.
+        public let problem: PinProblemScreen?
+
+        public enum Saved: Equatable, Sendable {
+            case ephemeral, pinned
+        }
+
+        public struct Pin: Equatable, Sendable {
+            /// "Pin", or "Pinned" while on.
+            public let title: String
+            public let isOn: Bool
+            public let help: String
+        }
     }
 }
 
 public enum MessageScreen: Equatable, Sendable, Identifiable {
-    case user(id: String, text: String, accessibilityLabel: String)
+    /// What the user wrote, with its images above it; it may be images only.
+    case user(id: String, text: String, images: [Thumb], accessibilityLabel: String)
     case assistant(AssistantScreen)
     case problem(ProblemRow)
     /// "Open this link?", after the message holding the link.
@@ -24,7 +46,7 @@ public enum MessageScreen: Equatable, Sendable, Identifiable {
 
     public var id: String {
         switch self {
-        case .user(let id, _, _): id
+        case .user(let id, _, _, _): id
         case .assistant(let reply): reply.id
         case .problem(let row): row.id
         case .linkAsk(let ask): ask.id
@@ -283,8 +305,8 @@ extension ChatStore {
             case .message(let message) where message.role == .user:
                 messages.append(
                     .user(
-                        id: message.id, text: stripControls(message.text),
-                        accessibilityLabel: Strings.Chat.youSaid(message.text)))
+                        id: message.id, text: stripControls(message.text), images: thumbs(message),
+                        accessibilityLabel: Strings.Chat.youSaid(message.text, images: message.imageIDs.count)))
             case .message(let message):
                 guard let reply = assistant(message) else { continue }
                 messages.append(reply)
@@ -305,8 +327,25 @@ extension ChatStore {
         }
         return ChatScreen(
             toolbar: ChatScreen.Toolbar(
-                new: Strings.Chat.new, newHelp: Strings.Chat.newHelp, stop: isBusy ? Strings.Chat.stop : nil),
+                new: Strings.Chat.new, newHelp: Strings.Chat.newHelp, stop: isBusy ? Strings.Chat.stop : nil,
+                saved: isPinned ? .pinned : .ephemeral,
+                saveLabel: isPinned ? Strings.Chat.pinnedKept : Strings.Chat.notSaved,
+                pinnedList: Strings.Chat.pinnedList(pinCount()),
+                pin: ChatScreen.Toolbar.Pin(
+                    title: isPinned ? Strings.Chat.pinned : Strings.Chat.pin, isOn: isPinned,
+                    help: isPinned ? Strings.Chat.unpinHelp : Strings.Chat.pinHelp),
+                problem: pinProblemScreen),
             messages: messages)
+    }
+
+    /// A user message's images, above its bubble. They were sent: no warning badge, no ×.
+    private func thumbs(_ message: ChatMessage) -> [Thumb] {
+        message.imageIDs.enumerated().map { index, id in
+            let name = Strings.Attachments.sentName(index + 1, of: message.imageIDs.count)
+            return Thumb(
+                id: id, preview: previews[id], name: name, accessibilityLabel: name, removeLabel: "",
+                hasWarning: false)
+        }
     }
 
     private func assistant(_ message: ChatMessage) -> MessageScreen? {

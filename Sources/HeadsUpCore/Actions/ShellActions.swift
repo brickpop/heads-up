@@ -49,3 +49,30 @@ enum ShellActions {
         }
     }
 }
+
+/// The Chat section of the catalogue (Action autocomplete spec): Pinned chats, New chat.
+@MainActor
+enum ChatActions {
+    static func make(chat: ChatStore, pins: PinsStore, hud: HUDStore) -> [Action] {
+        [
+            Action(
+                id: ActionID("chat.pinned"), title: Strings.Chat.pinnedChats,
+                subtitle: Strings.Chat.pinnedSaved(pins.count), kind: .chat, glyph: .pin,
+                keywords: "pinned saved history chats", suggest: .never,
+                run: { [weak hud] in
+                    guard let hud else { return }
+                    hud.selectTab(.chat)
+                    if hud.chatView != .pinned { hud.togglePinnedList() }
+                }),
+            // F1 lists New chat among the actions a model may suggest in one click.
+            Action(
+                id: ActionID("chat.new"), title: Strings.Chat.newChat,
+                subtitle: Strings.Chat.newChatSubtitle, kind: .chat, glyph: .plus,
+                keywords: "new chat clear reset", suggest: .oneClick,
+                run: { [weak chat, weak hud] in
+                    hud?.selectTab(.chat)
+                    chat?.newChat()
+                }),
+        ]
+    }
+}

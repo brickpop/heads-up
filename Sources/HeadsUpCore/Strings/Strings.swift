@@ -85,16 +85,17 @@ public enum Strings {
             Hint(keys: ["↓"], label: "ask instead"),
             Hint(keys: ["esc"], label: "clear"),
         ]
-        /// ⌘P pin joins with pinned chats.
         public static let chat = [
             Hint(keys: ["⏎"], label: "send"),
             Hint(keys: ["/"], label: "actions"),
+            Hint(keys: ["⌘P"], label: "pin"),
             Hint(keys: ["⌘N"], label: "new"),
         ]
-        /// While a reply comes (UX part 1, §5). ⌘P joins with pinned chats.
+        /// While a reply comes (UX part 1, §5).
         public static let chatBusy = [
             Hint(keys: ["⌘."], label: "stop"),
             Hint(keys: ["/"], label: "actions"),
+            Hint(keys: ["⌘P"], label: "pin"),
             Hint(keys: ["⌘N"], label: "new"),
         ]
         public static let otherTab = [
@@ -947,11 +948,122 @@ public enum Strings {
 
     /// The conversation (Chat spec; UX part 1, §4, §5, §8; addenda 3–4). Copy marked
     /// "placeholder" waits for Yuki.
+    /// Images attached to the next message (Chat spec, Images; UX part 1, §6–7; addendum 4).
+    public enum Attachments {
+        /// The name of an image pasted as data, without a file name.
+        public static let pastedName = "Pasted image"
+        /// A sent image, above its message: "Image", or "Image 2 of 3".
+        public static func sentName(_ number: Int, of count: Int) -> String {
+            count == 1 ? "Image" : "Image \(number) of \(count)"
+        }
+        public static func label(_ name: String) -> String { "Image \(name)" }
+        /// VoiceOver for a thumbnail the model can't see: "Screenshot 1.png, can't be seen by Llama 3.1 8B".
+        public static func unseenLabel(_ name: String, model: String) -> String { "\(name), can't be seen by \(model)" }
+        /// Refused before decoding (Scan L1; Yuki, msg-838). When others in the batch were added,
+        /// the advice to try smaller copies is left out.
+        public static func tooLarge(_ count: Int, someAdded: Bool) -> String {
+            if someAdded {
+                return count == 1
+                    ? "1 image wasn't attached because it's too big."
+                    : "\(count) images weren't attached because they're too big."
+            }
+            return count == 1
+                ? "This image is too big to attach. Try a smaller copy or a screenshot of it."
+                : "\(count) images are too big to attach. Try smaller copies."
+        }
+        /// "Remove image Screenshot 1"
+        public static func remove(_ name: String) -> String { "Remove image \(name)" }
+        // The header buttons (UX part 2, labels for icon-only buttons)
+        public static let pinnedChats = "Pinned chats"
+        public static let attach = "Attach image"
+        public static let attachHelp = "Attach images"
+        // The vision notice (UX part 1, §6)
+        public static func cantSee(_ model: String) -> String { "\(model) can't see images." }
+        public static func switchTo(_ model: String) -> String { "Switch to \(model)" }
+        public static let removeImage = "Remove image"
+        public static let removeImages = "Remove images"
+        public static let noModelSees = "None of your models can see images."
+        public static let addModel = "Add a model to send images."
+        public static let openSettings = "Open Settings"
+        // The limit of 5 (addendum 4)
+        /// "You can send up to 5 images at a time. 1 image wasn't added."
+        public static func tooMany(notAdded: Int) -> String {
+            let count = notAdded == 1 ? "1 image wasn't added." : "\(notAdded) images weren't added."
+            return "You can send up to 5 images at a time. " + count
+        }
+        public static let limitReached = "You can send up to 5 images at a time."
+        public static let close = "Close"
+        // The drop zone (UX part 1, §7; addendum 4)
+        public static let dropToAttach = "Drop to attach"
+        /// "Drop to attach 3 of 7 images (up to 5 per message)"
+        public static func dropSome(_ count: Int, of total: Int) -> String {
+            "Drop to attach \(count) of \(total) images (up to 5 per message)"
+        }
+        public static let onlyImages = "Only images can be attached"
+        public static let onlyTheImages = "Only the images will be attached"
+    }
+
     public enum Chat {
         // The toolbar
         public static let new = "New"
         public static let newHelp = "New chat (⌘N)"
         public static let stop = "Stop"
+        // Whether the chat is kept (Chat spec, the toolbar; Pinned chats spec)
+        public static let notSaved = "Not saved · cleared on ⌘N or quit"
+        public static let pinnedKept = "Pinned · kept until you unpin it"
+        public static func pinnedList(_ count: Int) -> String { "Pinned · \(count)" }
+        public static let pin = "Pin"
+        public static let pinned = "Pinned"
+        public static let pinHelp = "Pin this chat (⌘P)"
+        public static let unpinHelp = "Unpin this chat (⌘P)"
+        public static let chatPinned = "Chat pinned"
+        public static let chatUnpinned = "Unpinned. This chat is ephemeral again"
+        // When saving fails (Pinned chats spec): the reason in plain words, or no parentheses.
+        public static func pinFailed(_ reason: String?) -> String { "Couldn't pin this chat\(because(reason))." }
+        public static func saveFailed(_ reason: String?) -> String {
+            "Pinned, but the latest messages aren't saved\(because(reason))."
+        }
+        public static func unpinFailed(_ reason: String?) -> String { "Couldn't unpin this chat\(because(reason))." }
+        public static func pinnedListFailed(_ reason: String?) -> String {
+            "Couldn't read your pinned chats\(because(reason))."
+        }
+        private static func because(_ reason: String?) -> String { reason.map { " (\($0))" } ?? "" }
+        public static let tryAgainTitle = "Try Again"
+        public static let newChatSubtitle = "clear the current conversation"
+        public static func openFailed(_ reason: String?) -> String { "Couldn't open this chat\(because(reason))." }
+        /// A pinned chat's title when its first message has only images.
+        public static let imageConversation = "Image conversation"
+        // The Pinned list
+        public static let pinnedChats = "Pinned chats"
+        public static let backToChat = "Back to chat"
+        public static let nothingPinned =
+            "Nothing pinned. Chats disappear when you start a new one unless you pin them."
+        /// "4 messages · GPT-4o mini"
+        public static func pinnedMeta(messages: Int, model: String) -> String {
+            "\(messages) \(messages == 1 ? "message" : "messages") · \(model)"
+        }
+        public static func unpin(_ title: String) -> String { "Unpin \(title)" }
+        /// "Weekly plan, 4 messages, GPT-4o mini, Yesterday"
+        public static func pinnedRowLabel(title: String, meta: String, date: String) -> String {
+            "\(title), \(meta.replacingOccurrences(of: " · ", with: ", ")), \(date)"
+        }
+        /// "Just now", "12 min ago", "5 h ago", "Yesterday", then the short local date: "Oct 21".
+        public static func pinnedDate(
+            _ date: Date, now: Date, locale: Locale = .current, timeZone: TimeZone = .current
+        ) -> String {
+            let text = Services.ago(date, now: now, locale: locale, timeZone: timeZone)
+            return text.prefix(1).uppercased() + text.dropFirst()
+        }
+        /// The "Pinned chats" action's subtitle.
+        public static func pinnedSaved(_ count: Int) -> String { "\(count) saved" }
+        /// VoiceOver for a message with images: "You: what's wrong here?, 2 images".
+        public static func youSaid(_ text: String, images: Int) -> String {
+            guard images > 0 else { return youSaid(text) }
+            let count = images == 1 ? "1 image" : "\(images) images"
+            return text.isEmpty ? "You: \(count)" : "You: \(text), \(count)"
+        }
+        /// What an older image becomes in what is sent: only the newest message's images go.
+        static let imageOmitted = "[image omitted]"
 
         // A reply
         public static func thinking(_ model: String) -> String { "Thinking with \(model)…" }

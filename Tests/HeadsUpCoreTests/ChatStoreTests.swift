@@ -32,7 +32,8 @@ private final class ChatHarness {
                 clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
-                serviceLauncher: launcher, portProbe: probe, folderPicker: FakeFolderPicker(),
+                serviceLauncher: launcher, portProbe: probe, openPanels: FakeOpenPanels(),
+                imageProcessor: FakeImageProcessor(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: links, pasteboard: pasteboard, llmProvider: provider, dataFolder: nil),
             settings: settings)

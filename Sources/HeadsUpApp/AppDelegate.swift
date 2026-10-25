@@ -35,7 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
                 powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
-                folderPicker: OpenPanelFolderPicker(), terminalLauncher: SystemTerminalLauncher(),
+                openPanels: OpenPanelsAdapter(), imageProcessor: ImageIOProcessor(),
+                terminalLauncher: SystemTerminalLauncher(),
                 secrets: KeychainSecretStore(), httpClient: URLSessionHTTPClient(),
                 linkOpener: WorkspaceLinkOpener(), pasteboard: GeneralPasteboard(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
@@ -168,6 +169,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return true
         }
+        // ⌘V with images on the clipboard attaches them; text paste stays the prompt's own. By
+        // the character, as the Edit menu matches it, so it is ⌘V on every layout.
+        if shortcut.modifiers == .command, shortcut.key == "V", model.clipboardHasImages {
+            return model.pasteImages()
+        }
         if !shortcut.modifiers.isEmpty {
             return hud.handleShortcut(shortcut)
         }
@@ -188,6 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.moveSelection(1)
         case Key.escape:
             model.escape()
+        // Backspace in an empty prompt removes the last image, if there is one.
+        case Key.delete where hud.input.isEmpty:
+            return model.chat.removeLastAttachment()
         default:
             return false
         }
@@ -199,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         static let returnKey = 36
         static let keypadEnter = 76
         static let escape = 53
+        static let delete = 51
         static let downArrow = 125
         static let upArrow = 126
     }

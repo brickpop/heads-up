@@ -24,6 +24,8 @@ public final class Database {
     public enum Value: Equatable, Sendable {
         case integer(Int64)
         case text(String)
+        /// Bytes, such as an image (Scan I6): never read as text, which would stop at a zero byte.
+        case blob(Data)
         case null
     }
 
@@ -177,6 +179,10 @@ public final class Database {
                 switch value {
                 case .integer(let number): sqlite3_bind_int64(statement, position, number)
                 case .text(let text): sqlite3_bind_text(statement, position, text, -1, Self.transient)
+                case .blob(let data):
+                    data.withUnsafeBytes { bytes in
+                        sqlite3_bind_blob(statement, position, bytes.baseAddress, Int32(bytes.count), Self.transient)
+                    }
                 case .null: sqlite3_bind_null(statement, position)
                 }
             guard status == SQLITE_OK else { throw Failure(message: lastError) }
@@ -192,6 +198,11 @@ public final class Database {
                     switch sqlite3_column_type(statement, column) {
                     case SQLITE_INTEGER: .integer(sqlite3_column_int64(statement, column))
                     case SQLITE_NULL: .null
+                    case SQLITE_BLOB:
+                        .blob(
+                            sqlite3_column_blob(statement, column).map {
+                                Data(bytes: $0, count: Int(sqlite3_column_bytes(statement, column)))
+                            } ?? Data())
                     default: .text(String(cString: sqlite3_column_text(statement, column)))
                     }
                 })
