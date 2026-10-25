@@ -58,6 +58,26 @@ public protocol FileRevealer: AnyObject {
     func reveal(_ file: URL)
 }
 
+/// How opening a command in a terminal went.
+public enum TerminalRunResult: Equatable, Sendable {
+    case opened
+    /// macOS refused HeadsUp's Automation request to control the terminal (-1743).
+    case notAllowed
+    /// The terminal app isn't there any more.
+    case notInstalled
+    /// Anything else, in the system's words, for the log and the row.
+    case failed(String)
+}
+
+/// Finds the terminal apps on this Mac and opens commands in them (ADR-001 §7.3).
+@MainActor
+public protocol TerminalLauncher: AnyObject {
+    /// The terminals installed now, in `Terminal.allCases` order.
+    func installed() -> [InstalledTerminal]
+    /// Runs `plan`: the script's handler with its parameters, or the argv, never a shell line.
+    func run(_ plan: TerminalPlan) async -> TerminalRunResult
+}
+
 /// Asks the user for a folder (the service form's Choose…).
 @MainActor
 public protocol FolderPicker: AnyObject {
@@ -96,6 +116,8 @@ public protocol SystemSettingsLinks: AnyObject {
     func openLoginItems()
     /// Keyboard → Keyboard Shortcuts, to free a shortcut macOS uses.
     func openKeyboardShortcuts()
+    /// Privacy & Security → Automation, to allow HeadsUp to control a terminal.
+    func openAutomation()
 }
 
 /// The note under the Open at Login row, and its button.

@@ -28,7 +28,13 @@ struct GeneralSection: View {
                     .labelsHidden()
                     .fixedSize()
                 }
-                // The terminal app row comes with Commands (slice 6).
+                // Hidden with only one terminal installed: there is nothing to choose.
+                if let picker = model.commands.terminalSetting {
+                    Hairline()
+                    SettingsRow(title: picker.label) {
+                        TerminalPickerControl(picker: picker, commands: model.commands)
+                    }
+                }
                 Hairline()
                 switchRow(Strings.General.menuSeconds, help: Strings.General.menuSecondsHelp, \.menuSeconds)
                 Hairline()

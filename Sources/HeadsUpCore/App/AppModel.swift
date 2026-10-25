@@ -21,6 +21,7 @@ public final class AppModel {
         public var serviceLauncher: ServiceLauncher
         public var portProbe: PortProbe
         public var folderPicker: FolderPicker
+        public var terminalLauncher: TerminalLauncher
         /// The user's login shell, home folder and environment, for services.
         public var loginShell: String
         public var home: String
@@ -34,7 +35,7 @@ public final class AppModel {
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
             powerAssertions: PowerAssertions, powerSource: PowerSource, serviceLauncher: ServiceLauncher,
-            portProbe: PortProbe, folderPicker: FolderPicker, dataFolder: URL?,
+            portProbe: PortProbe, folderPicker: FolderPicker, terminalLauncher: TerminalLauncher, dataFolder: URL?,
             focusSecondsPerMinute: TimeInterval = 60,
             loginShell: String = UserAccount.loginShell, home: String = NSHomeDirectory(),
             environment: [String: String] = ProcessInfo.processInfo.environment
@@ -52,6 +53,7 @@ public final class AppModel {
             self.serviceLauncher = serviceLauncher
             self.portProbe = portProbe
             self.folderPicker = folderPicker
+            self.terminalLauncher = terminalLauncher
             self.loginShell = loginShell
             self.home = home
             self.environment = environment
@@ -66,6 +68,7 @@ public final class AppModel {
     public let focus: FocusStore
     public let caffeine: CaffeineStore
     public let services: ServiceStore
+    public let commands: CommandStore
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
@@ -159,6 +162,9 @@ public final class AppModel {
             ports: ports.portProbe, notifier: ports.notifier, files: ports.files, settings: settings, toaster: hud,
             loginShell: ports.loginShell, home: ports.home, baseEnvironment: ports.environment)
         self.services = services
+        commands = CommandStore(
+            folder: ports.dataFolder, launcher: ports.terminalLauncher, files: ports.files, settings: settings,
+            toaster: hud, loginShell: ports.loginShell, home: ports.home)
         self.clock = ports.clock
         loginItem = ports.loginItem
         systemSettings = ports.systemSettings
@@ -182,6 +188,10 @@ public final class AppModel {
         hud.onEvent = { [weak self] event in
             self?.handle(event)
         }
+        registry.add(.command) { [weak self] in
+            guard let self else { return [] }
+            return CommandActions.make(commands: commands) { [weak self] id in self?.runCommand(id) }
+        }
         focusSource = { [weak focus] in focus?.snapshot ?? .idle(nextLength: 25) }
         caffeineSource = { [weak caffeine] in caffeine?.snapshot ?? .off }
         servicesSource = { [weak services] in services?.snapshot ?? ServicesSnapshot() }
@@ -196,6 +206,8 @@ public final class AppModel {
         case .tabChanged(let tab):
             focus.cancelSnoozeHide()
             if tab == .services { services.sawServices() }
+            // A terminal may have been installed or removed meanwhile; Settings → General has the picker too.
+            if tab == .commands || tab == .settings { commands.refreshTerminals() }
             if tab != .chat { endWelcome() }
             // The user may have changed Open at Login in System Settings meanwhile.
             if tab == .settings { refreshOpenAtLogin() }
@@ -424,7 +436,7 @@ public final class AppModel {
                     systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                     powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                     serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
-                    folderPicker: FakeFolderPicker(), dataFolder: nil),
+                    folderPicker: FakeFolderPicker(), terminalLauncher: FakeTerminalLauncher(), dataFolder: nil),
                 settings: settings)
             if let settingsFileProblem { model.settings.showProblemForPreview(settingsFileProblem) }
             model.launch()
@@ -444,6 +456,8 @@ public enum HUDBody: Equatable, Sendable {
     case caffeine
     /// The Services tab: it always has a body (the list, the empty state or the file problem).
     case services
+    /// The Commands tab: it always has a body.
+    case commands
     /// The Settings tab.
     case settings
     /// The first-run welcome, on Chat.
@@ -454,12 +468,13 @@ public enum HUDBody: Equatable, Sendable {
 
 extension AppModel {
     /// The body, by precedence: suggestions, then Focus, then Caffeine, then Services, then
-    /// Settings, then the welcome on Chat. The model menu joins this rule in the chat slice.
+    /// Commands, then Settings, then the welcome on Chat. The model menu joins this rule in the chat slice.
     public var body: HUDBody {
         if !hud.suggestions.isEmpty { return .suggestions }
         if hud.tab == .focus { return .focus }
         if hud.tab == .caffeine { return .caffeine }
         if hud.tab == .services { return .services }
+        if hud.tab == .commands { return .commands }
         if hud.tab == .settings { return .settings }
         if hud.tab == .chat && showsWelcome { return .welcome }
         return .empty
@@ -486,26 +501,96 @@ extension AppModel {
         hud.showSettings(.services)
     }
 
-    /// Choose…, in the service form: the folder panel, whose answer goes into the draft. The
-    /// HUD stays open while the panel shows.
+    /// Choose…, in the service form: the folder panel, whose answer goes into the draft.
     @discardableResult
     public func chooseServiceFolder() -> Task<Void, Never> {
-        let start = SpawnPlan.expand(services.form?.draft.cwd ?? "~", home: services.home)
-        hud.beginModal()
-        return Task { @MainActor in
-            let chosen = await folderPicker.chooseFolder(startingAt: start)
-            hud.endModal()
-            if let chosen { services.setDraftFolder(chosen) }
+        chooseFolder(startingAt: SpawnPlan.expand(services.form?.draft.cwd ?? "~", home: services.home)) {
+            [weak self] in self?.services.setDraftFolder($0)
         }
     }
 
-    /// Esc. While Settings → Services shows the service form, it is the form's Cancel;
+    // MARK: Commands
+
+    /// A row's click, or the Run action: opens the command in the chosen terminal.
+    ///
+    /// The Automation prompt and the terminal coming forward both take the keyboard from the
+    /// HUD, so it is held open meanwhile. When the command opened, the toast shows, then the
+    /// click-outside rule applies as usual. When it didn't, Commands shows the problem under
+    /// the row.
+    @discardableResult
+    public func runCommand(_ id: CommandDefinition.ID) -> Task<Void, Never> {
+        hud.beginModal()
+        return Task { @MainActor in
+            let result = await commands.run(id)
+            hud.endModal()
+            switch result {
+            case .opened: hud.closeIfNotKey()
+            case nil: break
+            case .some: hud.selectTab(.commands)
+            }
+        }
+    }
+
+    /// Add a command…: Settings → Commands, with a new form. A form already open with changes
+    /// stays as it is.
+    public func addCommand() {
+        hud.showSettings(.commands)
+        if commands.form?.isDirty != true { commands.editCommand(nil) }
+    }
+
+    /// A click on a command that can't run, or its Edit…: Settings → Commands with that
+    /// command's form, which shows its problems. A form already open with changes stays.
+    public func editCommand(_ id: CommandDefinition.ID) {
+        hud.showSettings(.commands)
+        if commands.form?.isDirty != true { commands.editCommand(id) }
+    }
+
+    /// The Commands tab header's Edit…: Settings → Commands, as it was left.
+    public func openCommandsSettings() {
+        hud.showSettings(.commands)
+    }
+
+    /// Open Settings, under a command whose terminal isn't there any more: Settings → General,
+    /// where the terminal is chosen.
+    public func openTerminalSetting() {
+        hud.showSettings(.general)
+    }
+
+    /// Choose…, in the command form.
+    @discardableResult
+    public func chooseCommandFolder() -> Task<Void, Never> {
+        chooseFolder(startingAt: SpawnPlan.expand(commands.form?.draft.cwd ?? "~", home: commands.home)) {
+            [weak self] in self?.commands.setDraftFolder($0)
+        }
+    }
+
+    /// Open Privacy & Security, under a command macOS refused to open.
+    public func openAutomationSettings() {
+        systemSettings.openAutomation()
+    }
+
+    // MARK: Forms
+
+    /// Esc. While Settings → Services or Commands shows its form, it is the form's Cancel;
     /// otherwise the HUD's Esc.
     public func escape() {
         if body == .settings && hud.settingsSection == .services && services.form != nil {
             services.cancelForm()
+        } else if body == .settings && hud.settingsSection == .commands && commands.form != nil {
+            commands.cancelForm()
         } else {
             hud.escape()
+        }
+    }
+
+    /// The folder panel, opening at `start`. The HUD stays open while it shows; a chosen
+    /// folder goes to `chosen`.
+    private func chooseFolder(startingAt start: String, then chosen: @escaping (String) -> Void) -> Task<Void, Never> {
+        hud.beginModal()
+        return Task { @MainActor in
+            let folder = await folderPicker.chooseFolder(startingAt: start)
+            hud.endModal()
+            if let folder { chosen(folder) }
         }
     }
 }

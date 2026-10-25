@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
                 powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
-                folderPicker: OpenPanelFolderPicker(),
+                folderPicker: OpenPanelFolderPicker(), terminalLauncher: SystemTerminalLauncher(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
                 focusSecondsPerMinute: Self.focusSecondsPerMinute))
         self.model = model

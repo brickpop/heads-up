@@ -524,25 +524,12 @@ public enum Strings {
     /// The Services tab, its log, form and quit question (Services spec; UX part 1 §1, §9, §10;
     /// addendum 4; Yuki's Services copy). All of it is Yuki's final copy.
     public enum Services {
-        // Form problems
-        public static let nameEmpty = "Enter a name."
-        public static let nameTooLong = "Use 64 characters or fewer."
-        public static let commandProblem = "Enter a command to run."
+        // Form problems (the shared ones are in ListForm)
         public static let portProblem = "Enter a port from 1 to 65535, or leave it empty."
         public static let envKeyProblem = "Use only letters, digits and _, and don't start with a digit."
-        public static let folderMissing = "This folder doesn't exist."
-        /// A NUL character in the command, the folder or a value, which only a hand-edited
-        /// services.json can have.
-        public static let nulProblem = "This has a hidden character that can't be used. Type it again."
-        /// The form's bottom bar, in --danger, when services.json couldn't be written.
-        public static func saveFailed(_ reason: String) -> String { "Couldn't save: \(reason)" }
         /// The --warn meta line of a service from services.json that breaks a rule: the form's
         /// problem note in lower case, "Can't start · enter a command to run".
-        public static func cantStart(_ problem: String) -> String {
-            var reason = problem.hasSuffix(".") ? String(problem.dropLast()) : problem
-            if let first = reason.first { reason = first.lowercased() + reason.dropFirst() }
-            return "Can't start · \(reason)"
-        }
+        public static func cantStart(_ problem: String) -> String { "Can't start · \(ListForm.inline(problem))" }
 
         // Log lines
         public static func commandLine(_ command: String) -> String { "$ \(command)" }
@@ -636,52 +623,155 @@ public enum Strings {
 
         public static func failedTitle(_ name: String) -> String { "\(name) stopped" }
         public static func failedBody(code: Int32) -> String { "It exited with code \(code)." }
+    }
 
-        // services.json problems: a card in the Services tab and in Settings → Services.
-        // File names are in backticks, so the view can show them in mono.
-        public static func fileTitle(_ problem: ServicesFileProblem) -> String {
+    /// services.json and commands.json (Yuki's Services copy, the same for Commands): the card in
+    /// the tab and in Settings, and the form's save problem. File names are in backticks, so the
+    /// view can show them in mono.
+    public enum ListFile {
+        public static func title(_ problem: ListFileProblem, kind: ListFileKind) -> String {
             switch problem {
-            case .unreadable: "Your services couldn't be loaded"
-            case .newerVersion: "These services are from a newer version of HeadsUp"
+            case .unreadable: "Your \(kind.plural) couldn't be loaded"
+            case .newerVersion: "These \(kind.plural) are from a newer version of HeadsUp"
             }
         }
-        public static func fileText(_ problem: ServicesFileProblem) -> String {
+        public static func text(_ problem: ListFileProblem, kind: ListFileKind) -> String {
+            let file = "`\(kind.fileName)`"
             switch problem {
             case .unreadable(let reason?):
-                "HeadsUp couldn't read `services.json` (\(reason)), so it left the file as it is. Fix it, then try again."
+                return
+                    "HeadsUp couldn't read \(file) (\(reason)), so it left the file as it is. Fix it, then try again."
             case .unreadable(nil):
-                "HeadsUp couldn't read `services.json`, so it left the file as it is. Fix it, then try again."
+                return "HeadsUp couldn't read \(file), so it left the file as it is. Fix it, then try again."
             case .newerVersion:
-                "HeadsUp left `services.json` as it is, so the newer version keeps them."
+                return "HeadsUp left \(file) as it is, so the newer version keeps them."
             }
         }
         public static let showInFinder = "Show in Finder"
         public static let tryAgain = "Try Again"
-        /// Why services.json couldn't be read, short and plain, inside the parentheses above.
+        /// Why the file couldn't be read, short and plain, inside the parentheses above.
         public static let notJSON = "it isn't valid JSON"
-        public static func serviceMissing(_ field: String, service: Int) -> String {
-            "service \(service) has no \(field)"
+        public static func missing(_ field: String, item: String, number: Int) -> String {
+            "\(item) \(number) has no \(field)"
         }
-        public static func serviceWrong(_ field: String, service: Int) -> String {
-            "the \(field) of service \(service) isn't valid"
+        public static func wrong(_ field: String, item: String, number: Int) -> String {
+            "the \(field) of \(item) \(number) isn't valid"
         }
         public static let notAllowedToRead = "HeadsUp isn't allowed to read it"
-        /// What `save` and `delete` return while services.json can't be read.
-        public static let cantEdit = "You can't change services until `services.json` can be read."
+        /// What saving and removing return, and the line under the Settings title, while the
+        /// file can't be read.
+        public static func cantEdit(_ kind: ListFileKind) -> String {
+            "You can't change \(kind.plural) until `\(kind.fileName)` can be read."
+        }
+        /// The form's bottom bar, in --danger, when the file couldn't be written.
+        public static func saveFailed(_ reason: String) -> String { "Couldn't save: \(reason)" }
+    }
+
+    /// The Commands tab, its terminal picker, its rows' problems and actions (Commands spec;
+    /// UX part 1, §1, §3, §4; Yuki's Commands copy).
+    public enum Commands {
+        public static let tabLabel = "Command shortcuts"
+        public static let opensIn = "Opens in"
+        /// The row in Settings → General.
+        public static let terminalApp = "Terminal app"
+        public static let emptyTitle = "No commands yet"
+        public static let emptyText =
+            "Save commands you type often, like ssh or git rebase. They open in your terminal."
+        public static let addCommand = "Add a command…"
+        /// The header's button, and the button of a row that can't run.
+        public static let edit = "Edit…"
+
+        // A row, for VoiceOver: the name is the label.
+        /// "ssh deploy@staging.example.dev, in home folder"
+        public static func accessibilityValue(command: String, cwd: String) -> String {
+            let folder =
+                cwd == "~" || cwd.isEmpty ? "home folder" : cwd.hasPrefix("~/") ? "home folder" + cwd.dropFirst() : cwd
+            return "\(command), in \(folder)"
+        }
+        /// "Opens in iTerm2"
+        public static func accessibilityHint(terminal: String) -> String { "Opens in \(terminal)" }
+
+        // Toasts
+        public static func opened(_ app: String, _ command: String) -> String { "Opened in \(app) · \(command)" }
+        public static func added(_ name: String) -> String { "Added \(name)" }
+        public static func saved(_ name: String) -> String { "Saved \(name)" }
+        public static func removed(_ name: String) -> String { "Removed \(name)" }
+
+        // Under a row, in --danger, in place of the toast.
+        public static func runProblem(_ result: TerminalRunResult, terminal: String) -> String {
+            switch result {
+            case .opened: ""
+            case .notAllowed:
+                "macOS didn't let HeadsUp open \(terminal). Allow it in Privacy & Security → Automation."
+            case .notInstalled: "\(terminal) isn't on this Mac any more. Choose another terminal in Settings → General."
+            case .failed(let reason) where reason.isEmpty: "Couldn't open \(terminal)."
+            case .failed(let reason): "Couldn't open \(terminal) (\(reason))."
+            }
+        }
+        /// The run problems' buttons.
+        public static let openSystemSettings = "Open System Settings"
+        public static let openSettings = "Open Settings"
+        public static let tryAgain = "Try Again"
+        /// The --warn meta line of a command from commands.json that breaks a rule.
+        public static func cantRun(_ problem: String) -> String { "Can't run · \(ListForm.inline(problem))" }
+
+        // Actions
+        public static func runAction(_ name: String) -> String { "Run \(name)" }
+    }
+
+    /// What the Services and Commands editors share (UX part 1, §1): the field labels, the
+    /// bottom bar, and the problems both forms have.
+    public enum ListForm {
+        public static let name = "Name"
+        public static let command = "Command"
+        public static let folder = "Folder"
+        public static let choose = "Choose…"
+        public static let remove = "Remove…"
+        public static let cancel = "Cancel"
+        public static let save = "Save"
+        public static func removeQuestion(_ name: String) -> String { "Remove \(name)?" }
+        /// The remove bar's button.
+        public static let removeConfirm = "Remove"
+        public static let discardQuestion = "Discard your changes?"
+        public static let keepEditing = "Keep editing"
+        public static let discard = "Discard"
+
+        // Problems, under their field
+        public static let nameEmpty = "Enter a name."
+        public static let nameTooLong = "Use 64 characters or fewer."
+        public static let commandProblem = "Enter a command to run."
+        public static let folderMissing = "This folder doesn't exist."
+        /// A NUL character, which only a hand-edited file can have.
+        public static let nulProblem = "This has a hidden character that can't be used. Type it again."
+
+        /// A form's problem note as a row's reason, in lower case and without its full stop:
+        /// "enter a command to run".
+        static func inline(_ problem: String) -> String {
+            var reason = problem.hasSuffix(".") ? String(problem.dropLast()) : problem
+            if let first = reason.first { reason = first.lowercased() + reason.dropFirst() }
+            return reason
+        }
+    }
+
+    /// The command form in Settings → Commands (UX part 1, §1; Yuki's Commands copy).
+    public enum CommandForm {
+        public static let newTitle = "New command"
+        public static let back = "Commands"
+        public static let namePlaceholder = "SSH into staging"
+        public static let commandPlaceholder = "ssh deploy@staging.example.dev"
+        public static let add = "Add command"
+        public static let intro = "Commands you type often. HeadsUp opens each one in your terminal, in its folder."
+        public static let empty = "No commands yet. Add one to open it in your terminal."
     }
 
     /// The service form in Settings → Services (UX part 1, §1; addenda 3–4).
     public enum ServiceForm {
         public static let newTitle = "New service"
         public static let back = "Services"
-        public static let name = "Name"
         public static let namePlaceholder = "Web dev server"
-        public static let command = "Command"
         public static let commandPlaceholder = "npm run dev"
         public static let commandHelp =
             "Runs in your login shell, like in Terminal. If your shell is fish or nushell, it runs in zsh."
-        public static let folder = "Folder"
-        public static let choose = "Choose…"
         public static let environment = "Environment"
         public static let noVariables = "No variables"
         /// F11: the warning, then the hint, on two lines.
@@ -693,19 +783,10 @@ public enum Strings {
         public static let autostart = "Start with HeadsUp"
         public static let autostartHelp = "Starts this service when HeadsUp opens."
         public static let runningNote = "Changes apply the next time it starts."
-        public static let remove = "Remove…"
-        public static let cancel = "Cancel"
-        public static let save = "Save"
         public static let add = "Add service"
         public static let intro = "Long-running commands you start and stop from the HUD."
         public static let empty = "No services yet. Add one to start and stop it from the HUD."
-        public static func removeQuestion(_ name: String) -> String { "Remove \(name)?" }
         public static func removeRunning(_ name: String) -> String { "\(name) is running. Removing it stops it." }
-        /// The remove bar's button.
-        public static let removeConfirm = "Remove"
-        public static let discardQuestion = "Discard your changes?"
-        public static let keepEditing = "Keep editing"
-        public static let discard = "Discard"
         // The environment table, for VoiceOver and as placeholders.
         public static let variableName = "Variable name"
         public static func variableValue(_ key: String) -> String { "Value of \(key)" }

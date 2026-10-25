@@ -24,6 +24,7 @@ private struct CaffeineHarness {
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: FakeNotifier(), powerAssertions: assertions, powerSource: power,
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                terminalLauncher: FakeTerminalLauncher(),
                 dataFolder: nil),
             settings: settings)
         model.launch()

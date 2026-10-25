@@ -7,6 +7,9 @@
 #      no App Transport Security exceptions besides local networking (F9), and no privacy
 #      usage string besides the four the app asks for.
 #   4. The debug quick timers appear only behind `#if DEBUG && HEADSUP_QUICK_TIMERS`.
+#   5. The fixed AppleScript files Commands runs are there, each with the one handler
+#      `run_in_terminal(theDir, theCommand)` and its own app as the only one it names, and each
+#      matches its SHA-256 below, so any change fails until a reviewed diff updates the hash (F14).
 #
 # The plists are read with grep, so they must stay simple: every key written as
 # <key>Name</key> on one line, with no CDATA. Anything else fails, rather than risk a
@@ -113,6 +116,31 @@ elif plist_is_simple "$info_plist"; then
         fi
     done
 fi
+
+# 5. The terminal scripts (F14). A change to a script must change its hash here too.
+sha256() {
+    if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d" " -f1; else shasum -a 256 "$1" | cut -d" " -f1; fi
+}
+for script in \
+    "Terminal.applescript com.apple.Terminal 2a6425952799aea5c962538e4803d802d76186b8088effd14a4248e6fff68ec1" \
+    "iTerm.applescript com.googlecode.iterm2 b7a4abe155ee58f61a31169ff2b081bba8dd812a9ad57f21a6a38dd691485519"; do
+    read -r name app hash <<<"$script"
+    file=$root/Resources/$name
+    if [ ! -f "$file" ]; then
+        fail "Resources/$name is missing"
+        continue
+    fi
+    if [ "$(grep -c '^on run_in_terminal(theDir, theCommand)$' "$file")" -ne 1 ] ||
+        [ "$(grep -c '^on ' "$file")" -ne 1 ]; then
+        fail "Resources/$name must have exactly one handler: on run_in_terminal(theDir, theCommand)"
+    fi
+    if [ "$(grep -c 'tell application' "$file")" -ne 1 ] || ! grep -q "tell application id \"$app\"" "$file"; then
+        fail "Resources/$name must name only its own app: tell application id \"$app\""
+    fi
+    if [ "$(sha256 "$file")" != "$hash" ]; then
+        fail "Resources/$name changed: its SHA-256 isn't the one tools/lint.sh pins. Review the change, then update the hash."
+    fi
+done
 
 if [ "$failures" -gt 0 ]; then
     echo "lint: $failures problem(s)" >&2

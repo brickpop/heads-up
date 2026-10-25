@@ -110,7 +110,7 @@ extension ServiceStore {
                 ? ServicesScreen.IsolationNotice(
                     title: Strings.Services.isolationTitle, text: Strings.Services.isolationText,
                     ok: Strings.Services.ok) : nil,
-            fileProblem: loadError.map(FileProblemCard.init),
+            fileProblem: loadError.map { FileProblemCard($0, kind: .services) },
             empty: definitions.isEmpty && loadError == nil
                 ? ServicesScreen.Empty(
                     title: Strings.Services.emptyTitle, text: Strings.Services.emptyText,

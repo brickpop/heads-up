@@ -360,6 +360,42 @@ mkdir -p "$work/lint-root/Sources/HeadsUpApp"
 printf '    #if DEBUG && HEADSUP_QUICK_TIMERS\n        let minute = 5.0\n    #endif\n' >"$work/lint-root/Sources/HeadsUpApp/Quick.swift"
 expect_lint_passes "the lint allows quick timers behind #if DEBUG"
 
+lint_root
+rm "$work/lint-root/Resources/iTerm.applescript"
+expect_lint_fails "the lint fails when a terminal script is missing" 'iTerm.applescript is missing'
+
+lint_root
+printf 'on run_in_terminal(theDir, theCommand)\nend run_in_terminal\non run_other(x)\nend run_other\n' \
+    >"$work/lint-root/Resources/Terminal.applescript"
+expect_lint_fails "the lint fails on a second handler in a terminal script" 'exactly one handler'
+
+lint_root
+printf 'tell application id "com.apple.Finder"\nend tell\n' >>"$work/lint-root/Resources/Terminal.applescript"
+expect_lint_fails "the lint fails when a terminal script names another app" 'only its own app'
+
+lint_root
+printf -- '-- edited\n' >>"$work/lint-root/Resources/iTerm.applescript"
+expect_lint_fails "the lint fails when a terminal script changes without its hash" 'iTerm.applescript changed'
+
+echo
+echo "scripts"
+# Every script the justfile or these tests run must be executable (Rev 1, Scan L2).
+for script in $(grep -ohE 'tools/[A-Za-z0-9_-]+\.sh' "$repo/justfile" "$repo/tools/test-tools.sh" | sort -u); do
+    if [ -x "$repo/$script" ]; then
+        pass "$script is executable"
+    else
+        fail "$script is executable" "chmod 755 $script"
+    fi
+done
+
+echo
+echo "Scan's terminal script cases"
+if "$tools/test-applescript-lint.sh" | sed 's/^/  /'; then
+    pass "Scan's four terminal script cases"
+else
+    fail "Scan's four terminal script cases" "see above"
+fi
+
 echo
 echo "Scan's lint cases"
 if "$tools/test-lint-hardening.sh" | sed 's/^/  /'; then

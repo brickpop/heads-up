@@ -39,4 +39,10 @@ final class SystemSettingsAdapter: SystemSettingsLinks {
             NSWorkspace.shared.open(url)
         }
     }
+
+    func openAutomation() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 }

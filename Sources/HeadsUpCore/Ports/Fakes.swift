@@ -140,6 +140,28 @@ import Foundation
         public func reveal(_ file: URL) { revealed.append(file) }
     }
 
+    /// Terminals the test installs, and the plans run, with the result the test sets.
+    @MainActor
+    public final class FakeTerminalLauncher: TerminalLauncher {
+        public var terminals: [Terminal]
+        /// What the next runs return.
+        public var result: TerminalRunResult = .opened
+        public private(set) var ran: [TerminalPlan] = []
+
+        public init(terminals: [Terminal] = [.terminal]) {
+            self.terminals = terminals
+        }
+
+        public func installed() -> [InstalledTerminal] {
+            terminals.map { InstalledTerminal(terminal: $0, appPath: "/Applications/\($0.name).app") }
+        }
+
+        public func run(_ plan: TerminalPlan) async -> TerminalRunResult {
+            ran.append(plan)
+            return result
+        }
+    }
+
     /// A folder panel that answers what the test says, and remembers where it opened.
     @MainActor
     public final class FakeFolderPicker: FolderPicker {
@@ -185,6 +207,7 @@ import Foundation
         public init() {}
         public func openLoginItems() { opened.append("loginItems") }
         public func openKeyboardShortcuts() { opened.append("keyboardShortcuts") }
+        public func openAutomation() { opened.append("automation") }
     }
 
     /// Records what was scheduled and cancelled.

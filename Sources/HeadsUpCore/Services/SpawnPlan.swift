@@ -23,15 +23,8 @@ public struct SpawnPlan: Equatable, Sendable {
     public init(
         definition: ServiceDefinition, loginShell: String, home: String, baseEnvironment: [String: String]
     ) {
-        let shellName = (loginShell as NSString).lastPathComponent
-        let shell: String
-        if Self.supportedShells.contains(shellName) && loginShell.hasPrefix("/") {
-            shell = loginShell
-            shellFallback = nil
-        } else {
-            shell = Self.fallbackShell
-            shellFallback = shellName.isEmpty ? "unknown" : shellName
-        }
+        let (shell, fallback) = Self.shell(for: loginShell)
+        shellFallback = fallback
         executable = shell
         arguments = [shell, "-l", "-c", definition.command]
         directory = Self.expand(definition.cwd, home: home)
@@ -41,6 +34,14 @@ public struct SpawnPlan: Equatable, Sendable {
             environment[variable.key] = variable.value
         }
         self.environment = environment.map { "\($0.key)=\($0.value)" }.sorted()
+    }
+
+    /// The shell that runs a command for a user whose login shell is `loginShell`, and the name
+    /// of that login shell when zsh is used instead.
+    static func shell(for loginShell: String) -> (shell: String, fallback: String?) {
+        let name = (loginShell as NSString).lastPathComponent
+        if supportedShells.contains(name) && loginShell.hasPrefix("/") { return (loginShell, nil) }
+        return (fallbackShell, name.isEmpty ? "unknown" : name)
     }
 
     /// `~` and `~/…` become the home folder; an empty folder is home; a relative path is taken

@@ -88,8 +88,9 @@ for arch in "${architectures[@]}"; do
     [[ "$archs" == *" $arch "* ]] || die "the app's binary has no $arch slice: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
 done
 echo "make-app: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
-# The app icon (CFBundleIconFile) and the menu bar glyph, which the shell loads from the bundle.
-for resource in AppIcon.icns MenuBarGlyph.pdf; do
+# The app icon (CFBundleIconFile), the menu bar glyph, and the fixed AppleScript files Commands
+# compiles (F14): the shell loads them from the bundle.
+for resource in AppIcon.icns MenuBarGlyph.pdf Terminal.applescript iTerm.applescript; do
     [ -f "Resources/$resource" ] || die "Resources/$resource is missing"
     cp "Resources/$resource" "$app/Contents/Resources/$resource"
 done

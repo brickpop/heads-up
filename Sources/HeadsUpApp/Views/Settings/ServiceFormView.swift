@@ -11,10 +11,7 @@ struct ServiceFormView: View {
     var body: some View {
         let services = model.services
         VStack(alignment: .leading, spacing: HUDStyle.Settings.sectionSpacing) {
-            Button(action: services.cancelForm) {
-                Label(form.back, systemImage: Symbols.back)
-            }
-            .buttonStyle(.borderless)
+            FormBackButton(title: form.back, back: services.cancelForm)
             SettingsTitle(text: form.title)
             if let note = form.runningNote {
                 Text(note)
@@ -22,34 +19,26 @@ struct ServiceFormView: View {
                     .foregroundStyle(.secondary)
             }
 
-            FormField(label: Strings.ServiceForm.name, problem: form.problems[.name]) {
+            FormField(label: Strings.ListForm.name, problem: form.problems[.name]) {
                 TextField(
-                    Strings.ServiceForm.name, text: draft(form.name) { $0.name = $1 },
+                    Strings.ListForm.name, text: draft(form.name) { $0.name = $1 },
                     prompt: Text(Strings.ServiceForm.namePlaceholder)
                 )
                 .onSubmit(services.saveForm)
             }
             FormField(
-                label: Strings.ServiceForm.command, help: Strings.ServiceForm.commandHelp,
+                label: Strings.ListForm.command, help: Strings.ServiceForm.commandHelp,
                 problem: form.problems[.command]
             ) {
                 TextField(
-                    Strings.ServiceForm.command, text: draft(form.command) { $0.command = $1 },
+                    Strings.ListForm.command, text: draft(form.command) { $0.command = $1 },
                     prompt: Text(Strings.ServiceForm.commandPlaceholder)
                 )
                 .font(.system(size: HUDStyle.Settings.labelSize).monospaced())
                 .onSubmit(services.saveForm)
             }
-            FormField(label: Strings.ServiceForm.folder, problem: form.problems[.cwd]) {
-                HStack {
-                    Text(form.cwd)
-                        .font(.system(size: HUDStyle.Settings.labelSize).monospaced())
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(Strings.ServiceForm.choose) { model.chooseServiceFolder() }
-                        .buttonStyle(.bordered)
-                }
+            FormField(label: Strings.ListForm.folder, problem: form.problems[.cwd]) {
+                FolderRow(path: form.cwd, chooseTitle: Strings.ListForm.choose) { model.chooseServiceFolder() }
             }
             FormField(label: Strings.ServiceForm.environment, problem: form.problems[.env]) {
                 EnvironmentEditor(services: services, env: form.env)
@@ -74,7 +63,12 @@ struct ServiceFormView: View {
             .toggleStyle(.checkbox)
 
             Hairline()
-            ServiceFormBar(services: services, form: form)
+            FormBottomBar(
+                bar: form.bar, saveProblem: form.saveProblem, saveEnabled: form.saveEnabled, remove: form.remove,
+                actions: FormBarActions(
+                    askRemove: services.askRemove, cancel: services.cancelForm, save: services.saveForm,
+                    dismissBar: services.dismissBar, discard: services.discardForm,
+                    confirmRemove: services.confirmRemove))
         }
         .textFieldStyle(.roundedBorder)
         .font(.system(size: HUDStyle.Settings.labelSize))
@@ -85,34 +79,6 @@ struct ServiceFormView: View {
         _ value: String, _ write: @escaping (inout ServiceDraft, String) -> Void
     ) -> Binding<String> {
         Binding(get: { value }, set: { text in model.services.updateDraft { write(&$0, text) } })
-    }
-}
-
-/// A labelled field, with optional help under it, and its problem in red.
-private struct FormField<Field: View>: View {
-    let label: String
-    var help: String?
-    let problem: String?
-    @ViewBuilder var field: Field
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: HUDStyle.Footer.keyGap) {
-            Text(label)
-                .font(.system(size: HUDStyle.Settings.helpSize, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            field
-                .accessibilityLabel(label)
-            if let help {
-                Text(help)
-                    .font(.system(size: HUDStyle.Settings.helpSize))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let problem {
-                ProblemNote(text: problem)
-            }
-        }
     }
 }
 
@@ -180,69 +146,5 @@ private struct EnvironmentEditor: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-/// The bottom bar: Remove… on the left, Cancel and Save on the right, and a save problem;
-/// or, in its place, the discard or remove question.
-private struct ServiceFormBar: View {
-    let services: ServiceStore
-    let form: ServiceFormScreen
-
-    var body: some View {
-        switch form.bar {
-        case .none:
-            VStack(alignment: .leading, spacing: HUDStyle.Footer.keyGap) {
-                if let problem = form.saveProblem {
-                    ProblemNote(text: problem)
-                }
-                HStack {
-                    if let remove = form.remove {
-                        Button(action: services.askRemove) {
-                            Text(remove).foregroundStyle(HUDStyle.Colors.alert)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    Spacer()
-                    Button(Strings.ServiceForm.cancel, action: services.cancelForm)
-                        .buttonStyle(.bordered)
-                    Button(Strings.ServiceForm.save, action: services.saveForm)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!form.saveEnabled)
-                }
-            }
-        case .discard(let question, let keep, let discard):
-            questionBar(
-                question,
-                actions: {
-                    Button(keep, action: services.dismissBar)
-                        .buttonStyle(.bordered)
-                    Button(discard, action: services.discardForm)
-                        .buttonStyle(.borderless)
-                })
-        case .remove(let question, let cancel, let remove):
-            questionBar(
-                question,
-                actions: {
-                    Button(cancel, action: services.dismissBar)
-                        .buttonStyle(.bordered)
-                    Button(action: services.confirmRemove) {
-                        Text(remove).foregroundStyle(HUDStyle.Colors.alert)
-                    }
-                    .buttonStyle(.borderless)
-                })
-        }
-    }
-
-    /// The question on the left and its buttons on the right, in place of the bar.
-    private func questionBar(_ text: String, @ViewBuilder actions: () -> some View) -> some View {
-        HStack {
-            Text(text)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
-            actions()
-        }
-        .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(text).post() }
     }
 }

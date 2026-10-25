@@ -18,6 +18,7 @@ private final class ServicesHarness {
     let probe = FakePortProbe()
     let notifier = FakeNotifier()
     let picker = FakeFolderPicker()
+    let terminals = FakeTerminalLauncher()
     let revealer = FakeFileRevealer()
     let folder: URL
     let work: URL
@@ -52,7 +53,7 @@ private final class ServicesHarness {
                 files: revealer, loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: realLauncher ? POSIXServiceLauncher() : launcher, portProbe: probe,
-                folderPicker: picker, dataFolder: folder, loginShell: loginShell,
+                folderPicker: picker, terminalLauncher: terminals, dataFolder: folder, loginShell: loginShell,
                 home: root.path, environment: ["PATH": "/usr/bin"]),
             settings: settings)
         model.launch()

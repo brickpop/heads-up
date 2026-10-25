@@ -29,6 +29,7 @@ struct HUDRootView: View {
                 case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
                 case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
                 case .services: ServicesView(model: model, isOpen: hud.isOpen)
+                case .commands: CommandsView(model: model)
                 case .settings: SettingsView(model: model)
                 case .welcome: WelcomeView(model: model)
                 case .empty: EmptyView()
@@ -122,6 +123,16 @@ private enum AccessibilityOrder {
                         $0.services.editService(nil)
                     }
                     .previewDisplayName("New service form")
+                }
+                .preferredColorScheme(scheme)
+                Group {
+                    hud { $0.hud.selectTab(.commands) }.previewDisplayName("Commands, empty")
+                    hud { $0.hud.showSettings(.commands) }.previewDisplayName("Settings → Commands")
+                    hud {
+                        $0.hud.showSettings(.commands)
+                        $0.commands.editCommand(nil)
+                    }
+                    .previewDisplayName("New command form")
                 }
                 .preferredColorScheme(scheme)
             }

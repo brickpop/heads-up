@@ -51,6 +51,8 @@ enum Symbols {
     static let disclosure = "chevron.right"
     /// Removes a row, such as an environment variable.
     static let minus = "minus"
+    /// The terminal pill on a command row: it opens in another app.
+    static let externalLink = "arrow.up.right.square"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

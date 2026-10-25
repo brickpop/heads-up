@@ -94,27 +94,6 @@ public struct ServicesSettingsScreen: Equatable, Sendable {
     }
 }
 
-/// The services.json problem card, in the Services tab and in Settings → Services (Yuki's copy).
-public struct FileProblemCard: Equatable, Sendable {
-    public let title: String
-    public let text: String
-    /// "Show in Finder": `revealServicesFile()`.
-    public let showInFinder: String
-    /// "Try Again": `reloadServices()`. Nil for a file from a newer version.
-    public let tryAgain: String?
-
-    init(_ problem: ServicesFileProblem) {
-        title = Strings.Services.fileTitle(problem)
-        text = Strings.Services.fileText(problem)
-        showInFinder = Strings.Services.showInFinder
-        if case .unreadable = problem {
-            tryAgain = Strings.Services.tryAgain
-        } else {
-            tryAgain = nil
-        }
-    }
-}
-
 /// The service form, ready to draw. Its labels are in `Strings.ServiceForm`.
 public struct ServiceFormScreen: Equatable, Sendable {
     /// "New service", or the service's name.
@@ -135,15 +114,7 @@ public struct ServiceFormScreen: Equatable, Sendable {
     public let saveEnabled: Bool
     /// "Remove…"; nil for a new service.
     public let remove: String?
-    public let bar: Bar
-
-    public enum Bar: Equatable, Sendable {
-        case none
-        /// `dismissBar()` or `discardForm()`.
-        case discard(question: String, keep: String, discard: String)
-        /// `dismissBar()` or `confirmRemove()`.
-        case remove(question: String, cancel: String, remove: String)
-    }
+    public let bar: FormBar
 }
 
 extension ServiceStore {
@@ -258,8 +229,8 @@ extension ServiceStore {
         ServicesSettingsScreen(
             title: Strings.SettingsSections.title(.services), intro: Strings.ServiceForm.intro,
             isolationLine: isolationWarning ? Strings.Services.isolationTitle : nil,
-            fileProblem: loadError.map(FileProblemCard.init),
-            cantEditLine: canEdit ? nil : Strings.Services.cantEdit,
+            fileProblem: loadError.map { FileProblemCard($0, kind: .services) },
+            cantEditLine: canEdit ? nil : Strings.ListFile.cantEdit(.services),
             rows: definitions.map {
                 ServicesSettingsScreen.Row(
                     id: $0.id, name: $0.name,
@@ -272,19 +243,19 @@ extension ServiceStore {
     private func formScreen(_ form: ServiceForm) -> ServiceFormScreen {
         let editing = form.editing.flatMap(definition)
         let name = editing?.name ?? ""
-        let bar: ServiceFormScreen.Bar
+        let bar: FormBar
         switch form.bar {
         case .none:
             bar = .none
         case .discard:
             bar = .discard(
-                question: Strings.ServiceForm.discardQuestion, keep: Strings.ServiceForm.keepEditing,
-                discard: Strings.ServiceForm.discard)
+                question: Strings.ListForm.discardQuestion, keep: Strings.ListForm.keepEditing,
+                discard: Strings.ListForm.discard)
         case .remove:
             let isLive = form.editing.map { state($0).isLive } ?? false
             bar = .remove(
-                question: isLive ? Strings.ServiceForm.removeRunning(name) : Strings.ServiceForm.removeQuestion(name),
-                cancel: Strings.ServiceForm.cancel, remove: Strings.ServiceForm.removeConfirm)
+                question: isLive ? Strings.ServiceForm.removeRunning(name) : Strings.ListForm.removeQuestion(name),
+                cancel: Strings.ListForm.cancel, remove: Strings.ListForm.removeConfirm)
         }
         var fieldProblems = form.problems
         let saveProblem = fieldProblems.removeValue(forKey: .file)
@@ -294,6 +265,6 @@ extension ServiceStore {
             name: form.draft.name, command: form.draft.command, cwd: form.draft.cwd, env: form.draft.env,
             port: form.draft.port, autostart: form.draft.autostart, problems: fieldProblems,
             saveProblem: saveProblem, saveEnabled: canEdit,
-            remove: form.editing == nil ? nil : Strings.ServiceForm.remove, bar: bar)
+            remove: form.editing == nil ? nil : Strings.ListForm.remove, bar: bar)
     }
 }

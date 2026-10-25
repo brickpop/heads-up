@@ -214,6 +214,14 @@ public final class HUDStore: Navigator, Toaster {
         modalDepth = max(0, modalDepth - 1)
     }
 
+    /// The click-outside rule, after a modal moment in which another app took the keyboard
+    /// (a command opened in the terminal): the HUD closes if it isn't key and the setting is on.
+    func closeIfNotKey() {
+        if isOpen && !isKey && settings.settings.general.closeOnClickOutside && modalDepth == 0 {
+            close()
+        }
+    }
+
     // MARK: Tabs and views
 
     /// Goes to `tab`, opening the HUD if it's closed.

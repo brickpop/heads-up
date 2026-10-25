@@ -439,6 +439,7 @@ private func status(
                 loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                terminalLauncher: FakeTerminalLauncher(),
                 dataFolder: nil))
         failing.setOpenAtLogin(true)
         #expect(failing.openAtLogin == .disabled)
@@ -455,6 +456,7 @@ private func status(
                 loginItem: FakeLoginItem(status: .requiresApproval), systemSettings: links, notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                terminalLauncher: FakeTerminalLauncher(),
                 dataFolder: nil))
         #expect(model.openAtLogin == .requiresApproval)
         model.openLoginItemsSettings()
@@ -474,6 +476,7 @@ private func status(
                 loginItem: fake, systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                terminalLauncher: FakeTerminalLauncher(),
                 dataFolder: nil))
         try? fake.setEnabled(true)  // changed in System Settings
         #expect(model.openAtLogin == .disabled)
@@ -575,6 +578,7 @@ private func status(
                 systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), folderPicker: FakeFolderPicker(),
+                terminalLauncher: FakeTerminalLauncher(),
                 dataFolder: nil))
     }
 

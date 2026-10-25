@@ -17,7 +17,6 @@ import Observation
 @MainActor
 @Observable
 public final class ServiceStore {
-    static let fileName = "services.json"
     /// SIGTERM, then SIGKILL after this long.
     static let killAfter: TimeInterval = 3
     /// A service with no port set counts as running after this long. One that exits sooner
@@ -40,7 +39,7 @@ public final class ServiceStore {
     public private(set) var openLogs: ServiceDefinition.ID?
     /// Why services.json can't be used. While set, the editor is off and the file is never
     /// written (§6.2).
-    public private(set) var loadError: ServicesFileProblem?
+    public private(set) var loadError: ListFileProblem?
     /// A failure the user hasn't seen: the Services tab shows a red dot until it is opened.
     public private(set) var failureUnseen = false
     /// Services run with HeadsUp's permissions: macOS has no way to start them as their own
@@ -61,7 +60,7 @@ public final class ServiceStore {
     /// can't go to another process before it is sent.
     @ObservationIgnored private var unreaped: Set<Int32> = []
 
-    @ObservationIgnored private let file: URL?
+    @ObservationIgnored private let file: JSONListFile<ServiceDefinition>
     @ObservationIgnored let clock: Clock
     @ObservationIgnored private let scheduler: Scheduler
     @ObservationIgnored private let launcher: ServiceLauncher
@@ -79,7 +78,7 @@ public final class ServiceStore {
         notifier: Notifier, files: FileRevealer, settings: SettingsStore, toaster: Toaster, loginShell: String,
         home: String, baseEnvironment: [String: String]
     ) {
-        file = folder?.appendingPathComponent(Self.fileName)
+        file = JSONListFile(.services, folder: folder)
         self.clock = clock
         self.scheduler = scheduler
         self.launcher = launcher
@@ -207,14 +206,14 @@ public final class ServiceStore {
     /// couldn't be written is a `.file` problem, and nothing changes, on disk or here.
     @discardableResult
     public func save(_ definition: ServiceDefinition) -> [ServiceField: String] {
-        guard canEdit else { return [.file: Strings.Services.cantEdit] }
+        guard canEdit else { return [.file: Strings.ListFile.cantEdit(.services)] }
         var problems = definition.problems
         var isFolder: ObjCBool = false
         let folder = SpawnPlan.expand(definition.cwd, home: home)
         if problems[.cwd] == nil,
             !FileManager.default.fileExists(atPath: folder, isDirectory: &isFolder) || !isFolder.boolValue
         {
-            problems[.cwd] = Strings.Services.folderMissing
+            problems[.cwd] = Strings.ListForm.folderMissing
         }
         guard problems.isEmpty else { return problems }
 
@@ -229,7 +228,7 @@ public final class ServiceStore {
             list.append(trimmed)
             isNew = true
         }
-        if let problem = write(list) { return [.file: problem] }
+        if let problem = file.write(list) { return [.file: problem] }
         definitions = list
         toaster?.toast(isNew ? Strings.Services.added(trimmed.name) : Strings.Services.saved(trimmed.name))
         return [:]
@@ -239,9 +238,9 @@ public final class ServiceStore {
     /// being removed, as `save` does; empty when it was removed.
     @discardableResult
     public func delete(_ id: ServiceDefinition.ID) -> [ServiceField: String] {
-        guard canEdit else { return [.file: Strings.Services.cantEdit] }
+        guard canEdit else { return [.file: Strings.ListFile.cantEdit(.services)] }
         guard let definition = definition(id) else { return [:] }
-        if let problem = write(definitions.filter { $0.id != id }) { return [.file: problem] }
+        if let problem = file.write(definitions.filter { $0.id != id }) { return [.file: problem] }
         if state(id).isLive {
             // Its state and log go when it has exited (see `exited`).
             stop(id)
@@ -258,8 +257,8 @@ public final class ServiceStore {
 
     /// Show in Finder, on the services.json problem card.
     public func revealServicesFile() {
-        guard let file else { return }
-        files.reveal(file)
+        guard let url = file.url else { return }
+        files.reveal(url)
     }
 
     /// Try Again, on the card: reads services.json again, only while it can't be used.
@@ -482,79 +481,14 @@ public final class ServiceStore {
 
     // MARK: services.json
 
-    /// A missing file is no services, and nothing is created until the user saves one. A file
-    /// that can't be used is kept as it is and never overwritten: the editor stays off.
+    /// Reads services.json (see `JSONListFile`). A file that can't be used is kept as it is
+    /// and never written: the editor stays off.
     private func load() {
-        definitions = []
-        guard let file else { return }
-        do throws(SecureFile.FileError) {
-            try SecureFile.checkFolder(file.deletingLastPathComponent())
-            guard let data = try SecureFile.read(file) else { return }
-            do {
-                let decoded = try JSONDecoder().decode(ServicesFile.self, from: data)
-                guard decoded.version <= ServicesFile.currentVersion else {
-                    loadError = .newerVersion
-                    return
-                }
-                definitions = decoded.services
-            } catch {
-                loadError = .unreadable(reason: Self.reason(error))
-            }
-        } catch {
-            let notAllowed = error.code == EACCES || error.code == EPERM
-            loadError = .unreadable(reason: notAllowed ? Strings.Services.notAllowedToRead : nil)
-        }
-    }
-
-    /// Writes `list` to services.json. Returns the problem in plain words if it couldn't.
-    private func write(_ list: [ServiceDefinition]) -> String? {
-        guard let file else { return nil }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        do throws(SecureFile.FileError) {
-            guard let data = try? encoder.encode(ServicesFile(services: list)) else {
-                return Strings.Services.saveFailed(Strings.Files.plainWords(errno: EINVAL))
-            }
-            try SecureFile.write(data, to: file)
-            return nil
-        } catch {
-            return Strings.Services.saveFailed(error.plainWords)
-        }
-    }
-
-    /// Why services.json didn't decode, short and plain: "the port of service 1 isn't valid".
-    /// Nil when there is nothing useful to say.
-    static func reason(_ error: Error) -> String? {
-        guard let error = error as? DecodingError else { return nil }
-        let context: DecodingError.Context
-        var missing: CodingKey?
-        switch error {
-        case .keyNotFound(let key, let found):
-            context = found
-            missing = key
-        case .typeMismatch(_, let found), .valueNotFound(_, let found), .dataCorrupted(let found):
-            context = found
-        @unknown default:
-            return nil
-        }
-        let path = context.codingPath
-        // Not JSON at all.
-        if path.isEmpty, case .dataCorrupted = error { return Strings.Services.notJSON }
-        // A problem inside one service: services[i] or services[i].field.
-        guard path.count >= 2, path[0].stringValue == "services", let index = path[1].intValue else { return nil }
-        if let missing, path.count == 2 {
-            return Strings.Services.serviceMissing(fieldName(missing.stringValue), service: index + 1)
-        }
-        guard path.count >= 3 else { return nil }
-        return Strings.Services.serviceWrong(fieldName(path[2].stringValue), service: index + 1)
-    }
-
-    /// A services.json key in words.
-    private static func fieldName(_ key: String) -> String {
-        switch key {
-        case "cwd": "folder"
-        case "env": "environment"
-        default: key
+        switch file.load() {
+        case .success(let list): definitions = list
+        case .failure(let problem):
+            definitions = []
+            loadError = problem
         }
     }
 }

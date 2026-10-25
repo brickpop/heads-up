@@ -30,5 +30,7 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>HeadsUp opens your saved commands in this terminal app. It doesn't read or change anything else in it.</string>
 </dict>
 </plist>

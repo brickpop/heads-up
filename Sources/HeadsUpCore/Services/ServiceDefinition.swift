@@ -49,21 +49,21 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
         var problems: [ServiceField: String] = [:]
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty {
-            problems[.name] = Strings.Services.nameEmpty
+            problems[.name] = Strings.ListForm.nameEmpty
         } else if trimmedName.count > 64 {
-            problems[.name] = Strings.Services.nameTooLong
+            problems[.name] = Strings.ListForm.nameTooLong
         }
         if command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            problems[.command] = Strings.Services.commandProblem
+            problems[.command] = Strings.ListForm.commandProblem
         } else if command.contains("\0") {
-            problems[.command] = Strings.Services.nulProblem
+            problems[.command] = Strings.ListForm.nulProblem
         }
-        if cwd.contains("\0") { problems[.cwd] = Strings.Services.nulProblem }
+        if cwd.contains("\0") { problems[.cwd] = Strings.ListForm.nulProblem }
         if let port, !(1...65_535).contains(port) { problems[.port] = Strings.Services.portProblem }
         if env.contains(where: { !EnvironmentVariable.isValidKey($0.key) }) {
             problems[.env] = Strings.Services.envKeyProblem
         } else if env.contains(where: { $0.value.contains("\0") }) {
-            problems[.env] = Strings.Services.nulProblem
+            problems[.env] = Strings.ListForm.nulProblem
         }
         return problems
     }
@@ -83,15 +83,6 @@ public enum ServiceField: Hashable, Sendable {
     static let formOrder: [ServiceField] = [.name, .command, .cwd, .env, .port]
 }
 
-/// Why services.json can't be used, while the editor is off and the file is left as it is.
-public enum ServicesFileProblem: Equatable, Sendable {
-    /// It couldn't be read or decoded. The reason is short and plain, or nil when there is
-    /// nothing useful to say.
-    case unreadable(reason: String?)
-    /// A newer HeadsUp wrote it.
-    case newerVersion
-}
-
 public struct EnvironmentVariable: Equatable, Codable, Sendable {
     public var key: String
     public var value: String
@@ -109,22 +100,5 @@ public struct EnvironmentVariable: Equatable, Codable, Sendable {
 
     private static func isASCIILetter(_ scalar: Unicode.Scalar) -> Bool {
         ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar)
-    }
-}
-
-/// services.json: `{ "version": 1, "services": [...] }`.
-struct ServicesFile: Codable {
-    static let currentVersion = 1
-    var version = ServicesFile.currentVersion
-    var services: [ServiceDefinition] = []
-
-    init(services: [ServiceDefinition] = []) {
-        self.services = services
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? ServicesFile.currentVersion
-        services = try container.decodeIfPresent([ServiceDefinition].self, forKey: .services) ?? []
     }
 }
