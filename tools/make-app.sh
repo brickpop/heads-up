@@ -22,7 +22,7 @@ die() {
 [ $# -eq 4 ] || die "usage: tools/make-app.sh <adhoc|identity|quick> <bundle id> <version> <build number>"
 mode=$1 bundle_id=$2 version=$3 build_number=$4
 
-[ "$(uname -s)" = Darwin ] || die "building HeadsUp.app needs macOS with Xcode."
+[ "$(uname -s)" = Darwin ] || die "building HeadsUp.app needs macOS, with the Command Line Tools (Xcode isn't needed)."
 # Values that end up inside Info.plist: keep them to safe characters.
 [[ "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || die "'$bundle_id' is not a bundle identifier"
 [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "'$version' is not a version like 1.2.3"
@@ -48,28 +48,46 @@ esac
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 
-echo "make-app: $(xcrun swift --version 2>&1 | head -n 1)"
+echo "make-app: $(swift --version 2>&1 | head -n 1)"
 
+# One build per architecture: building both at once needs Xcode's build system (xcbuild),
+# which the Command Line Tools don't have. lipo then joins them into one universal binary.
 # Only the versions in Package.resolved, and no resolution at build time (F15).
 resolved=(--only-use-versions-from-resolved-file --disable-automatic-resolution)
 if [ "$mode" = quick ]; then
-    swift_args=(-c debug -Xswiftc -DHEADSUP_QUICK_TIMERS "${resolved[@]}")
+    # A debug build for this Mac only.
+    architectures=("$(uname -m)")
+    build_args=(-c debug -Xswiftc -DHEADSUP_QUICK_TIMERS)
 else
-    swift_args=(-c release --arch arm64 --arch x86_64 "${resolved[@]}")
+    architectures=(arm64 x86_64)
+    build_args=(-c release)
 fi
-swift build "${swift_args[@]}"
-bin_dir=$(swift build "${swift_args[@]}" --show-bin-path)
+binaries=()
+for arch in "${architectures[@]}"; do
+    swift_args=("${build_args[@]}" --build-system native --triple "$arch-apple-macosx14.0" "${resolved[@]}")
+    tools/swift.sh build "${swift_args[@]}"
+    binaries+=("$(tools/swift.sh build "${swift_args[@]}" --show-bin-path)/HeadsUp")
+done
 
 # The quick timers exist only in debug builds; a release binary that has their log line fails.
 quick_marker="HeadsUp quick timers"
-if [ "$mode" != quick ] && grep -qa "$quick_marker" "$bin_dir/HeadsUp"; then
-    die "this release binary contains the debug quick timers. Build it without -DHEADSUP_QUICK_TIMERS."
+if [ "$mode" != quick ]; then
+    for binary in "${binaries[@]}"; do
+        if grep -qa "$quick_marker" "$binary"; then
+            die "this release binary contains the debug quick timers. Build it without -DHEADSUP_QUICK_TIMERS."
+        fi
+    done
 fi
 
 app="build/$name.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$bin_dir/HeadsUp" "$app/Contents/MacOS/HeadsUp"
+lipo -create -output "$app/Contents/MacOS/HeadsUp" "${binaries[@]}"
+archs=" $(lipo -archs "$app/Contents/MacOS/HeadsUp") "
+for arch in "${architectures[@]}"; do
+    [[ "$archs" == *" $arch "* ]] || die "the app's binary has no $arch slice: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
+done
+echo "make-app: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
 # The app icon (CFBundleIconFile) and the menu bar glyph, which the shell loads from the bundle.
 for resource in AppIcon.icns MenuBarGlyph.pdf; do
     [ -f "Resources/$resource" ] || die "Resources/$resource is missing"
@@ -83,13 +101,12 @@ codesign --force --options runtime --timestamp=none \
     --entitlements Resources/HeadsUp.entitlements -s "$sign_id" "$app"
 codesign --verify --strict --deep "$app"
 
-# Read back what was signed (F8): exactly the two allowed entitlements, both true, and
-# the hardened runtime on. Both sides go through plutil, so key order and layout don't matter.
+# Read back what was signed (F8), for each architecture's slice: exactly the two allowed
+# entitlements, both true, and the hardened runtime on. Both sides go through plutil, so key
+# order and layout don't matter.
 check=$(mktemp -d)
 trap 'rm -rf "$check"' EXIT
-codesign -d --entitlements - --xml "$app" >"$check/signed.plist" 2>/dev/null ||
-    die "could not read the signed entitlements"
-cat >"$check/expected.plist" <<'EOF'
+cat >"$check/expected.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -100,15 +117,19 @@ cat >"$check/expected.plist" <<'EOF'
     <true/>
 </dict>
 </plist>
-EOF
-plutil -convert json -o "$check/signed.json" "$check/signed.plist"
+PLIST
 plutil -convert json -o "$check/expected.json" "$check/expected.plist"
-if ! cmp -s "$check/signed.json" "$check/expected.json"; then
-    die "the signed entitlements are not exactly apple-events and calendars, both true. Signed: $(cat "$check/signed.json")"
-fi
-codesign -dv "$app" 2>&1 | grep -qE 'flags=0x[0-9a-f]+\([^)]*runtime' ||
-    die "the app is signed without the hardened runtime"
-echo "make-app: signed entitlements: $(cat "$check/signed.json"), hardened runtime on"
+for arch in "${architectures[@]}"; do
+    codesign -d --arch "$arch" --entitlements - --xml "$app" >"$check/signed-$arch.plist" 2>/dev/null ||
+        die "could not read the signed entitlements of the $arch slice"
+    plutil -convert json -o "$check/signed-$arch.json" "$check/signed-$arch.plist"
+    if ! cmp -s "$check/signed-$arch.json" "$check/expected.json"; then
+        die "the $arch slice's signed entitlements are not exactly apple-events and calendars, both true. Signed: $(cat "$check/signed-$arch.json")"
+    fi
+    codesign -dv --arch "$arch" "$app" 2>&1 | grep -qE 'flags=0x[0-9a-f]+\([^)]*runtime' ||
+        die "the $arch slice is signed without the hardened runtime"
+    echo "make-app: $arch: signed entitlements $(cat "$check/signed-$arch.json"), hardened runtime on"
+done
 echo "make-app: built $app ($bundle_id $version, build $build_number)"
 
 if [ "$mode" = identity ]; then

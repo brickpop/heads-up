@@ -189,6 +189,57 @@ else
     echo "setup-swift: skipped (it is for Linux only)"
 fi
 
+# --- building on a Mac with only the Command Line Tools ------------------------------
+
+echo "macOS build"
+
+version_check() { # expected status, swift --version output
+    status=0
+    "$tools/check-swift-version.sh" "$2" "$work/swift-version" >"$work/out" 2>&1 || status=$?
+    [ "$status" -eq "$1" ]
+}
+echo 6.2.4 >"$work/swift-version"
+ceo_6_1="swift-driver version: 1.120.5 Apple Swift version 6.1.2 (swiftlang-6.1.2.1.2 clang-1700.0.13.5)"
+if version_check 1 "$ceo_6_1" && grep -q "builds with Swift 6.2.x (Linux uses 6.2.4); this Mac has Swift 6.1.2" "$work/out"; then
+    pass "Swift 6.1.2 is refused, naming both versions"
+else
+    fail "Swift 6.1.2 is refused, naming both versions" "$(cat "$work/out")"
+fi
+# Newer is refused too: Linux would build with 6.2 what the Mac built with 6.3.
+for refused in "Apple Swift version 6.3 (swiftlang-6.3.0.1)" "Apple Swift version 6.20" "Swift version 7.2"; do
+    if version_check 1 "$refused" && grep -q "builds with Swift 6.2.x" "$work/out"; then
+        pass "refuses: $refused"
+    else
+        fail "refuses: $refused" "$(cat "$work/out")"
+    fi
+done
+for ok in "Apple Swift version 6.2 (swiftlang-6.2.0.1)" "Apple Swift version 6.2.1" "Apple Swift version 6.2.4"; do
+    if version_check 0 "$ok"; then pass "accepts: $ok"; else fail "accepts: $ok" "$(cat "$work/out")"; fi
+done
+if "$tools/check-swift-version.sh" "Apple Swift version 6.2.3" "$repo/.swift-version" >"$work/out" 2>&1; then
+    pass "the repo's .swift-version is read"
+else
+    fail "the repo's .swift-version is read" "$(cat "$work/out")"
+fi
+echo "not a version" >"$work/swift-version"
+if version_check 1 "Apple Swift version 6.2.1" && grep -q "Couldn't read a Swift version" "$work/out"; then
+    pass "a broken .swift-version stops the build"
+else
+    fail "a broken .swift-version stops the build" "$(cat "$work/out")"
+fi
+if version_check 1 "something else" && grep -q "Command Line Tools" "$work/out"; then
+    pass "an unknown swift --version says how to install the tools"
+else
+    fail "an unknown swift --version says how to install the tools" "$(cat "$work/out")"
+fi
+# make-app builds each architecture alone and joins them; nothing needs Xcode's xcbuild.
+make_app_code=$(grep -v '^[[:space:]]*#' "$tools/make-app.sh")
+if grep -qE -- '--arch [a-z0-9_]+ --arch' <<<"$make_app_code" || grep -qi xcbuild <<<"$make_app_code"; then
+    fail "make-app.sh doesn't need xcbuild" "it builds two architectures at once"
+else
+    pass "make-app.sh doesn't need xcbuild"
+fi
+
 # --- lint (Linux and macOS) ----------------------------------------------------------
 
 echo "lint"

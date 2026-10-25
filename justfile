@@ -1,7 +1,8 @@
 # HeadsUp's recipes (ADR-001 §10). Run `just` to list them.
 #
 # Linux: run `just setup-swift` once; `test` and `lint` then use that toolchain.
-# macOS: Xcode's Swift, at least the version in .swift-version. `app` and `build` need macOS.
+# macOS: the Command Line Tools with Swift 6.2.x, the series in .swift-version (Xcode isn't needed). `app` and `build`
+# need macOS.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -35,7 +36,7 @@ app:
 
 [linux]
 app:
-    @echo "just app needs macOS with Xcode. On Linux, use just test and just lint." >&2; exit 1
+    @echo "just app needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
 # Builds "HeadsUp Quick", a separate debug app where one timer minute lasts 5 seconds, for quick checks.
 [macos]
@@ -53,4 +54,4 @@ build:
 
 [linux]
 build:
-    @echo "just build needs macOS with Xcode. On Linux, use just test and just lint." >&2; exit 1
+    @echo "just build needs macOS. On Linux, use just test and just lint." >&2; exit 1
