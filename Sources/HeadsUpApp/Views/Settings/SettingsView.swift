@@ -109,10 +109,7 @@ private struct SettingsPane: View {
         case .models:
             ModelsSection(model: model)
         case .tools:
-            VStack(alignment: .leading, spacing: HUDStyle.Settings.sectionSpacing) {
-                SettingsTitle(text: section.title)
-                SavingOffLine(settings: model.settings)
-            }
+            ToolsSection(model: model)
         }
     }
 }

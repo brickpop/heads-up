@@ -186,6 +186,13 @@ import Foundation
         public func readImages(limit: Int) -> OfferedImages {
             OfferedImages(inputs: Array(images.prefix(limit)), offered: images.count)
         }
+        /// What `clipboard_read` finds, and how many times it looked.
+        public var contents: ClipboardContents = .empty
+        public private(set) var toolReads = 0
+        public func toolContents() -> ClipboardContents {
+            toolReads += 1
+            return contents
+        }
     }
 
     /// A folder panel that answers what the test says, and remembers where it opened.
@@ -270,6 +277,7 @@ import Foundation
         public func openLoginItems() { opened.append("loginItems") }
         public func openKeyboardShortcuts() { opened.append("keyboardShortcuts") }
         public func openAutomation() { opened.append("automation") }
+        public func openPrivacy(_ permission: MacPermission) { opened.append("privacy:\(permission.rawValue)") }
     }
 
     /// Records what was scheduled and cancelled.
@@ -442,6 +450,7 @@ import Foundation
         private let lock = NSLock()
         private var streams: [AsyncThrowingStream<LLMEvent, Error>.Continuation] = []
         private var sent: [[LLMMessage]] = []
+        private var sentTools: [[LLMTool]] = []
 
         public init() {}
 
@@ -452,12 +461,15 @@ import Foundation
             lock.withLock {
                 streams.append(continuation)
                 sent.append(messages)
+                sentTools.append(tools)
             }
             return stream
         }
 
         /// The messages of each request, in order.
         public var requests: [[LLMMessage]] { lock.withLock { sent } }
+        /// The tools offered with each request, in order.
+        public var toolRequests: [[LLMTool]] { lock.withLock { sentTools } }
 
         private var current: AsyncThrowingStream<LLMEvent, Error>.Continuation? { lock.withLock { streams.last } }
 
@@ -472,6 +484,86 @@ import Foundation
 
         public func fail(_ error: ChatError) {
             current?.finish(throwing: error)
+        }
+    }
+
+    /// A calendar with the events the test gives. It records each range asked for, and fails
+    /// with `failure` when it is set.
+    public final class FakeCalendarReader: CalendarReader, @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [CalendarEvent] = []
+        private var asked: [(Date, Date)] = []
+        private var error: ToolFailure?
+        public init(events: [CalendarEvent] = []) { stored = events }
+        public var failure: ToolFailure? {
+            get { lock.withLock { error } }
+            set { lock.withLock { error = newValue } }
+        }
+        public var ranges: [(from: Date, to: Date)] { lock.withLock { asked.map { (from: $0.0, to: $0.1) } } }
+        /// Set, the next call waits until `release()`: a permission prompt that is still showing.
+        public var holds = false
+        private var waiting: CheckedContinuation<Void, Never>?
+        public var isWaiting: Bool { lock.withLock { waiting != nil } }
+        public func release() {
+            let continuation = lock.withLock {
+                let held = waiting
+                waiting = nil
+                return held
+            }
+            continuation?.resume()
+        }
+        public func events(from: Date, to: Date) async throws(ToolFailure) -> [CalendarEvent] {
+            if lock.withLock({ holds }) {
+                lock.withLock { holds = false }
+                await withCheckedContinuation { continuation in lock.withLock { waiting = continuation } }
+            }
+            let (events, failure): ([CalendarEvent], ToolFailure?) = lock.withLock {
+                asked.append((from, to))
+                return (stored.filter { $0.end > from && $0.start < to }, error)
+            }
+            if let failure { throw failure }
+            return events
+        }
+    }
+
+    /// Reminders lists and reminders in memory. Created reminders are recorded.
+    public final class FakeRemindersAccess: RemindersAccess, @unchecked Sendable {
+        public struct Created: Equatable, Sendable {
+            public let title: String
+            public let due: Date?
+            public let listID: String
+        }
+
+        private let lock = NSLock()
+        private let storedLists: [ReminderList]
+        private let storedReminders: [String: [Reminder]]
+        private var made: [Created] = []
+        private var error: ToolFailure?
+        public init(lists: [ReminderList] = [], reminders: [String: [Reminder]] = [:]) {
+            storedLists = lists
+            storedReminders = reminders
+        }
+        public var failure: ToolFailure? {
+            get { lock.withLock { error } }
+            set { lock.withLock { error = newValue } }
+        }
+        public var created: [Created] { lock.withLock { made } }
+        /// How many times the lists were read.
+        public var listCalls: Int { lock.withLock { listReads } }
+        private var listReads = 0
+        public func lists() async throws(ToolFailure) -> [ReminderList] {
+            lock.withLock { listReads += 1 }
+            if let failure { throw failure }
+            return storedLists
+        }
+        public func reminders(listID: String?) async throws(ToolFailure) -> [Reminder] {
+            if let failure { throw failure }
+            if let listID { return storedReminders[listID] ?? [] }
+            return storedLists.flatMap { storedReminders[$0.id] ?? [] }
+        }
+        public func create(title: String, due: Date?, listID: String) async throws(ToolFailure) {
+            if let failure { throw failure }
+            lock.withLock { made.append(Created(title: title, due: due, listID: listID)) }
         }
     }
 

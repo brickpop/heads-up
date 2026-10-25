@@ -92,6 +92,9 @@ public protocol Pasteboard: AnyObject {
     var hasImages: Bool { get }
     /// The first `limit` of those images, read, and how many there are in all.
     func readImages(limit: Int) -> OfferedImages
+    /// What `clipboard_read` would share (F3). A concealed or transient item, as password
+    /// managers mark them, is `.concealed`, and its content is never read.
+    func toolContents() -> ClipboardContents
 }
 
 /// Whether HeadsUp opens at login, as macOS reports it.
@@ -127,6 +130,8 @@ public protocol SystemSettingsLinks: AnyObject {
     func openKeyboardShortcuts()
     /// Privacy & Security → Automation, to allow HeadsUp to control a terminal.
     func openAutomation()
+    /// Privacy & Security → Calendars or Reminders, after macOS refused a tool.
+    func openPrivacy(_ permission: MacPermission)
 }
 
 /// The note under the Open at Login row, and its button.

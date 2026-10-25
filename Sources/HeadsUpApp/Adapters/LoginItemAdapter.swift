@@ -45,4 +45,11 @@ final class SystemSettingsAdapter: SystemSettingsLinks {
             NSWorkspace.shared.open(url)
         }
     }
+
+    func openPrivacy(_ permission: MacPermission) {
+        let pane = permission == .calendar ? "Privacy_Calendars" : "Privacy_Reminders"
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 }

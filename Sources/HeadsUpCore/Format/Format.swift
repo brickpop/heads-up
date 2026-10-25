@@ -44,3 +44,74 @@ public enum Format {
         return parts.joined(separator: " ")
     }
 }
+
+extension Format {
+    /// "Oct 25 – Oct 31", or "Oct 25" for one day. `to` is the end of the range: a range that
+    /// ends at midnight ends on the day before.
+    public static func dateRange(_ from: Date, _ to: Date, calendar: Calendar) -> String {
+        let lastInstant = to.addingTimeInterval(-1)
+        let first = monthDay(from, calendar: calendar)
+        let last = monthDay(max(from, lastInstant), calendar: calendar)
+        return first == last ? first : "\(first) – \(last)"
+    }
+
+    /// "Oct 25", in the calendar's locale and time zone.
+    public static func monthDay(_ date: Date, calendar: Calendar) -> String {
+        var style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        style.locale = calendar.locale ?? .current
+        style.timeZone = calendar.timeZone
+        style.calendar = calendar
+        return date.formatted(style)
+    }
+
+    /// A reminder's due date on its card: "Today, 9:00 AM", "Tomorrow", "Oct 28, 9:00 AM". A
+    /// due date at midnight is a day without a time.
+    public static func dueDate(_ date: Date, now: Date, calendar: Calendar) -> String {
+        let day: String
+        if calendar.isDate(date, inSameDayAs: now) {
+            day = "Today"
+        } else if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+            calendar.isDate(date, inSameDayAs: tomorrow)
+        {
+            day = "Tomorrow"
+        } else {
+            day = monthDay(date, calendar: calendar)
+        }
+        guard date != calendar.startOfDay(for: date) else { return day }
+        return "\(day), \(time(date, calendar: calendar))"
+    }
+
+    /// "9:00 AM" or "09:00", as the locale writes a short time.
+    public static func time(_ date: Date, calendar: Calendar) -> String {
+        var style = Date.FormatStyle(date: .omitted, time: .shortened)
+        style.locale = calendar.locale ?? .current
+        style.timeZone = calendar.timeZone
+        style.calendar = calendar
+        return date.formatted(style)
+    }
+
+    /// "Mon", the short weekday.
+    public static func weekday(_ date: Date, calendar: Calendar) -> String {
+        var style = Date.FormatStyle.dateTime.weekday(.abbreviated)
+        style.locale = calendar.locale ?? .current
+        style.timeZone = calendar.timeZone
+        style.calendar = calendar
+        return date.formatted(style)
+    }
+
+    /// "512 B", "2.1 KB", "1.4 MB": what a tool returned.
+    public static func bytes(_ count: Int) -> String {
+        if count < 1024 { return "\(count) B" }
+        let kilobytes = Double(count) / 1024
+        if kilobytes < 1024 { return String(format: "%.1f KB", kilobytes) }
+        return String(format: "%.1f MB", kilobytes / 1024)
+    }
+
+    /// "1,284", with the thousands separator of en_US: the app's copy is English.
+    public static func count(_ number: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.string(from: NSNumber(value: number)) ?? "\(number)"
+    }
+}

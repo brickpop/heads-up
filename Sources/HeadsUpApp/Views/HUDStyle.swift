@@ -344,6 +344,20 @@ enum HUDStyle {
         static let dropIconSize: CGFloat = 28
     }
 
+    enum Tools {
+        static let rowChipSize: CGFloat = 22
+        static let rowFontSize: CGFloat = 12
+        static let separatorSize: CGFloat = 3
+        static let cardCornerRadius: CGFloat = 12
+        static let cardPadding: CGFloat = 14
+        static let cardChipSize: CGFloat = 36
+        static let previewRadius: CGFloat = 6
+        /// A Reminder title longer than this many lines gets Show all.
+        static let reminderLines = 3
+        static let eventTimeWidth: CGFloat = 96
+        static let eventTimeHeight: CGFloat = 28
+    }
+
     enum Pinned {
         static let saveDotSize: CGFloat = 6
     }

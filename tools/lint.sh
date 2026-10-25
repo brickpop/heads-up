@@ -90,7 +90,7 @@ info_allowed='CFBundleIdentifier CFBundleName CFBundleDisplayName CFBundleExecut
 CFBundlePackageType CFBundleInfoDictionaryVersion CFBundleShortVersionString CFBundleVersion
 LSMinimumSystemVersion LSUIElement NSPrincipalClass NSHumanReadableCopyright
 NSAppTransportSecurity NSAllowsLocalNetworking'
-# The four privacy usage strings the app may carry (§7). Slice 10 requires all four.
+# The four privacy usage strings the app carries (§7, R3): all of them, and no other.
 usage_allowed='NSCalendarsFullAccessUsageDescription NSRemindersFullAccessUsageDescription
 NSAppleEventsUsageDescription NSLocalNetworkUsageDescription'
 inbound_keys='CFBundleURLTypes CFBundleDocumentTypes UTExportedTypeDeclarations UTImportedTypeDeclarations
@@ -114,6 +114,11 @@ elif plist_is_simple "$info_plist"; then
         elif ! grep -qwF "$key" <<<"$info_allowed"; then
             fail "Resources/Info.plist has $key, which isn't on the lint's list of allowed keys. Add it to tools/lint.sh after a review."
         fi
+    done
+    # All four must be there (R3): without one, macOS refuses that permission without asking.
+    for key in $usage_allowed; do
+        grep -qxF "$key" <<<"$keys" ||
+            fail "Resources/Info.plist is missing $key: the app asks for that permission (§7, R3)"
     done
 fi
 

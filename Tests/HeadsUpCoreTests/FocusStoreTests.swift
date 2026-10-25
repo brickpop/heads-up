@@ -24,7 +24,7 @@ private struct FocusHarness {
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
-                imageProcessor: FakeImageProcessor(),
+                imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil),

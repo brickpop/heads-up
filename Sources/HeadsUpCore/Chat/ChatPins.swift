@@ -159,13 +159,19 @@ extension ChatStore {
         }
     }
 
-    /// The messages a pin keeps: what the user wrote and what the model answered, without the
-    /// rows, the tool results, or replies with no text yet (a step that only asked for tools).
+    /// The messages a pin keeps: what the user wrote, what the model answered, and each tool
+    /// row as it was shown. Not the problem rows, the tool results, the events or the clipboard,
+    /// nor replies with no text yet (a step that only asked for tools).
     private var storedMessages: [ChatMessage] {
         items.compactMap { item in
-            guard case .message(let message) = item else { return nil }
-            if message.role == .assistant && message.text.isEmpty { return nil }
-            return message
+            switch item {
+            case .message(let message):
+                return message.role == .assistant && message.text.isEmpty ? nil : message
+            case .tool(let record):
+                return storedRow(record).map { ChatMessage(id: record.id, role: .tool, text: "", toolRow: $0) }
+            case .problem, .toolResult:
+                return nil
+            }
         }
     }
 

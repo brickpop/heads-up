@@ -39,6 +39,7 @@ private final class EndpointsHarness {
                 systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                 powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(), serviceLauncher: launcher,
                 portProbe: probe, openPanels: FakeOpenPanels(), imageProcessor: FakeImageProcessor(),
+                calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
                 terminalLauncher: FakeTerminalLauncher(),
                 secrets: other?.secrets ?? secrets, httpClient: server, linkOpener: FakeLinkOpener(),
                 pasteboard: FakePasteboard(), dataFolder: folder, home: root.path,

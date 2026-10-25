@@ -24,7 +24,7 @@ private struct CaffeineHarness {
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: FakeNotifier(), powerAssertions: assertions, powerSource: power,
                 serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
-                imageProcessor: FakeImageProcessor(),
+                imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: nil),

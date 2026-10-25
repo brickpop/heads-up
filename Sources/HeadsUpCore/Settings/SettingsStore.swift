@@ -313,3 +313,30 @@ public final class SettingsStore {
         }
     #endif
 }
+
+extension SettingsStore {
+    // MARK: Settings → Tools
+
+    /// Settings → Tools: one row per tool, with the values it may take.
+    public var toolsScreen: ToolsSettingsScreen {
+        let tools = settings.tools
+        return ToolsSettingsScreen(
+            title: Strings.Tools.title, intro: Strings.Tools.intro,
+            rows: ToolID.allCases.map { tool in
+                ToolsSettingsScreen.Row(
+                    id: tool, glyph: tool.glyph, label: Strings.Tools.label(tool),
+                    description: Strings.Tools.description(tool), fn: tool.displayName,
+                    choices: tool.allowed.map {
+                        ToolsSettingsScreen.Choice(permission: $0, title: Strings.Tools.permission($0))
+                    },
+                    selected: tools[tool], help: tool.effect == .write ? Strings.Tools.alwaysAsks : nil)
+            })
+    }
+
+    /// A segment in Settings → Tools, or Always allow on a card. It applies to the next tool
+    /// call. Allow is refused for a write (F4).
+    public func setToolPermission(_ tool: ToolID, _ permission: ToolPermission) {
+        guard tool.allowed.contains(permission) else { return }
+        update { $0.tools[tool] = permission }
+    }
+}

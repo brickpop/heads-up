@@ -9,27 +9,6 @@ public struct ToolCall: Equatable, Sendable {
     public let arguments: Data
 }
 
-/// What running a tool came to: the JSON envelope the model reads (F2 c). The tools slice adds
-/// the record the user sees.
-struct ToolOutcome: Equatable, Sendable {
-    let envelope: String
-}
-
-/// Runs the tools a reply asks for (ADR-001 §8.2–8.3). It runs inside the reply's task, so
-/// Stop cancels it, and a result that arrives after Stop isn't sent. The tools slice puts the
-/// gate and the tools behind it.
-@MainActor
-protocol ToolRunner {
-    func run(_ call: ToolCall) async -> ToolOutcome
-}
-
-/// No tools yet: every call is answered, in the envelope, that tools aren't available.
-struct NoTools: ToolRunner {
-    func run(_ call: ToolCall) async -> ToolOutcome {
-        ToolOutcome(envelope: ToolEnvelope.make(tool: call.name, content: "Tools aren't available in HeadsUp yet."))
-    }
-}
-
 /// `{"tool": "calendar_events", "untrusted_content": …}`: how every tool result reaches the
 /// model, never as bare text (F2 c).
 enum ToolEnvelope {
@@ -55,10 +34,12 @@ public final class ChatStore: HUDChat {
         /// Sent; no text yet: "Thinking with GPT-4o mini…".
         case waiting
         case streaming
+        /// A tool call waits on its approval card.
+        case awaitingApproval
     }
 
     public internal(set) var items: [ChatItem] = []
-    public private(set) var phase: Phase = .idle
+    public internal(set) var phase: Phase = .idle
     /// "Open this link?", waiting for an answer.
     public private(set) var pendingLink: PendingLink?
 
@@ -89,12 +70,14 @@ public final class ChatStore: HUDChat {
 
     @ObservationIgnored let endpoints: EndpointService
     @ObservationIgnored private let provider: LLMProvider
-    @ObservationIgnored private let tools: ToolRunner
+    @ObservationIgnored let settings: SettingsStore
+    /// The gate and the tools (Tools/GatedTools.swift).
+    @ObservationIgnored let tools: ToolRunner
     @ObservationIgnored let clock: Clock
     @ObservationIgnored let scheduler: Scheduler
     @ObservationIgnored private let ports: PortProbe
     @ObservationIgnored private let links: LinkOpener
-    @ObservationIgnored private let pasteboard: Pasteboard
+    @ObservationIgnored let pasteboard: Pasteboard
     @ObservationIgnored let imageProcessor: ImageProcessor
     @ObservationIgnored let pins: PinSaving
     /// When the pin was last written, and the write waiting for the 500 ms to pass.
@@ -125,13 +108,14 @@ public final class ChatStore: HUDChat {
     @ObservationIgnored private var parsed: [ChatMessage.ID: (text: String, blocks: [Block])] = [:]
 
     init(
-        endpoints: EndpointService, provider: LLMProvider, tools: ToolRunner = NoTools(), clock: Clock,
+        endpoints: EndpointService, settings: SettingsStore, provider: LLMProvider, tools: ToolRunner, clock: Clock,
         scheduler: Scheduler, ports: PortProbe, links: LinkOpener, pasteboard: Pasteboard,
         imageProcessor: ImageProcessor,
         pins: PinSaving, toaster: Toaster
     ) {
         self.endpoints = endpoints
         self.provider = provider
+        self.settings = settings
         self.tools = tools
         self.clock = clock
         self.scheduler = scheduler
@@ -269,6 +253,7 @@ public final class ChatStore: HUDChat {
 
     private func cancelRun() {
         run = nil
+        tools.denyPending()
         task?.cancel()
         task = nil
         flush?.cancel()
@@ -284,7 +269,9 @@ public final class ChatStore: HUDChat {
             var calls: [ToolCall] = []
             var reason = StopReason.stop
             do {
-                for try await event in provider.stream(endpoint: endpoint, messages: context, tools: []) {
+                for try await event in provider.stream(
+                    endpoint: endpoint, messages: context, tools: offeredTools(endpoint))
+                {
                     guard run == id else { return }
                     switch event {
                     case .text(let text):
@@ -318,9 +305,9 @@ public final class ChatStore: HUDChat {
                 }
             }
             for call in calls {
-                let outcome = await tools.run(call)
+                let envelope = await tools.run(call, model: endpoint.name)
                 guard run == id, !Task.isCancelled else { return }
-                items.append(.toolResult(id: UUID().uuidString, callID: call.id, envelope: outcome.envelope))
+                items.append(.toolResult(id: UUID().uuidString, callID: call.id, envelope: envelope))
             }
             // A finished step is kept at once in a pinned chat.
             savePin()
@@ -360,11 +347,17 @@ public final class ChatStore: HUDChat {
     /// "[image omitted]" (ADR-001 §8.2).
     private func conversation(for endpoint: Endpoint) -> [LLMMessage] {
         var messages = [
-            LLMMessage.text(.system, SystemPrompt.v1(now: clock.now, timeZone: .current, locale: .current))
+            LLMMessage.text(
+                .system,
+                SystemPrompt.v1(
+                    now: clock.now, timeZone: .current, locale: .current, tools: offeredToolIDs(endpoint)))
         ]
         let newestUser = items.last { if case .message(let m) = $0 { m.role == .user } else { false } }?.id
         for item in items {
             switch item {
+            case .message(let message) where message.role == .tool:
+                // A kept tool row is display only: its result was never kept.
+                continue
             case .message(let message) where message.role == .user:
                 guard !message.imageIDs.isEmpty else {
                     messages.append(.text(.user, message.text))

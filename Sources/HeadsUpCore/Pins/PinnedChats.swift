@@ -78,7 +78,8 @@ public final class SQLitePinnedChats: PinnedChats {
         let rows = try run { () throws(Database.Failure) in
             try database.query(
                 """
-                SELECT chat.id, chat.title, chat.model_name, chat.pinned_at, COUNT(message.seq)
+                SELECT chat.id, chat.title, chat.model_name, chat.pinned_at,
+                  COUNT(CASE WHEN json_extract(message.body, '$.role') != 'tool' THEN 1 END)
                 FROM chat LEFT JOIN message ON message.chat_id = chat.id
                 GROUP BY chat.id ORDER BY chat.pinned_at DESC, chat.id DESC
                 """)
@@ -213,7 +214,7 @@ public final class MemoryPinnedChats: PinnedChats {
         chats.values.sorted { ($0.pinnedAt, $0.id) > ($1.pinnedAt, $1.id) }.map {
             PinnedSummary(
                 id: $0.id, title: $0.title, modelName: $0.modelName, pinnedAt: $0.pinnedAt,
-                messageCount: $0.messages.count)
+                messageCount: $0.messages.filter { $0.role != .tool }.count)
         }
     }
 

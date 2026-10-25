@@ -25,6 +25,9 @@ extension Glyph {
         case .utensils: "fork.knife"
         case .dot: "circle.fill"
         case .play: "play.fill"
+        case .calendar: "calendar"
+        case .check: "checklist"
+        case .clipboard: "doc.on.clipboard"
         }
     }
 }

@@ -43,6 +43,12 @@ public enum MessageScreen: Equatable, Sendable, Identifiable {
     case problem(ProblemRow)
     /// "Open this link?", after the message holding the link.
     case linkAsk(LinkAsk)
+    /// A tool call that ran, or was refused (ChatTools.swift).
+    case toolRow(ToolRowScreen)
+    /// A tool call waiting for the user.
+    case approvalCard(ApprovalCardScreen)
+    /// The calendar's events, after their row.
+    case events(EventsBlock)
 
     public var id: String {
         switch self {
@@ -50,6 +56,9 @@ public enum MessageScreen: Equatable, Sendable, Identifiable {
         case .assistant(let reply): reply.id
         case .problem(let row): row.id
         case .linkAsk(let ask): ask.id
+        case .toolRow(let row): row.id
+        case .approvalCard(let card): card.id
+        case .events(let block): block.id
         }
     }
 }
@@ -302,6 +311,8 @@ extension ChatStore {
         let now = clock.now
         for item in items {
             switch item {
+            case .message(let message) where message.role == .tool:
+                if let stored = message.toolRow { messages.append(.toolRow(rowScreen(message.id, stored: stored))) }
             case .message(let message) where message.role == .user:
                 messages.append(
                     .user(
@@ -321,6 +332,8 @@ extension ChatStore {
                 }
             case .problem(let problem):
                 messages.append(.problem(row(problem, now: now)))
+            case .tool(let record):
+                messages += screens(record)
             case .toolResult:
                 continue
             }

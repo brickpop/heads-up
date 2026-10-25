@@ -1,4 +1,4 @@
-/// Everything in settings.json (ADR-001 §6.1). A later slice adds the tools section. A field
+/// Everything in settings.json (ADR-001 §6.1). A field
 /// missing from the file takes its default, so a file written by an older version still loads.
 public struct Settings: Equatable, Codable, Sendable {
     /// The file format's version, for migrations.
@@ -12,6 +12,8 @@ public struct Settings: Equatable, Codable, Sendable {
     public var endpoints: [Endpoint] = []
     /// The model chat starts with; nil, or the id of one of `endpoints`.
     public var defaultEndpointID: Endpoint.ID?
+    /// What the model may do with each local tool.
+    public var tools = ToolSettings()
 
     public init() {}
 
@@ -25,6 +27,7 @@ public struct Settings: Equatable, Codable, Sendable {
         // A default that names no endpoint is dropped (§6.1).
         let defaultID = try container.decodeIfPresent(String.self, forKey: .defaultEndpointID)
         defaultEndpointID = endpoints.contains { $0.id == defaultID } ? defaultID : nil
+        tools = (try? container.decodeIfPresent(ToolSettings.self, forKey: .tools)) ?? ToolSettings()
     }
 }
 

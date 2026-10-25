@@ -35,7 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
                 powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
-                openPanels: OpenPanelsAdapter(), imageProcessor: ImageIOProcessor(),
+                openPanels: OpenPanelsAdapter(), imageProcessor: ImageIOProcessor(), calendar: EventKitTools.shared,
+                reminders: EventKitTools.shared,
                 terminalLauncher: SystemTerminalLauncher(),
                 secrets: KeychainSecretStore(), httpClient: URLSessionHTTPClient(),
                 linkOpener: WorkspaceLinkOpener(), pasteboard: GeneralPasteboard(),
@@ -145,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        model?.willQuit()
         hotkeys.invalidate()
         // Assertions die with the process anyway; releasing them first is tidier.
         _ = powerAssertions.hold([])

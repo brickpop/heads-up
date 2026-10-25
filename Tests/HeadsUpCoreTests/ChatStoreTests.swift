@@ -33,7 +33,7 @@ private final class ChatHarness {
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                 serviceLauncher: launcher, portProbe: probe, openPanels: FakeOpenPanels(),
-                imageProcessor: FakeImageProcessor(),
+                imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
                 terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
                 linkOpener: links, pasteboard: pasteboard, llmProvider: provider, dataFolder: nil),
             settings: settings)
@@ -331,7 +331,11 @@ private final class ChatHarness {
         let tool = try #require(h.provider.requests[1].last)
         #expect(tool.role == .tool && tool.toolCallID == "call_0")
         guard case .text(let envelope)? = tool.parts.first else { return }
-        #expect(envelope == #"{"tool":"calendar_events","untrusted_content":"Tools aren't available in HeadsUp yet."}"#)
+        // Empty arguments are refused, in the same envelope.
+        #expect(
+            envelope
+                == #"{"error":"The arguments were not valid: from and to must be ISO 8601 dates.","tool":"calendar_events"}"#
+        )
 
         let row = try #require(h.problem)
         #expect(

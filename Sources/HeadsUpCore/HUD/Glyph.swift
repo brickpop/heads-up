@@ -13,4 +13,6 @@ public enum Glyph: String, CaseIterable, Sendable {
     case eye, activity, people, utensils, dot
     // Focus
     case play
+    // Local tools
+    case calendar, check, clipboard
 }

@@ -587,3 +587,4 @@ extension HUDStore {
         settings.settings.general.shortcut != .wakeDefault && !recording
     }
 }
+extension HUDStore: ModalPresenting {}

@@ -165,6 +165,12 @@ private struct MessageView: View {
             ProblemRowView(model: model, row: row)
         case .linkAsk(let ask):
             LinkAskView(chat: model.chat, ask: ask)
+        case .toolRow(let row):
+            ToolRowView(model: model, row: row)
+        case .approvalCard(let card):
+            ApprovalCardView(chat: model.chat, card: card)
+        case .events(let block):
+            EventsBlockView(block: block)
         }
     }
 }
@@ -400,7 +406,7 @@ private struct LinkAskView: View {
 /// Draws its content with `isArmed`: false until `armedAt`, true from then on, redrawing once
 /// at that moment (F6). With no `armedAt` (the HUD isn't key) the buttons stay dim. The core's
 /// intents ignore early presses whatever this shows.
-private struct ArmedTimeline<Content: View>: View {
+struct ArmedTimeline<Content: View>: View {
     let armedAt: Date?
     @ViewBuilder let content: (_ isArmed: Bool) -> Content
 

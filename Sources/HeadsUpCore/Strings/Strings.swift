@@ -948,6 +948,136 @@ public enum Strings {
 
     /// The conversation (Chat spec; UX part 1, §4, §5, §8; addenda 3–4). Copy marked
     /// "placeholder" waits for Yuki.
+    /// The local tools: Settings → Tools, tool rows and approval cards (Local tools spec; Chat
+    /// spec; UX addendum 3).
+    public enum Tools {
+        // Settings → Tools
+        public static let title = "Local tools"
+        public static let intro = "What the model may access on this Mac. “Ask” shows an approval card in the chat."
+        public static func label(_ tool: ToolID) -> String {
+            switch tool {
+            case .calendar: "Calendar"
+            case .remindersRead: "Reminders"
+            case .remindersCreate: "Add reminders"
+            case .clipboard: "Clipboard"
+            }
+        }
+        public static func description(_ tool: ToolID) -> String {
+            switch tool {
+            case .calendar: "Read events"
+            case .remindersRead: "Read your reminders"
+            case .remindersCreate: "Create new reminders"
+            case .clipboard: "Read the current clipboard"
+            }
+        }
+        public static func permission(_ permission: ToolPermission) -> String {
+            switch permission {
+            case .allow: "Allow"
+            case .ask: "Ask"
+            case .off: "Off"
+            }
+        }
+        public static let alwaysAsks = "Always asks before adding."
+
+        // Tool rows (Chat spec; addendum 3, F3 and F10)
+        public static let allowedByRule = "Allowed by rule"
+        public static let approvedOnce = "Approved once"
+        public static let alwaysAllowed = "Always allowed · saved to Settings"
+        public static let denied = "Denied"
+        public static let disabled = "Disabled in Settings"
+        public static let blocked = "Blocked by macOS"
+        public static let openSystemSettings = "Open System Settings"
+        public static let concealed = "Not shared · the clipboard holds a password"
+        public static func failed(_ reason: String) -> String { "Failed · \(reason)" }
+        public static let running = "Running…"
+        public static let waiting = "Waiting for you"
+        public static let notAvailable = "Not available"
+        /// VoiceOver reads the whole row: "Calendar, calendar.events, Oct 25 – Oct 31, 2.1 KB, Allowed by rule".
+        public static func rowLabel(_ parts: [String?]) -> String { parts.compactMap { $0 }.joined(separator: ", ") }
+
+        // Cards (Chat spec; addendum 3, F3 and F4)
+        public static func cardTitle(_ model: String, _ tool: ToolID) -> String {
+            switch tool {
+            case .calendar: "\(model) wants to read your calendar"
+            case .remindersRead: "\(model) wants to read your reminders"
+            case .remindersCreate: "\(model) wants to add a reminder"
+            case .clipboard: "\(model) wants to read your clipboard"
+            }
+        }
+        public static func notAllowlisted(_ tool: ToolID) -> String {
+            "\(label(tool)) isn’t on your allowlist. Nothing is shared until you approve."
+        }
+        public static let nothingAdded = "Nothing is added until you allow it."
+        public static let sharedList = "People who share this list will see it."
+        public static let deny = "Deny"
+        public static let allowOnce = "Allow once"
+        public static let alwaysAllow = "Always allow"
+        public static let reminderField = "Reminder"
+        public static let dueField = "Due"
+        public static let listField = "List"
+        public static let noDueDate = "No due date"
+        /// "Reminders (default list)"
+        public static func defaultList(_ name: String) -> String { "\(name) (default list)" }
+        /// A synced list whose account has no name.
+        public static let syncedList = "Synced list"
+        public static let allLists = "All lists"
+        /// Why a reminder list call didn't happen: "no list named “Secret”".
+        public static func noSuchList(_ name: String) -> String { "no list named “\(name)”" }
+        public static let noLists = "you don't have a reminders list"
+        /// "Not added · no list named “Secret”": a reminder that couldn't be added as asked.
+        public static func notAdded(_ reason: String) -> String { "Not added · \(reason)" }
+        /// VoiceOver, when a card appears: the title, then what to do (Yuki).
+        public static func cardAnnouncement(_ title: String) -> String { "\(title). Allow or deny." }
+        /// The Reminder field's fold past 3 lines.
+        public static let showAll = "Show all"
+        public static let showLess = "Show less"
+        /// "Oct 1 – Oct 31 · first 31 days": a calendar read cut to the limit (F10a).
+        public static func cutTo31Days(_ range: String) -> String { "\(range) · first 31 days" }
+        public static let noReminderList = "there is no reminders list"
+
+        /// The row's summary of what the clipboard held: "1,284 characters", "Image · 1280 × 720".
+        public static func clipboardSummary(_ contents: ClipboardContents) -> String {
+            switch contents {
+            case .empty: "Empty"
+            case .concealed: "Password"
+            case .text(let text): "\(Format.count(text.count)) characters"
+            case .image(let width, let height): "Image · \(width) × \(height)"
+            case .files(let names): names.count == 1 ? "1 file" : "\(names.count) files"
+            }
+        }
+
+        /// The clipboard card's preview (F3): the type and size, then the first 8 characters and
+        /// the rest of the first 40 masked; file names only; nothing of an image.
+        public static func clipboardPreview(_ contents: ClipboardContents) -> String {
+            switch contents {
+            case .text(let text):
+                let clean = sanitizeForDisplay(text, max: 0)
+                let shown = String(clean.prefix(8))
+                let masked = String(repeating: "•", count: max(0, min(clean.count, 40) - shown.count))
+                return "Text · \(Format.count(text.count)) characters\n\(shown)\(masked)\(clean.count > 40 ? "…" : "")"
+            case .files(let names):
+                let list = names.prefix(5).map { sanitizeForDisplay($0, max: 60) }.joined(separator: ", ")
+                return "\(clipboardSummary(contents)) · \(list)\(names.count > 5 ? ", …" : "")"
+            default:
+                return clipboardSummary(contents)
+            }
+        }
+
+        // What the model is told when a tool didn't run (inside the envelope).
+        static let modelDenied = "The user denied this tool call. Nothing was read or changed."
+        static let modelDisabled = "This tool is turned off in HeadsUp's settings. Nothing was read."
+        static let modelUnknown = "HeadsUp has no tool by this name."
+        static let modelConcealed = "The clipboard holds a password-manager item, so nothing was shared."
+        static func modelBlocked(_ permission: MacPermission) -> String {
+            let pane = permission == .calendar ? "Calendars" : "Reminders"
+            return
+                "macOS hasn't given HeadsUp access. The user can allow it in System Settings → Privacy & Security → \(pane)."
+        }
+        static func modelInvalid(_ reason: String) -> String { "The arguments were not valid: \(reason)." }
+        static func modelFailed(_ reason: String) -> String { "The tool failed: \(reason)." }
+        public static let allDay = "All day"
+    }
+
     /// Images attached to the next message (Chat spec, Images; UX part 1, §6–7; addendum 4).
     public enum Attachments {
         /// The name of an image pasted as data, without a file name.

@@ -23,6 +23,9 @@ public final class AppModel {
         public var openPanels: OpenPanels
         /// Decodes and cleans chat images (F17): ImageIO on macOS.
         public var imageProcessor: ImageProcessor
+        /// The calendar and reminders the tools read: EventKit on macOS.
+        public var calendar: CalendarReader
+        public var reminders: RemindersAccess
         public var terminalLauncher: TerminalLauncher
         /// Endpoint tokens: the Keychain on macOS.
         public var secrets: SecretStore
@@ -48,8 +51,8 @@ public final class AppModel {
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
             powerAssertions: PowerAssertions, powerSource: PowerSource, serviceLauncher: ServiceLauncher,
-            portProbe: PortProbe, openPanels: OpenPanels, imageProcessor: ImageProcessor,
-            terminalLauncher: TerminalLauncher, secrets: SecretStore,
+            portProbe: PortProbe, openPanels: OpenPanels, imageProcessor: ImageProcessor, calendar: CalendarReader,
+            reminders: RemindersAccess, terminalLauncher: TerminalLauncher, secrets: SecretStore,
             httpClient: HTTPClient, linkOpener: LinkOpener, pasteboard: Pasteboard, llmProvider: LLMProvider? = nil,
             dataFolder: URL?,
             focusSecondsPerMinute: TimeInterval = 60,
@@ -70,6 +73,8 @@ public final class AppModel {
             self.portProbe = portProbe
             self.openPanels = openPanels
             self.imageProcessor = imageProcessor
+            self.calendar = calendar
+            self.reminders = reminders
             self.terminalLauncher = terminalLauncher
             self.secrets = secrets
             self.httpClient = httpClient
@@ -204,13 +209,18 @@ public final class AppModel {
             clock: ports.clock)
         self.pins = pins
         imageProcessor = ports.imageProcessor
+        let gatedTools = GatedTools(
+            settings: settings, ports: ToolPorts(calendar: ports.calendar, reminders: ports.reminders),
+            pasteboard: ports.pasteboard, clock: ports.clock, modal: hud)
         let chatStore = ChatStore(
-            endpoints: endpoints,
+            endpoints: endpoints, settings: settings,
             provider: ports.llmProvider ?? OpenAICompatibleProvider(transport: endpoints.transport),
+            tools: gatedTools,
             clock: ports.clock, scheduler: ports.scheduler, ports: ports.portProbe, links: ports.linkOpener,
             pasteboard: ports.pasteboard, imageProcessor: ports.imageProcessor,
             pins: pins, toaster: hud)
         self.chat = chatStore
+        gatedTools.display = chatStore
         chatStore.pinCount = { [weak pins] in pins?.count ?? 0 }
         pins.loadedID = { [weak chatStore] in chatStore?.pinnedID }
         pins.didDelete = { [weak chatStore] id in chatStore?.pinDeleted(id) }
@@ -510,6 +520,7 @@ public final class AppModel {
                     powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
                     serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
                     openPanels: FakeOpenPanels(), imageProcessor: FakeImageProcessor(),
+                    calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
                     terminalLauncher: FakeTerminalLauncher(),
                     secrets: MemorySecretStore(), httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(),
                     pasteboard: FakePasteboard(), dataFolder: nil),
@@ -768,6 +779,19 @@ extension AppModel {
 }
 
 extension AppModel {
+    // MARK: Local tools
+
+    /// Open System Settings, on a tool row macOS blocked: its privacy pane.
+    public func fixTool(_ rowID: String) {
+        guard case .blocked(let permission)? = chat.record(rowID)?.status else { return }
+        systemSettings.openPrivacy(permission)
+    }
+
+    /// The app is quitting: a waiting card becomes Denied, and a pinned chat is saved as it is.
+    public func willQuit() {
+        chat.stop()
+    }
+
     // MARK: Images and pins
 
     /// The header's Pinned chats and Attach image buttons; nil off the Chat tab.

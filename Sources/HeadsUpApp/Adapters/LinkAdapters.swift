@@ -1,5 +1,6 @@
 import AppKit
 import HeadsUpCore
+import ImageIO
 import UniformTypeIdentifiers
 
 /// Opens a link from a reply in the user's default app.
@@ -48,5 +49,39 @@ final class GeneralPasteboard: Pasteboard {
         let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
         return Array(
             urls.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) == true }.prefix(limit))
+    }
+}
+
+extension GeneralPasteboard {
+    /// The markers password managers (1Password, Bitwarden, the macOS Passwords app) put on
+    /// what they copy (nspasteboard.org).
+    static let concealedTypes: Set<String> = ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"]
+
+    /// What `clipboard_read` would share (F3). A marked item is refused before anything of it
+    /// is read; files are listed by name only; an image gives only its size.
+    func toolContents() -> ClipboardContents {
+        let board = NSPasteboard.general
+        let types = Set((board.types ?? []).map(\.rawValue))
+            .union((board.pasteboardItems ?? []).flatMap { $0.types.map(\.rawValue) })
+        if !types.isDisjoint(with: Self.concealedTypes) { return .concealed }
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        if let files = board.readObjects(forClasses: [NSURL.self], options: options) as? [URL], !files.isEmpty {
+            return .files(files.map(\.lastPathComponent))
+        }
+        if let text = board.string(forType: .string) {
+            return text.isEmpty ? .empty : .text(text)
+        }
+        for item in board.pasteboardItems ?? [] {
+            guard let type = item.types.first(where: { UTType($0.rawValue)?.conforms(to: .image) == true }),
+                let data = item.data(forType: type), let source = CGImageSourceCreateWithData(data as CFData, nil),
+                // Only the types the chat accepts, by what ImageIO reads from the bytes (Scan I19).
+                let sourceType = CGImageSourceGetType(source) as String?, ImageLimits.allowedTypes.contains(sourceType),
+                let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            else { continue }
+            let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
+            let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
+            return .image(width: width, height: height)
+        }
+        return .empty
     }
 }

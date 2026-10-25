@@ -312,15 +312,19 @@ add_to_plist Info.plist '    <key>CFBundleURLTypes</key>
     <array/>'
 expect_lint_fails "the lint fails on a URL scheme in Info.plist" 'has CFBundleURLTypes'
 
-lint_root
-add_to_plist Info.plist '    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>To reach models on this Mac.</string>'
-expect_lint_passes "the lint allows local networking and one of the four usage strings"
+# Removes key $2 and the line after it (its value) from plist $1 in the lint root.
+remove_from_plist() {
+    local file=$work/lint-root/Resources/$1
+    awk -v key="<key>$2</key>" 'skip { skip = 0; next } index($0, key) { skip = 1; next } { print }' \
+        "$file" >"$file.new"
+    mv "$file.new" "$file"
+}
+for usage in NSCalendarsFullAccessUsageDescription NSRemindersFullAccessUsageDescription \
+    NSAppleEventsUsageDescription NSLocalNetworkUsageDescription; do
+    lint_root
+    remove_from_plist Info.plist "$usage"
+    expect_lint_fails "the lint fails without $usage (R3)" "is missing $usage"
+done
 
 lint_root
 add_to_plist Info.plist '    <key>NSAppTransportSecurity</key>

@@ -48,7 +48,8 @@ private final class PinHarness {
             files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
             notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
             serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: panels,
-            imageProcessor: images, terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(),
+            imageProcessor: images, calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
+            terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(),
             httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(), pasteboard: pasteboard,
             llmProvider: provider, dataFolder: folder)
         ports.pinnedChats = pinStore

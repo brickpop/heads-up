@@ -30,7 +30,18 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>When you ask about your day, HeadsUp reads your events and sends them to the model you chose. It never changes your calendar.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>When you ask, HeadsUp reads your reminders and sends them to the model you chose. It adds a reminder only after you allow it in the chat.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>HeadsUp opens your saved commands in this terminal app. It doesn't read or change anything else in it.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>HeadsUp connects to model servers on your network, like Ollama on another computer, when you add one in Settings.</string>
 </dict>
 </plist>
