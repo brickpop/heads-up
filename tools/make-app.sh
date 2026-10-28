@@ -57,6 +57,14 @@ echo "make-app: $(swift --version 2>&1 | head -n 1)"
 # which the Command Line Tools don't have. lipo then joins them into one universal binary.
 # Only the versions in Package.resolved, and no resolution at build time (F15).
 resolved=(--only-use-versions-from-resolved-file --disable-automatic-resolution)
+
+# The release is built by this Mac's Swift, so the core's tests run on it first: a failure stops
+# here, before anything is built or signed.
+if [ "$mode" = identity ]; then
+    echo "make-app: running the core tests on this Mac's Swift"
+    tools/swift.sh test "${resolved[@]}" || die "the core tests failed on this Mac's Swift, so no release was built"
+fi
+
 if [ "$mode" = quick ]; then
     # A debug build for this Mac only.
     architectures=("$(uname -m)")

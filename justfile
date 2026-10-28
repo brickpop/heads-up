@@ -1,7 +1,7 @@
 # HeadsUp's recipes (ADR-001 §10). Run `just` to list them.
 #
 # Linux: run `just setup-swift` once; `test` and `lint` then use that toolchain.
-# macOS: the Command Line Tools with Swift 6.2 or newer (Xcode isn't needed). `app` and `build`
+# macOS: the Command Line Tools with Swift 6.4 or newer (Xcode isn't needed). `app` and `build`
 # need macOS.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -50,8 +50,9 @@ app-quick:
 app-quick:
     @echo "just app-quick needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
-# The release: build/HeadsUp.app signed with the identity in $HEADSUP_SIGN_ID (the only place
-# it is named), and build/HeadsUp.dmg, both verified. See docs/RELEASE.md.
+# The release: the core tests on this Mac's Swift, then build/HeadsUp.app signed with the identity
+# in $HEADSUP_SIGN_ID (the only place it is named), and build/HeadsUp.dmg, both verified. See
+# docs/RELEASE.md.
 [macos]
 build:
     tools/make-app.sh identity "{{ bundle_id }}" "{{ version }}" "{{ build_number }}"

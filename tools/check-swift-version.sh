@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks that this Mac's Swift is at least the series the project is checked with: the
-# major.minor in .swift-version (6.2 for 6.2.4). Linux tests with exactly that release.
+# major.minor in .swift-version (6.4 for 6.4.1). Linux tests with exactly that release.
 #   - Older: refused, with how to update. The code may use what that series added.
 #   - The same series, any patch release: accepted, silently.
 #   - Newer: accepted, with a one-line note. A newer Swift can warn where Linux's doesn't, and
@@ -22,7 +22,7 @@ else
 fi
 pinned=$(tr -d '[:space:]' <"$pin_file" 2>/dev/null || true)
 [[ "$pinned" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]] || {
-    echo "Couldn't read a Swift version like 6.2.4 from $pin_file" >&2
+    echo "Couldn't read a Swift version like 6.4.1 from $pin_file" >&2
     exit 1
 }
 need_major=${BASH_REMATCH[1]} need_minor=${BASH_REMATCH[2]}

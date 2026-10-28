@@ -34,7 +34,10 @@ case "${1:-}" in
 build | test | run)
     command=$1
     shift
-    # The default build system can't use a user-space sysroot yet, so the native one it is.
+    # The native build system, because the default one still can't use a user-space sysroot (checked
+    # on 6.4.1): as an SDK it is refused ("unable to resolve run destination SDK"), and without one
+    # the linker can't find the C runtime. SwiftPM prints a deprecation note for native; check again
+    # when the pin moves.
     exec swift "$command" --build-system native \
         -Xcc "--sysroot=$SDKROOT" \
         -Xswiftc -sdk -Xswiftc "$SDKROOT" \

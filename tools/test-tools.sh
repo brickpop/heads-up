@@ -226,7 +226,7 @@ for newer in "$ceo_6_4" "Apple Swift version 6.10" "Swift version 7.0 (swift-7.0
         fail "accepts a newer Swift with a note: $newer" "$(cat "$work/out")"
     fi
 done
-if "$tools/check-swift-version.sh" "Apple Swift version 6.2.3" "$repo/.swift-version" >"$work/out" 2>&1; then
+if "$tools/check-swift-version.sh" "Apple Swift version 6.4 (swiftlang-6.4.0.34.1)" "$repo/.swift-version" >"$work/out" 2>&1; then
     pass "the repo's .swift-version is read"
 else
     fail "the repo's .swift-version is read" "$(cat "$work/out")"

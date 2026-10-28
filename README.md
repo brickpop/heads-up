@@ -4,14 +4,14 @@ A no-friction HUD for casual AI prompts, for launching timers, commands and serv
 
 ## Requirements
 
-The Command Line Tools are enough; Xcode isn't needed. They must ship Swift 6.2 or newer
+The Command Line Tools are enough; Xcode isn't needed. They must ship Swift 6.4 or newer
 (`swift --version`):
 
     xcode-select --install
 
-The project is checked on Linux with the Swift in `.swift-version` (6.2). A newer Swift on
+The project is checked on Linux with the Swift in `.swift-version` (6.4). A newer Swift on
 the Mac builds too: the recipes print a one-line note saying so. Warnings are errors here, and a
-newer Swift can warn about things 6.2 doesn't; if one stops the build, paste it to the team. An
+newer Swift can warn about things 6.4 doesn't; if one stops the build, paste it to the team. An
 older Swift stops the recipes with how to update.
 
 `just lint` uses `swift format` from the toolchain; if your toolchain lacks it, install it with

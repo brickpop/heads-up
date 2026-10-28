@@ -1,5 +1,5 @@
-# What `just setup-swift` installs on Linux (Debian 13, aarch64), pinned. The toolchain is the
-# Debian 12 build: swift.org has no Debian 13 build of 6.2, and the Debian 12 one runs on newer glibc.
+# What `just setup-swift` installs on Linux (Debian 13, aarch64), pinned: the Swift the release
+# is built with on the Mac (6.4), so the tests run on the same series.
 # tools/setup-swift.sh reads this file. Each line is:
 #   <kind> <name> <sha256> <url>
 # kind is one of:
@@ -12,10 +12,10 @@
 # The .debs come from snapshot.debian.org at a fixed date, so these URLs never vanish.
 # To change a pin, edit this file: the next `just setup-swift` sees the new hash and rebuilds.
 
-swift-version 6.2.4
+swift-version 6.4.1
 
-toolchain swift-6.2.4-RELEASE-debian12-aarch64.tar.gz 065a113020cdf4335f2dae9125f86935354c0e9fc1a9ffa996ddc8b88bc03a40 https://download.swift.org/swift-6.2.4-release/debian12-aarch64/swift-6.2.4-RELEASE/swift-6.2.4-RELEASE-debian12-aarch64.tar.gz
-signature swift-6.2.4-RELEASE-debian12-aarch64.tar.gz.sig - https://download.swift.org/swift-6.2.4-release/debian12-aarch64/swift-6.2.4-RELEASE/swift-6.2.4-RELEASE-debian12-aarch64.tar.gz.sig
+toolchain swift-6.4.1-RELEASE-debian13-aarch64.tar.gz bdddd98544ab2b3c569a405d6b377e50945d5b4621f5fa503114af342f55a5cd https://download.swift.org/swift-6.4.1-release/debian13-aarch64/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13-aarch64.tar.gz
+signature swift-6.4.1-RELEASE-debian13-aarch64.tar.gz.sig - https://download.swift.org/swift-6.4.1-release/debian13-aarch64/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13-aarch64.tar.gz.sig
 
 deb libc6_2.41-12+deb13u4_arm64.deb 8784eda966b189c777a384dac5ce009e8fc9b52d006926c5a013e7fa8aa688cc https://snapshot.debian.org/archive/debian/20261024T000000Z/pool/main/g/glibc/libc6_2.41-12%2Bdeb13u4_arm64.deb
 deb libc6-dev_2.41-12+deb13u4_arm64.deb 71e373cb5e9da975b02fb4af555929cb1977560e2dd8245de4eb8a7b03677a08 https://snapshot.debian.org/archive/debian/20261024T000000Z/pool/main/g/glibc/libc6-dev_2.41-12%2Bdeb13u4_arm64.deb
