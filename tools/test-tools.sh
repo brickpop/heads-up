@@ -298,6 +298,104 @@ else
     fail "'-' is refused as ad-hoc, with why" "$(cat "$work/out")"
 fi
 
+# --- make-app's parallel builds (on fakes) -------------------------------------------------
+
+echo "parallel builds"
+
+# Fakes for a Mac: uname says Darwin on arm64; security has one valid identity; swift records
+# when each job starts and ends in $events. FAIL_ARCH makes that architecture's build fail,
+# FAIL_TESTS the tests, and SLEEP sets how long each job takes.
+fakes=$work/fake-mac
+events=$work/events
+mkdir -p "$fakes"
+cat >"$fakes/uname" <<'FAKE'
+#!/usr/bin/env bash
+if [ "${1:-}" = -m ]; then echo arm64; else echo Darwin; fi
+FAKE
+cat >"$fakes/security" <<'FAKE'
+#!/usr/bin/env bash
+echo '  1) 3E8A1B2C3D4E5F60718293A4B5C6D7E8F9012345 "Apple Development: Sam Lee (ABCDE12345)"'
+FAKE
+# The SDK and swiftc make-app.sh asks for; their plugin folders don't exist, so none are added.
+cat >"$fakes/xcrun" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in --show-sdk-path) echo /nonexistent/MacOSX.sdk ;; *) echo /nonexistent/usr/bin/swiftc ;; esac
+FAKE
+cat >"$fakes/swift" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in *--version*) echo "Apple Swift version 6.4.1"; exit 0 ;; esac
+job=tests
+[[ "$*" =~ --scratch-path\ \.build/make-app-([a-z0-9_]+) ]] && job=${BASH_REMATCH[1]}
+echo "start $job" >>"$EVENTS"
+[ -n "${PIDS:-}" ] && echo "$$" >>"$PIDS"
+echo "compiling for $job"
+sleep "${SLEEP:-1}"
+echo "end $job" >>"$EVENTS"
+if [ "$job" = "${FAIL_ARCH:-}" ] || { [ "$job" = tests ] && [ -n "${FAIL_TESTS:-}" ]; }; then
+    echo "error: something broke in $job"
+    exit 1
+fi
+FAKE
+chmod 755 "$fakes"/*
+make_app() { # mode; the environment carries FAIL_ARCH, FAIL_TESTS, SLEEP
+    rm -f "$events"
+    status=0
+    EVENTS=$events HEADSUP_SIGN_ID="Apple Development: Sam Lee (ABCDE12345)" PATH="$fakes:$PATH" \
+        "$tools/make-app.sh" "$1" dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 || status=$?
+}
+
+FAIL_ARCH=x86_64 make_app adhoc
+if [ "$status" -ne 0 ] && grep -q "^make-app: the x86_64 build failed" "$work/out" &&
+    grep -q "^\[x86_64\] error: something broke in x86_64" "$work/out" && grep -q "^\[arm64\] compiling" "$work/out"; then
+    pass "a failing x86_64 build stops make-app, named, with its marked output"
+else
+    fail "a failing x86_64 build stops make-app, named, with its marked output" "status $status: $(cat "$work/out")"
+fi
+
+# The two builds and the tests run at the same time: all three start before any ends.
+FAIL_TESTS=1 make_app identity
+starts_before_first_end=$(awk '/^end/ { exit } /^start/ { n++ } END { print n + 0 }' "$events")
+if [ "$status" -ne 0 ] && [ "$starts_before_first_end" -eq 3 ] &&
+    grep -q "^make-app: the core tests failed on this Mac's Swift, so no release was built" "$work/out"; then
+    pass "just build runs both builds and the tests at once, and failing tests stop it"
+else
+    fail "just build runs both builds and the tests at once, and failing tests stop it" \
+        "status $status, starts before the first end: $starts_before_first_end: $(cat "$work/out") $(cat "$events")"
+fi
+
+FAIL_ARCH=arm64 make_app quick
+if [ "$status" -ne 0 ] && grep -q "^make-app: the arm64 build failed" "$work/out" &&
+    [ "$(grep -c '^start' "$events")" -eq 1 ]; then
+    pass "just app-quick builds one architecture, this Mac's"
+else
+    fail "just app-quick builds one architecture, this Mac's" "status $status: $(cat "$work/out") $(cat "$events")"
+fi
+
+# Killed while building: the EXIT trap stops the builds too. Each fake build writes its pid.
+rm -f "$events" "$work/pids"
+EVENTS=$events PIDS=$work/pids SLEEP=20 PATH="$fakes:$PATH" \
+    "$tools/make-app.sh" adhoc dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 &
+make_app_pid=$!
+for _ in $(seq 100); do
+    [ "$(wc -l <"$work/pids" 2>/dev/null || echo 0)" -ge 2 ] && break
+    sleep 0.1
+done
+kill -TERM "$make_app_pid"
+wait "$make_app_pid" 2>/dev/null || true
+sleep 0.5
+still=0
+# A stopped process whose parent is gone can stay a zombie where PID 1 doesn't reap (a container):
+# it counts as stopped.
+while read -r pid; do
+    case "$(ps -o stat= -p "$pid" 2>/dev/null)" in "" | Z*) ;; *) still=$((still + 1)) ;; esac
+done <"$work/pids"
+if [ "$(wc -l <"$work/pids")" -eq 2 ] && [ "$still" -eq 0 ]; then
+    pass "killing make-app stops its builds"
+else
+    while read -r pid; do kill "$pid" 2>/dev/null || true; done <"$work/pids"
+    fail "killing make-app stops its builds" "$still of $(wc -l <"$work/pids") fake builds still running"
+fi
+
 # --- the macOS build arguments (SwiftUI's macro plugins) ----------------------------------
 
 echo "macOS build arguments"

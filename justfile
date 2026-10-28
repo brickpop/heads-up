@@ -50,7 +50,7 @@ app-quick:
 app-quick:
     @echo "just app-quick needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
-# The release: the core tests on this Mac's Swift, then build/HeadsUp.app signed with the identity
+# The release: the core tests on this Mac's Swift alongside both builds, then build/HeadsUp.app signed with the identity
 # in $HEADSUP_SIGN_ID (the only place it is named), and build/HeadsUp.dmg, both verified. See
 # docs/RELEASE.md.
 [macos]

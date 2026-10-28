@@ -53,17 +53,55 @@ cd "$root"
 
 echo "make-app: $(swift --version 2>&1 | head -n 1)"
 
-# One build per architecture: building both at once needs Xcode's build system (xcbuild),
-# which the Command Line Tools don't have. lipo then joins them into one universal binary.
+# What to clean up, whatever happens, even a failure halfway: the background jobs (and what they
+# started), the opened image, and the temporary folders (Scan I21).
+logs=$(mktemp -d)
+check=$(mktemp -d)
+mount=""
+job_pids=()
+job_names=()
+cleanup() {
+    # ${a[@]+"${a[@]}"} keeps an empty array from tripping set -u in the bash 3.2 macOS ships.
+    for pid in ${job_pids[@]+"${job_pids[@]}"}; do
+        kill -- "-$pid" 2>/dev/null || true
+    done
+    if [ -n "$mount" ]; then
+        hdiutil detach -force "$mount" >/dev/null 2>&1 || true
+        rmdir "$mount" 2>/dev/null || true
+    fi
+    rm -rf "$check" "$logs"
+}
+trap cleanup EXIT
+
+# Starts the job "$1" (an architecture, or "tests") in the background, running the rest of the
+# arguments. It is its own process group, so cleanup stops it with everything it started. Its
+# output shows as it comes, each line marked "[arm64] ", and is kept in $logs/<name>.log.
+start_job() {
+    local name=$1
+    shift
+    set -m
+    ("$@" 2>&1 | tee "$logs/$name.log" | awk -v mark="[$name] " '{ print mark $0; fflush() }') &
+    set +m
+    job_pids+=("$!")
+    job_names+=("$name")
+}
+
+# Waits for every job started; the names of those that failed go in failed_jobs.
+wait_jobs() {
+    local i
+    failed_jobs=()
+    for i in "${!job_pids[@]}"; do
+        wait "${job_pids[$i]}" || failed_jobs+=("${job_names[$i]}")
+    done
+    job_pids=()
+    job_names=()
+}
+
+# One build per architecture, all at the same time: building both in one run needs Xcode's
+# build system (xcbuild), which the Command Line Tools don't have. Two SwiftPM runs can't share
+# a build folder, so each has its own. lipo then joins them into one universal binary.
 # Only the versions in Package.resolved, and no resolution at build time (F15).
 resolved=(--only-use-versions-from-resolved-file --disable-automatic-resolution)
-
-# The release is built by this Mac's Swift, so the core's tests run on it first: a failure stops
-# here, before anything is built or signed.
-if [ "$mode" = identity ]; then
-    echo "make-app: running the core tests on this Mac's Swift"
-    tools/swift.sh test "${resolved[@]}" || die "the core tests failed on this Mac's Swift, so no release was built"
-fi
 
 if [ "$mode" = quick ]; then
     # A debug build for this Mac only.
@@ -78,14 +116,38 @@ fi
 sdk=$(xcrun --show-sdk-path) || die "can't find the macOS SDK (xcrun --show-sdk-path). Install the Command Line Tools."
 swiftc=$(xcrun -f swiftc) || die "can't find swiftc (xcrun -f swiftc). Install the Command Line Tools."
 host_arch=$(uname -m)
+set_args() { # the build arguments for architecture $1, into args: its own scratch path
+    args=("${build_args[@]}" --build-system native --scratch-path ".build/make-app-$1" "${resolved[@]}")
+    local arg
+    while IFS= read -r arg; do
+        args+=("$arg")
+    done < <(tools/swift-build-args.sh "$1" "$host_arch" "$sdk" "$swiftc")
+}
+echo "make-app: building ${architectures[*]} at the same time"
+for arch in "${architectures[@]}"; do
+    set_args "$arch"
+    start_job "$arch" tools/swift.sh build "${args[@]}"
+done
+# The release is built by this Mac's Swift, so the core's tests run on it too, alongside the
+# builds. Nothing is signed or packaged unless they pass.
+if [ "$mode" = identity ]; then
+    echo "make-app: running the core tests on this Mac's Swift, while it builds"
+    start_job tests tools/swift.sh test --scratch-path .build/make-app-tests "${resolved[@]}"
+fi
+wait_jobs
+for failed in ${failed_jobs[@]+"${failed_jobs[@]}"}; do
+    if [ "$failed" = tests ]; then
+        die "the core tests failed on this Mac's Swift, so no release was built (their output is above, marked [tests])"
+    fi
+done
+for failed in ${failed_jobs[@]+"${failed_jobs[@]}"}; do
+    die "the $failed build failed (its output is above, marked [$failed])"
+done
+
 binaries=()
 for arch in "${architectures[@]}"; do
-    swift_args=("${build_args[@]}" --build-system native "${resolved[@]}")
-    while IFS= read -r arg; do
-        swift_args+=("$arg")
-    done < <(tools/swift-build-args.sh "$arch" "$host_arch" "$sdk" "$swiftc")
-    tools/swift.sh build "${swift_args[@]}"
-    binaries+=("$(tools/swift.sh build "${swift_args[@]}" --show-bin-path)/HeadsUp")
+    set_args "$arch"
+    binaries+=("$(tools/swift.sh build "${args[@]}" --show-bin-path)/HeadsUp")
 done
 
 # The quick timers exist only in debug builds; a release binary that has their log line fails.
@@ -124,18 +186,6 @@ codesign --verify --strict --deep "$app"
 # Read back what was signed (F8), for each architecture's slice: exactly the two allowed
 # entitlements, both true, and the hardened runtime on. Both sides go through plutil, so key
 # order and layout don't matter.
-check=$(mktemp -d)
-mount=""
-# Whatever happens, even a failure halfway: the opened image is detached and the temporary
-# folders go (Scan I21).
-cleanup() {
-    if [ -n "$mount" ]; then
-        hdiutil detach -force "$mount" >/dev/null 2>&1 || true
-        rmdir "$mount" 2>/dev/null || true
-    fi
-    rm -rf "$check"
-}
-trap cleanup EXIT
 cat >"$check/expected.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

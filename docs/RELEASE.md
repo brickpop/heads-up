@@ -51,7 +51,7 @@ just build
 | `HEADSUP_SIGN_ID` is one whole valid identity in `security find-identity -v` (its hash or exact name; not `-`) | the identity you named exists and is trusted, checked before the build starts |
 | `swift --version` is 6.4 or newer; a newer one prints a note | this Mac's Swift isn't older than the tested one (Linux runs the tests on the `.swift-version` release) |
 | Only versions from `Package.resolved` (F15) | no dependency changed since review |
-| The core tests pass on this Mac's Swift (`swift test`), before anything is built | the release compiler runs the tests too, not only Linux's |
+| The core tests pass on this Mac's Swift (`swift test`, run alongside the two builds), before anything is signed | the release compiler runs the tests too, not only Linux's |
 | Each architecture's binary has no quick timers | no debug timing in a release |
 | `lipo -archs` has arm64 and x86_64 | it runs on every Mac |
 | `codesign --verify --strict --deep` | the signature covers everything in the app |
