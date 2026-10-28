@@ -6,8 +6,11 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# The app's bundle identifier. A placeholder until the CEO chooses the real one.
+# The app's bundle identifier: the only place it is written. A placeholder until the CEO
+# chooses the real one; changing it is this one line. Tokens saved under the old id stay in the
+# Keychain but the renamed app won't find them: set the id before the first real release.
 bundle_id := "dev.headsup.app"
+# The version and build number, embedded in Info.plist by every recipe.
 version := "0.1.0"
 build_number := `git rev-list --count HEAD 2>/dev/null || echo 0`
 
@@ -45,9 +48,10 @@ app-quick:
 
 [linux]
 app-quick:
-    @echo "just app-quick needs macOS with Xcode. On Linux, use just test and just lint." >&2; exit 1
+    @echo "just app-quick needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
-# Builds build/HeadsUp.app signed with $HEADSUP_SIGN_ID, and build/HeadsUp.dmg.
+# The release: build/HeadsUp.app signed with the identity in $HEADSUP_SIGN_ID (the only place
+# it is named), and build/HeadsUp.dmg, both verified. See docs/RELEASE.md.
 [macos]
 build:
     tools/make-app.sh identity "{{ bundle_id }}" "{{ version }}" "{{ build_number }}"

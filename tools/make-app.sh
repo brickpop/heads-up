@@ -40,7 +40,10 @@ case "$mode" in
 adhoc | quick) sign_id=- ;;
 identity)
     sign_id=${HEADSUP_SIGN_ID:-}
-    [ -n "$sign_id" ] || die "set HEADSUP_SIGN_ID to your signing identity. To list them: security find-identity -v -p codesigning"
+    # One whole identity, checked before the build, so a typo doesn't cost a full build first.
+    # Its message goes through die, so it starts with "make-app:" like every other stop.
+    identity_problem=$("$(dirname "${BASH_SOURCE[0]}")/check-sign-identity.sh" "$sign_id" 2>&1) ||
+        die "$identity_problem"
     ;;
 *) die "mode must be adhoc, identity or quick, not '$mode'" ;;
 esac
@@ -106,7 +109,17 @@ codesign --verify --strict --deep "$app"
 # entitlements, both true, and the hardened runtime on. Both sides go through plutil, so key
 # order and layout don't matter.
 check=$(mktemp -d)
-trap 'rm -rf "$check"' EXIT
+mount=""
+# Whatever happens, even a failure halfway: the opened image is detached and the temporary
+# folders go (Scan I21).
+cleanup() {
+    if [ -n "$mount" ]; then
+        hdiutil detach -force "$mount" >/dev/null 2>&1 || true
+        rmdir "$mount" 2>/dev/null || true
+    fi
+    rm -rf "$check"
+}
+trap cleanup EXIT
 cat >"$check/expected.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -134,7 +147,21 @@ done
 echo "make-app: built $app ($bundle_id $version, build $build_number)"
 
 if [ "$mode" = identity ]; then
+    # The identity really signed it: an ad-hoc signature here means the wrong recipe ran.
+    if codesign -dv "$app" 2>&1 | grep -q '^Signature=adhoc'; then
+        die "the app is signed ad-hoc, not with HEADSUP_SIGN_ID"
+    fi
+    echo "make-app: signed by $(codesign -dv "$app" 2>&1 | grep -m1 '^Authority=' || echo "$sign_id")"
+
     dmg=build/HeadsUp.dmg
+    rm -f "$dmg"
     hdiutil create -volname HeadsUp -srcfolder "$app" -ov -format UDZO "$dmg" >/dev/null
-    echo "make-app: built $dmg"
+    codesign --force --timestamp=none -s "$sign_id" "$dmg"
+    # The image's checksums, its signature, and the app inside it, as the CEO will open it.
+    hdiutil verify "$dmg" >/dev/null 2>&1 || die "$dmg doesn't verify (hdiutil verify)"
+    codesign --verify --strict "$dmg" || die "$dmg's signature doesn't verify"
+    mount=$(mktemp -d)
+    hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null || die "can't open $dmg"
+    codesign --verify --strict --deep "$mount/$name.app" || die "the app inside $dmg doesn't verify"
+    echo "make-app: built $dmg (signed, verified, and the app inside it verifies)"
 fi

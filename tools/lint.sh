@@ -82,6 +82,12 @@ elif plist_is_simple "$entitlements"; then
     if [ "$actual" != "$allowed_entitlements" ]; then
         fail "Resources/HeadsUp.entitlements must hold exactly these keys:"$'\n'"$allowed_entitlements"$'\n'"It holds:"$'\n'"$actual"
     fi
+    # Each value is exactly <true/>: a key set to false, a string or an array fails (F8).
+    not_true=$(awk '
+        /<key>/ { key = $0; gsub(/.*<key>|<\/key>.*/, "", key); waiting = 1; next }
+        waiting && NF { if ($0 !~ /^[[:space:]]*<true\/>[[:space:]]*$/) print key; waiting = 0 }
+    ' "$entitlements")
+    [ -z "$not_true" ] || fail "Resources/HeadsUp.entitlements: every value must be <true/>; these aren't: $not_true"
 fi
 
 # 3. Info.plist: only the keys below. A new key goes in this list after a review.

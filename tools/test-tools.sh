@@ -240,6 +240,54 @@ else
     pass "make-app.sh doesn't need xcbuild"
 fi
 
+# --- the signing identity (Scan L1) -----------------------------------------------------
+
+echo "signing identity"
+
+# A fake `security` that lists one identity the way macOS prints it.
+mkdir -p "$work/fake-security"
+cat >"$work/fake-security/security" <<'FAKE'
+#!/usr/bin/env bash
+cat <<'LIST'
+  1) 3E8A1B2C3D4E5F60718293A4B5C6D7E8F9012345 "Apple Development: Sam Lee (ABCDE12345)"
+     1 valid identities found
+LIST
+FAKE
+chmod 755 "$work/fake-security/security"
+identity_check() { # expected status, identity
+    status=0
+    PATH="$work/fake-security:$PATH" "$tools/check-sign-identity.sh" "$2" >"$work/out" 2>&1 || status=$?
+    [ "$status" -eq "$1" ]
+}
+for ok in "3E8A1B2C3D4E5F60718293A4B5C6D7E8F9012345" "3e8a1b2c3d4e5f60718293a4b5c6d7e8f9012345" \
+    "Apple Development: Sam Lee (ABCDE12345)"; do
+    if identity_check 0 "$ok"; then pass "the identity check accepts: $ok"; else fail "accepts: $ok" "$(cat "$work/out")"; fi
+done
+for refused in "valid" "-" "2" "1" "Apple Development" "Sam Lee" "3E8A1B2C" ""; do
+    if identity_check 1 "$refused"; then
+        pass "the identity check refuses: '$refused'"
+    else
+        fail "the identity check refuses: '$refused'" "status $status: $(cat "$work/out")"
+    fi
+done
+# make-app stops before building, with a line starting "make-app:" as RELEASE.md says (Rev).
+printf '#!/usr/bin/env bash\necho Darwin\n' >"$work/fake-security/uname"
+chmod 755 "$work/fake-security/uname"
+status=0
+HEADSUP_SIGN_ID="Sam Lee" PATH="$work/fake-security:$PATH" \
+    "$tools/make-app.sh" identity dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 || status=$?
+if [ "$status" -ne 0 ] && grep -q "^make-app: no valid code-signing identity is exactly" "$work/out"; then
+    pass "make-app stops on a partial identity with a make-app: line"
+else
+    fail "make-app stops on a partial identity with a make-app: line" "status $status: $(cat "$work/out")"
+fi
+rm -f "$work/fake-security/uname"
+if identity_check 1 "-" && grep -q "signs ad-hoc" "$work/out"; then
+    pass "'-' is refused as ad-hoc, with why"
+else
+    fail "'-' is refused as ad-hoc, with why" "$(cat "$work/out")"
+fi
+
 # --- lint (Linux and macOS) ----------------------------------------------------------
 
 echo "lint"
@@ -255,6 +303,13 @@ lint_root() {
 add_to_plist() {
     local file=$work/lint-root/Resources/$1
     awk -v add="$2" '/^<\/dict>/ && !done { print add; done = 1 } { print }' "$file" >"$file.new"
+    mv "$file.new" "$file"
+}
+# Removes key $2 and the line after it (its value) from plist $1 in the lint root.
+remove_from_plist() {
+    local file=$work/lint-root/Resources/$1
+    awk -v key="<key>$2</key>" 'skip { skip = 0; next } index($0, key) { skip = 1; next } { print }' \
+        "$file" >"$file.new"
     mv "$file.new" "$file"
 }
 lint() {
@@ -307,18 +362,41 @@ add_to_plist HeadsUp.entitlements '    <key>com.apple.security.get-task-allow</k
     <true/>'
 expect_lint_fails "the lint fails on an extra entitlement" 'must hold exactly these keys'
 
+# F8: any third key fails, whatever it is.
+for key in com.apple.security.device.camera com.apple.security.cs.allow-jit keychain-access-groups \
+    com.apple.security.cs.disable-library-validation com.apple.security.personal-information.location; do
+    lint_root
+    add_to_plist HeadsUp.entitlements "    <key>$key</key>
+    <true/>"
+    expect_lint_fails "the lint fails on the entitlement $key (F8)" 'must hold exactly these keys'
+done
+
+# F8: the two allowed keys must be true.
+lint_root
+sed -i.bak '/automation.apple-events/{n;s|<true/>|<false/>|;}' "$work/lint-root/Resources/HeadsUp.entitlements"
+expect_lint_fails "the lint fails on an allowed entitlement set to false (F8)" 'every value must be <true/>'
+lint_root
+sed -i.bak '/personal-information.calendars/{n;s|<true/>|<string>yes</string>|;}' \
+    "$work/lint-root/Resources/HeadsUp.entitlements"
+expect_lint_fails "the lint fails on an allowed entitlement set to a string (F8)" 'every value must be <true/>'
+lint_root
+remove_from_plist HeadsUp.entitlements com.apple.security.personal-information.calendars
+expect_lint_fails "the lint fails when an allowed entitlement is missing (F8)" 'must hold exactly these keys'
+
 lint_root
 add_to_plist Info.plist '    <key>CFBundleURLTypes</key>
     <array/>'
 expect_lint_fails "the lint fails on a URL scheme in Info.plist" 'has CFBundleURLTypes'
 
-# Removes key $2 and the line after it (its value) from plist $1 in the lint root.
-remove_from_plist() {
-    local file=$work/lint-root/Resources/$1
-    awk -v key="<key>$2</key>" 'skip { skip = 0; next } index($0, key) { skip = 1; next } { print }' \
-        "$file" >"$file.new"
-    mv "$file.new" "$file"
-}
+# F19: nothing that lets another app open or script HeadsUp.
+for key in CFBundleDocumentTypes UTExportedTypeDeclarations NSAppleScriptEnabled OSAScriptingDefinition NSServices \
+    NSUserActivityTypes; do
+    lint_root
+    add_to_plist Info.plist "    <key>$key</key>
+    <array/>"
+    expect_lint_fails "the lint fails on $key in Info.plist (F19)" "has $key"
+done
+
 for usage in NSCalendarsFullAccessUsageDescription NSRemindersFullAccessUsageDescription \
     NSAppleEventsUsageDescription NSLocalNetworkUsageDescription; do
     lint_root

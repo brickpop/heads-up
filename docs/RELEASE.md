@@ -1,0 +1,81 @@
+# Making a release build
+
+The release is `build/HeadsUp.dmg`, which holds `HeadsUp.app` for Apple silicon and Intel. Both
+are signed with your own code-signing identity, with the hardened runtime. There is no
+notarization and no auto-update (ADR-001 §10).
+
+## Once: the tools and the identity
+
+1. Install the Command Line Tools with Swift 6.2: `swift --version` must say 6.2.x (see the
+   README). Install `just` with `brew install just`.
+2. A code-signing identity in your login keychain. **Recommended: a free Apple Development
+   certificate.** Sign in with your Apple ID in Xcode's Settings → Accounts, which creates a
+   free "Personal Team", then Manage Certificates → + → Apple Development. If you don't want
+   Xcode installed, a teammate who has it can export the certificate to you as a .p12.
+   It needs no extra trust step. Because every build is signed by the same trusted identity,
+   macOS also doesn't ask for your login password the first time each new build reads a
+   saved API token from the Keychain; with a self-signed certificate it may ask once after
+   every rebuild (ADR-001 §6.4).
+
+   **Or a self-signed certificate**, made in Keychain Access → Certificate Assistant →
+   Create a Certificate…, with Certificate Type "Code Signing". A new self-signed
+   certificate isn't trusted yet, so it isn't listed as valid, and `just build` stops. Trust it
+   once: in Keychain Access, double-click the certificate → Trust → Code Signing: **Always
+   Trust**, then close the window and type your password.
+
+   Either way, check that it is listed as a valid identity:
+
+   ```sh
+   security find-identity -v -p codesigning
+   ```
+
+3. Name it in one place, the environment variable `HEADSUP_SIGN_ID`: its full name exactly as
+   that list prints it (in quotes), or its 40-character hash. Part of a name, the list number,
+   or `-` is refused.
+
+   ```sh
+   export HEADSUP_SIGN_ID="Apple Development: Your Name (ABCDE12345)"
+   ```
+
+## Each release
+
+```sh
+just test && just lint
+just build
+```
+
+`just build` stops at the first check that fails, with a line starting `make-app:`.
+
+| Check | What it proves |
+|---|---|
+| `HEADSUP_SIGN_ID` is one whole valid identity in `security find-identity -v` (its hash or exact name; not `-`) | the identity you named exists and is trusted, checked before the build starts |
+| `swift --version` is 6.2.x | the same Swift the reviewed code was tested with |
+| Only versions from `Package.resolved` (F15) | no dependency changed since review |
+| Each architecture's binary has no quick timers | no debug timing in a release |
+| `lipo -archs` has arm64 and x86_64 | it runs on every Mac |
+| `codesign --verify --strict --deep` | the signature covers everything in the app |
+| Each architecture's entitlements are exactly `automation.apple-events` and `personal-information.calendars`, both true, and the hardened runtime is on (F8) | the app has only the permissions we reviewed |
+| The signature isn't ad-hoc, and `codesign -dv` shows its `Authority=` | that identity really signed the app |
+| `hdiutil verify`, `codesign --verify` on the `.dmg`, and the app inside it verifies | the image you hand out is whole, signed, and holds the signed app |
+
+`just lint` checked the same entitlements and Info.plist before the build (F8, F19, R3).
+
+To change the version, edit `version` at the top of the `justfile`. The build number is the
+number of commits. To change the bundle id, edit `bundle_id` there; it is the only place. Do it before the first
+real release: API tokens saved under the old id aren't found by the renamed app.
+
+## Other builds
+
+- `just app`: the same app signed ad-hoc, no `.dmg`. macOS forgets its permissions and
+  Keychain access after every ad-hoc build, so use `just build` day to day.
+- `just app-quick`: "HeadsUp Quick", a separate debug app where a timer minute lasts 5 seconds.
+
+## When something fails
+
+Paste these back to the team:
+
+1. the last 30 lines of `just build`;
+2. `swift --version` and `sw_vers`;
+3. `security find-identity -v -p codesigning` (it lists names and hashes, no secrets);
+4. if the app was built: `codesign -dv --verbose=4 build/HeadsUp.app` and
+   `codesign -d --entitlements - --xml build/HeadsUp.app`.

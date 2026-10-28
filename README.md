@@ -28,7 +28,7 @@ Run `just` with no arguments to list the recipes. The ones you want on a Mac:
 |---|---|
 | `just app` | Builds `build/HeadsUp.app`, signed ad-hoc with the hardened runtime. This is the one to use day to day. |
 | `just app-quick` | `build/HeadsUp Quick.app`: a separate debug app (own name, bundle id and data folder) where one timer minute lasts 5 seconds, to check a whole Focus round quickly. Release builds can't contain it. |
-| `just build` | Builds `build/HeadsUp.app` signed with `$HEADSUP_SIGN_ID`, and `build/HeadsUp.dmg`. |
+| `just build` | The release: `build/HeadsUp.app` signed with `$HEADSUP_SIGN_ID`, and `build/HeadsUp.dmg`, both verified. See [docs/RELEASE.md](docs/RELEASE.md). |
 | `just test` | Runs the core tests and the tests of `tools/`. |
 | `just lint` | Checks the project's rules (no Apple-only imports in the core, the entitlements, Info.plist) and the formatting. |
 
