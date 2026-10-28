@@ -73,6 +73,12 @@ public final class ChatStore: HUDChat {
     @ObservationIgnored let settings: SettingsStore
     /// The gate and the tools (Tools/GatedTools.swift).
     @ObservationIgnored let tools: ToolRunner
+    /// The catalogue, for suggested actions (ChatSuggestions.swift).
+    @ObservationIgnored let actions: ActionResolving
+    /// A suggested action waiting for its confirm.
+    var pendingSuggestion: PendingSuggestion?
+    /// When each reply's suggested buttons appeared, for the action guard.
+    @ObservationIgnored var suggestionsShownAt: [ChatMessage.ID: Date] = [:]
     @ObservationIgnored let clock: Clock
     @ObservationIgnored let scheduler: Scheduler
     @ObservationIgnored private let ports: PortProbe
@@ -108,7 +114,8 @@ public final class ChatStore: HUDChat {
     @ObservationIgnored private var parsed: [ChatMessage.ID: (text: String, blocks: [Block])] = [:]
 
     init(
-        endpoints: EndpointService, settings: SettingsStore, provider: LLMProvider, tools: ToolRunner, clock: Clock,
+        endpoints: EndpointService, settings: SettingsStore, provider: LLMProvider, tools: ToolRunner,
+        actions: ActionResolving, clock: Clock,
         scheduler: Scheduler, ports: PortProbe, links: LinkOpener, pasteboard: Pasteboard,
         imageProcessor: ImageProcessor,
         pins: PinSaving, toaster: Toaster
@@ -117,6 +124,7 @@ public final class ChatStore: HUDChat {
         self.provider = provider
         self.settings = settings
         self.tools = tools
+        self.actions = actions
         self.clock = clock
         self.scheduler = scheduler
         self.ports = ports
@@ -146,6 +154,7 @@ public final class ChatStore: HUDChat {
         guard !isSendBlocked else { return }
         supersedeRows()
         pendingLink = nil
+        pendingSuggestion = nil
         for attachment in pending {
             images[attachment.id] = attachment.image
             previews[attachment.id] = attachment.image.preview
@@ -169,6 +178,7 @@ public final class ChatStore: HUDChat {
         flushText()
         updateReply { $0.state = .stopped }
         phase = .idle
+        suggestionsSettled()
         savePin()
     }
 
@@ -193,6 +203,8 @@ public final class ChatStore: HUDChat {
         attachmentProblem = nil
         pin = nil
         pendingLink = nil
+        pendingSuggestion = nil
+        suggestionsShownAt = [:]
         streamingParsers = [:]
         parsed = [:]
     }
@@ -305,7 +317,9 @@ public final class ChatStore: HUDChat {
                 }
             }
             for call in calls {
-                let envelope = await tools.run(call, model: endpoint.name)
+                let envelope =
+                    call.name == SuggestTool.name
+                    ? acceptSuggestions(call, on: reply.id) : await tools.run(call, model: endpoint.name)
                 guard run == id, !Task.isCancelled else { return }
                 items.append(.toolResult(id: UUID().uuidString, callID: call.id, envelope: envelope))
             }
@@ -338,6 +352,7 @@ public final class ChatStore: HUDChat {
         run = nil
         task = nil
         phase = .idle
+        suggestionsSettled()
         savePin()
     }
 
@@ -350,7 +365,8 @@ public final class ChatStore: HUDChat {
             LLMMessage.text(
                 .system,
                 SystemPrompt.v1(
-                    now: clock.now, timeZone: .current, locale: .current, tools: offeredToolIDs(endpoint)))
+                    now: clock.now, timeZone: .current, locale: .current, tools: offeredToolIDs(endpoint),
+                    suggests: offersSuggestions(endpoint)))
         ]
         let newestUser = items.last { if case .message(let m) = $0 { m.role == .user } else { false } }?.id
         for item in items {

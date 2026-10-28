@@ -224,7 +224,8 @@ private func date(_ text: String) -> Date {
         let h = ToolHarness(tools: tools)
         h.chat.send("Hi")
         await h.waitUntil { !h.provider.requests.isEmpty }
-        #expect(h.provider.toolRequests.first?.map(\.name) == ["reminders_read", "reminders_create"])
+        #expect(
+            h.provider.toolRequests.first?.map(\.name) == ["reminders_read", "reminders_create", "suggest_actions"])
         guard case .text(let prompt)? = h.provider.requests.first?.first?.parts.first else {
             Issue.record("expected the system prompt")
             return

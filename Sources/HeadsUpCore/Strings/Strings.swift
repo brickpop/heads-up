@@ -614,6 +614,9 @@ public enum Strings {
         public static let startVerb = "Start"
         public static let stopVerb = "Stop"
         public static let restartVerb = "Restart"
+        /// A suggested action that no longer applies (Yuki, slice 11).
+        public static func alreadyRunning(_ name: String) -> String { "\(name) is already running" }
+        public static func notRunning(_ name: String) -> String { "\(name) isn't running" }
         /// "npm run dev · ~/code/web-app"
         public static func actionSubtitle(command: String, cwd: String) -> String { "\(command) · \(cwd)" }
 
@@ -1076,6 +1079,38 @@ public enum Strings {
         static func modelInvalid(_ reason: String) -> String { "The arguments were not valid: \(reason)." }
         static func modelFailed(_ reason: String) -> String { "The tool failed: \(reason)." }
         public static let allDay = "All day"
+    }
+
+    /// Suggested actions (Chat spec, action buttons; addendum 3, F1).
+    public enum SuggestedActions {
+        /// "Restart Web dev server?"
+        public static func question(verb: String, name: String) -> String { "\(verb) \(name)?" }
+        /// "npm run dev · ~/code/web-app": registry text, never the model's. Each part is cut to
+        /// `max` characters; 0 keeps it whole, for a tooltip.
+        public static func detail(_ confirmation: Confirmation, max: Int) -> String? {
+            let parts = [confirmation.command, confirmation.cwd].compactMap { $0 }.filter { !$0.isEmpty }
+            return parts.isEmpty ? nil : parts.map { sanitizeForDisplay($0, max: max) }.joined(separator: " · ")
+        }
+        /// The row, for VoiceOver.
+        public static let group = "Suggested actions"
+        /// The toast after a confirmed action: "Started Web dev server".
+        public static func done(verb: String, name: String) -> String {
+            let past =
+                switch verb {
+                case Services.startVerb: "Started"
+                case Services.stopVerb: "Stopped"
+                case Services.restartVerb: "Restarted"
+                default: verb
+                }
+            return "\(past) \(name)"
+        }
+        public static let cancel = "Cancel"
+        /// What the model is told after suggest_actions.
+        static func shownToModel(_ count: Int) -> String {
+            count == 0
+                ? "None of those are shown: they can't be offered, or the reply already has 4 buttons."
+                : "Shown to the user as \(count) button\(count == 1 ? "" : "s"). The user decides; nothing has run."
+        }
     }
 
     /// Images attached to the next message (Chat spec, Images; UX part 1, §6–7; addendum 4).

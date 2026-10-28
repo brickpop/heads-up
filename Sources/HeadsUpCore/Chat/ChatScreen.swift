@@ -49,6 +49,8 @@ public enum MessageScreen: Equatable, Sendable, Identifiable {
     case approvalCard(ApprovalCardScreen)
     /// The calendar's events, after their row.
     case events(EventsBlock)
+    /// The actions a reply suggested, after it.
+    case actions(ActionButtonsScreen)
 
     public var id: String {
         switch self {
@@ -59,6 +61,7 @@ public enum MessageScreen: Equatable, Sendable, Identifiable {
         case .toolRow(let row): row.id
         case .approvalCard(let card): card.id
         case .events(let block): block.id
+        case .actions(let block): "actions-" + block.id
         }
     }
 }
@@ -309,7 +312,13 @@ extension ChatStore {
     public var screen: ChatScreen {
         var messages: [MessageScreen] = []
         let now = clock.now
-        for item in items {
+        // Each finished reply's suggested buttons go after its last item (Yuki, slice 11).
+        var rows: [Int: ActionButtonsScreen] = [:]
+        for reply in replies() {
+            if let row = suggestionScreen(reply) { rows[reply.range.upperBound - 1] = row }
+        }
+        for (index, item) in items.enumerated() {
+            defer { if let row = rows[index] { messages.append(.actions(row)) } }
             switch item {
             case .message(let message) where message.role == .tool:
                 if let stored = message.toolRow { messages.append(.toolRow(rowScreen(message.id, stored: stored))) }
@@ -319,8 +328,7 @@ extension ChatStore {
                         id: message.id, text: stripControls(message.text), images: thumbs(message),
                         accessibilityLabel: Strings.Chat.youSaid(message.text, images: message.imageIDs.count)))
             case .message(let message):
-                guard let reply = assistant(message) else { continue }
-                messages.append(reply)
+                if let reply = assistant(message) { messages.append(reply) }
                 if let pending = pendingLink, pending.link.messageID == message.id {
                     messages.append(
                         .linkAsk(

@@ -171,6 +171,8 @@ private struct MessageView: View {
             ApprovalCardView(chat: model.chat, card: card)
         case .events(let block):
             EventsBlockView(block: block)
+        case .actions(let block):
+            ActionButtonsView(chat: model.chat, block: block)
         }
     }
 }

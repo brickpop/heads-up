@@ -215,7 +215,7 @@ public final class AppModel {
         let chatStore = ChatStore(
             endpoints: endpoints, settings: settings,
             provider: ports.llmProvider ?? OpenAICompatibleProvider(transport: endpoints.transport),
-            tools: gatedTools,
+            tools: gatedTools, actions: registry,
             clock: ports.clock, scheduler: ports.scheduler, ports: ports.portProbe, links: ports.linkOpener,
             pasteboard: ports.pasteboard, imageProcessor: ports.imageProcessor,
             pins: pins, toaster: hud)
@@ -246,6 +246,9 @@ public final class AppModel {
         }
         registry.add(.caffeine) { [weak caffeine] in caffeine.map { CaffeineActions.make(caffeine: $0) } ?? [] }
         registry.add(.service) { [weak services] in services.map { ServiceActions.make(services: $0) } ?? [] }
+        registry.explainers.append { [weak services] id in
+            services.flatMap { ServiceActions.unavailable(id, services: $0) }
+        }
         registry.add(.theme) { [weak settings] in
             settings.map { ShellActions.theme(settings: $0, appearance: ports.appearance) } ?? []
         }

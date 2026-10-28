@@ -178,7 +178,15 @@ extension ChatStore: ToolDisplay {
     }
 
     func offeredTools(_ endpoint: Endpoint) -> [LLMTool] {
-        LocalTools.specs(offeredToolIDs(endpoint))
+        var specs = LocalTools.specs(offeredToolIDs(endpoint))
+        if offersSuggestions(endpoint) { specs.append(SuggestTool.spec(actions.suggestable)) }
+        return specs
+    }
+
+    /// `suggest_actions` goes with a request to a model that can use tools, while something
+    /// may be suggested.
+    func offersSuggestions(_ endpoint: Endpoint) -> Bool {
+        endpoint.tools && !actions.suggestable.isEmpty
     }
 
     /// A card's button: Deny, Allow once or Always allow. False when it was ignored: the card

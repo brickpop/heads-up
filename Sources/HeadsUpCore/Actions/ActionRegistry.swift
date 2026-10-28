@@ -17,6 +17,8 @@ public final class ActionRegistry {
     public typealias Provider = @MainActor () -> [Action]
 
     private var providers: [(section: CatalogueSection, provider: Provider)] = []
+    /// Say why a suggested id doesn't apply now (see `unavailable`).
+    var explainers: [@MainActor (SuggestedActionID) -> UnavailableAction?] = []
 
     public init() {}
 

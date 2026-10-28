@@ -41,3 +41,31 @@ enum ServiceActions {
         return actions
     }
 }
+
+extension ServiceActions {
+    /// A suggested Start for a service already running, or a Stop or Restart for one that isn't:
+    /// the button shows disabled, saying why (Yuki, slice 11).
+    static func unavailable(_ id: SuggestedActionID, services: ServiceStore) -> UnavailableAction? {
+        let parts = id.raw.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let definition = services.definitions.first(where: { $0.id == parts[1] }) else {
+            return nil
+        }
+        let live = services.state(definition.id).isLive
+        switch parts[0] {
+        case "service.start" where live:
+            return UnavailableAction(
+                title: Strings.Services.startAction(definition.name), glyph: .server,
+                reason: Strings.Services.alreadyRunning(definition.name))
+        case "service.stop" where !live:
+            return UnavailableAction(
+                title: Strings.Services.stopAction(definition.name), glyph: .server,
+                reason: Strings.Services.notRunning(definition.name))
+        case "service.restart" where !live:
+            return UnavailableAction(
+                title: Strings.Services.restartAction(definition.name), glyph: .server,
+                reason: Strings.Services.notRunning(definition.name))
+        default:
+            return nil
+        }
+    }
+}

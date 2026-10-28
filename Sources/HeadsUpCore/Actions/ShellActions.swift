@@ -58,7 +58,7 @@ enum ChatActions {
             Action(
                 id: ActionID("chat.pinned"), title: Strings.Chat.pinnedChats,
                 subtitle: Strings.Chat.pinnedSaved(pins.count), kind: .chat, glyph: .pin,
-                keywords: "pinned saved history chats", suggest: .never,
+                keywords: "pinned saved history chats", suggest: .oneClick,
                 run: { [weak hud] in
                     guard let hud else { return }
                     hud.selectTab(.chat)

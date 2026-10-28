@@ -115,6 +115,8 @@ extension ChatStore {
             if message.state == .streaming { message.state = .stopped }
             return .message(message)
         }
+        // Suggested ids are checked again: one that doesn't resolve any more is dropped (F1).
+        dropUnresolvedSuggestions()
         images = stored.images
         pin = PinLink(id: stored.id, title: stored.title, modelName: stored.modelName, pinnedAt: stored.pinnedAt)
         lastPinSave = clock.now
@@ -166,7 +168,8 @@ extension ChatStore {
         items.compactMap { item in
             switch item {
             case .message(let message):
-                return message.role == .assistant && message.text.isEmpty ? nil : message
+                let empty = message.role == .assistant && message.text.isEmpty && message.suggested.isEmpty
+                return empty ? nil : message
             case .tool(let record):
                 return storedRow(record).map { ChatMessage(id: record.id, role: .tool, text: "", toolRow: $0) }
             case .problem, .toolResult:

@@ -358,6 +358,10 @@ enum HUDStyle {
         static let eventTimeHeight: CGFloat = 28
     }
 
+    enum Actions {
+        static let gap: CGFloat = 8
+    }
+
     enum Pinned {
         static let saveDotSize: CGFloat = 6
     }
