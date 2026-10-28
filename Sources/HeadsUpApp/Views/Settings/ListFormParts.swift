@@ -220,6 +220,6 @@ private struct QuestionBar<Actions: View>: View {
             actions
         }
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(text).post() }
+        .announcing(text)
     }
 }

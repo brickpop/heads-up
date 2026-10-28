@@ -16,13 +16,18 @@ struct HUDHeader: View {
     var attach: @MainActor () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Where each tab sits in the row, for the VoiceOver tab group.
+    @State private var tabFrames: [Tab: CGRect] = [:]
+
+    private static let rowSpace = "tabs"
 
     var body: some View {
         HStack(spacing: HUDStyle.Header.gap) {
             ForEach(Tab.allCases, id: \.self) { tab in
                 TabCell(
                     tab: tab, isSelected: hud.tab == tab, activity: activity[tab],
-                    select: { hud.selectTab(tab) }
+                    select: { hud.selectTab(tab) },
+                    reportFrame: { tabFrames[tab] = $0 }, rowSpace: Self.rowSpace
                 ) {
                     HStack(spacing: HUDStyle.Tabs.gap) {
                         if let chip {
@@ -39,8 +44,23 @@ struct HUDHeader: View {
                 }
             }
         }
+        .coordinateSpace(name: Self.rowSpace)
+        // VoiceOver reads the tabs as a tab group, before the prompt inside the active one.
+        .background {
+            TabGroupAccessibility(items: accessibilityItems) { hud.selectTab($0) }
+                .accessibilitySortPriority(1)
+        }
         .padding(HUDStyle.Header.padding)
         .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: hud.tab)
+    }
+
+    private var accessibilityItems: [TabGroupAccessibility.Item] {
+        Tab.allCases.map { tab in
+            TabGroupAccessibility.Item(
+                tab: tab, label: tab.title, isSelected: hud.tab == tab,
+                activity: Strings.Tabs.accessibilityValue(tab, selected: false, activity: activity[tab]),
+                hint: Strings.Tabs.accessibilityHint(tab), frame: tabFrames[tab] ?? .zero)
+        }
     }
 }
 
@@ -51,6 +71,9 @@ private struct TabCell<Expanded: View>: View {
     let isSelected: Bool
     let activity: TabActivity?
     let select: @MainActor () -> Void
+    /// Reports the tab's frame in `rowSpace`, for the VoiceOver tab group.
+    let reportFrame: @MainActor (CGRect) -> Void
+    let rowSpace: String
     @ViewBuilder var expanded: Expanded
 
     @State private var isHovered = false
@@ -69,12 +92,8 @@ private struct TabCell<Expanded: View>: View {
             }
             .buttonStyle(.plain)
             .help(Strings.Tabs.tooltip(tab))
-            .accessibilityLabel(tab.title)
-            .accessibilityValue(Strings.Tabs.accessibilityValue(tab, selected: isSelected, activity: activity))
-            .accessibilityHint(Strings.Tabs.accessibilityHint(tab))
-            .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-            // Read every tab before the prompt, which sits inside the active one.
-            .accessibilitySortPriority(1)
+            // VoiceOver reads the tab through the tab group behind the row instead.
+            .accessibilityHidden(true)
 
             if isSelected {
                 expanded
@@ -93,6 +112,11 @@ private struct TabCell<Expanded: View>: View {
         }
         .overlay(alignment: .topTrailing) { dot }
         .onHover { isHovered = $0 }
+        .onGeometryChange(for: CGRect.self) {
+            $0.frame(in: .named(rowSpace))
+        } action: {
+            reportFrame($0)
+        }
     }
 
     private var shape: RoundedRectangle {

@@ -120,7 +120,7 @@ private struct AssertionNoteView: View {
                 .controlSize(.small)
         }
         .padding(.leading, HUDStyle.Caffeine.chipSize + HUDStyle.Caffeine.headerGap)
-        .onAppear { AccessibilityNotification.Announcement(note.text).post() }
+        .announcing(note.text)
     }
 }
 

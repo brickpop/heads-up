@@ -21,7 +21,9 @@ struct FocusIdleView: View {
             }
             HStack(spacing: HUDStyle.Focus.cardGap) {
                 ForEach(screen.lengths, id: \.minutes) { card in
-                    FocusCard(isSelected: card.isSelected, select: { focus.setFocusLength(card.minutes) }) {
+                    FocusCard(
+                        isSelected: card.isSelected, isTabStop: false, select: { focus.setFocusLength(card.minutes) }
+                    ) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(card.title)
                                 .font(.system(size: HUDStyle.Focus.cardNumberSize, weight: .semibold))
@@ -31,6 +33,11 @@ struct FocusIdleView: View {
                         }
                     }
                 }
+            }
+            .cardGroupKeys(
+                labels: screen.lengths.map(\.accessibilityLabel), selected: screen.lengths.firstIndex { $0.isSelected }
+            ) {
+                focus.setFocusLength(screen.lengths[$0].minutes)
             }
             HStack {
                 Text(screen.breaksOffer)

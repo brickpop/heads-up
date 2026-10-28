@@ -534,6 +534,10 @@ private struct FocusHarness {
         #expect(idle.lengths.map(\.title) == ["25 min", "40 min", "50 min"])
         #expect(idle.lengths.map(\.hint) == ["Classic pomodoro", "Steady block", "Deep work"])
         #expect(idle.lengths.map(\.isSelected) == [true, false, false])
+        #expect(
+            idle.lengths.map(\.accessibilityLabel) == [
+                "25 min, Classic pomodoro, selected", "40 min, Steady block", "50 min, Deep work",
+            ])
         #expect(idle.breaksOffer == "Breaks offer: look elsewhere, drink water, stretch your arms…")
         #expect(idle.start == "Start focus")
     }
@@ -595,6 +599,10 @@ private struct FocusHarness {
         #expect(automatic.title == "Time for a break")
         #expect(automatic.keepWorking == "Keep working")
         #expect(automatic.options.first { $0.isSelected }?.id == "water")
+        #expect(
+            automatic.options.prefix(2).map(\.accessibilityLabel) == [
+                "Look elsewhere, 2 min", "Drink water, 5 min, selected",
+            ])
         #expect(automatic.options.map(\.length).first == "2 min")
         #expect(automatic.lengths.map(\.minutes) == [2, 5, 10, 20, 50])
         #expect(automatic.lengths.first { $0.isSelected }?.minutes == 5)

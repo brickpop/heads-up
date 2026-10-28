@@ -18,7 +18,9 @@ struct BreakPromptView: View {
                 spacing: HUDStyle.Focus.cardGap
             ) {
                 ForEach(screen.options, id: \.id) { option in
-                    FocusCard(isSelected: option.isSelected, select: { focus.selectActivity(option.id) }) {
+                    FocusCard(
+                        isSelected: option.isSelected, isTabStop: false, select: { focus.selectActivity(option.id) }
+                    ) {
                         HStack(spacing: HUDStyle.Focus.cardGap) {
                             Image(systemName: option.glyph.symbolName)
                                 .frame(width: HUDStyle.Focus.optionChipSize, height: HUDStyle.Focus.optionChipSize)
@@ -38,6 +40,11 @@ struct BreakPromptView: View {
                         }
                     }
                 }
+            }
+            .cardGroupKeys(
+                labels: screen.options.map(\.accessibilityLabel), selected: screen.options.firstIndex { $0.isSelected }
+            ) {
+                focus.selectActivity(screen.options[$0].id)
             }
             HStack(spacing: HUDStyle.Focus.cardGap) {
                 Text(Strings.Focus.length)
@@ -67,7 +74,7 @@ struct BreakPromptView: View {
                     .buttonStyle(.borderedProminent)
             }
         }
-        .onAppear { AccessibilityNotification.Announcement(screen.title).post() }
+        .announcing(screen.title)
     }
 }
 
@@ -98,7 +105,7 @@ struct BackPromptView: View {
                 .buttonStyle(.borderedProminent)
             }
         }
-        .onAppear { AccessibilityNotification.Announcement(screen.title).post() }
+        .announcing(screen.title)
     }
 }
 

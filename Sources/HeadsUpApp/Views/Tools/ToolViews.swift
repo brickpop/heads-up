@@ -156,7 +156,7 @@ struct ApprovalCardView: View {
                 HUDStyle.Colors.line, lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale))
         )
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(card.announcement).post() }
+        .announcing(card.announcement)
     }
 }
 

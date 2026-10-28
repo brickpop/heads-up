@@ -30,7 +30,7 @@ struct PinnedListView: View {
                     }
                 }
                 .padding(.horizontal, HUDStyle.Services.headerPadding)
-                .onAppear { AccessibilityNotification.Announcement(problem.text).post() }
+                .announcing(problem.text)
             }
             if let empty = screen.empty {
                 Text(empty)

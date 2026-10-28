@@ -70,9 +70,12 @@ struct FocusTitle: View {
 }
 
 /// A selectable card: an accent border and the gray fill when selected. Used for the focus
-/// lengths and the break options. It reads as a button with a "selected" state.
+/// lengths, the break options and the Caffeine durations. It reads as a button with a
+/// "selected" state. In a group that is one Tab stop (`cardGroupKeys`), the card itself takes
+/// no keyboard focus.
 struct FocusCard<Content: View>: View {
     let isSelected: Bool
+    var isTabStop = true
     let select: @MainActor () -> Void
     @ViewBuilder var content: Content
 
@@ -97,6 +100,7 @@ struct FocusCard<Content: View>: View {
                 .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .modifier(OutOfTabOrder(isActive: !isTabStop))
         .onHover { isHovered = $0 }
         .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: isSelected)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -108,5 +112,57 @@ struct FocusCard<Content: View>: View {
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: HUDStyle.Focus.cardCornerRadius)
+    }
+}
+
+/// Takes a card out of the Tab order when its group is the Tab stop. Any other card keeps the
+/// system's rule: a Tab stop only with Keyboard navigation on.
+private struct OutOfTabOrder: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if isActive { content.focusable(false) } else { content }
+    }
+}
+
+extension View {
+    /// Makes a group of cards one Tab stop, like a macOS radio group (UX part 2, §21): with the
+    /// group focused, ← and ↑ select the previous card and → and ↓ the next, stopping at the ends.
+    /// The cards inside pass `isTabStop: false`. `labels` are the cards' VoiceOver labels, which
+    /// say which one is selected.
+    func cardGroupKeys(labels: [String], selected: Int?, select: @escaping @MainActor (Int) -> Void) -> some View {
+        modifier(CardGroupKeys(labels: labels, selected: selected, select: select))
+    }
+}
+
+private struct CardGroupKeys: ViewModifier {
+    let labels: [String]
+    let selected: Int?
+    let select: @MainActor (Int) -> Void
+
+    /// An arrow press changed the selection, so VoiceOver should hear the new card. A click
+    /// doesn't need it: VoiceOver reads the card it pressed.
+    @State private var announceNext = false
+
+    func body(content: Content) -> some View {
+        content
+            .focusable()
+            .onKeyPress(keys: [.leftArrow, .upArrow, .rightArrow, .downArrow]) { press in
+                guard !labels.isEmpty else { return .ignored }
+                let step = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
+                let current = selected ?? (step > 0 ? -1 : labels.count)
+                let next = min(max(current + step, 0), labels.count - 1)
+                if next != selected {
+                    announceNext = true
+                    select(next)
+                }
+                return .handled
+            }
+            .onChange(of: selected) { _, new in
+                guard announceNext, let new, labels.indices.contains(new) else { return }
+                announceNext = false
+                AccessibilityNotification.Announcement(labels[new]).post()
+            }
+            .accessibilityElement(children: .contain)
     }
 }

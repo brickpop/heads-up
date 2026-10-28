@@ -79,6 +79,6 @@ private struct SuggestedConfirmView: View {
             .controlSize(.small)
         }
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(confirm.question).post() }
+        .announcing(confirm.question)
     }
 }

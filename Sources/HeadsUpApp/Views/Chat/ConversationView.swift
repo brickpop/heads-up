@@ -96,7 +96,7 @@ private struct ChatToolbar: View {
                     .lineLimit(1)
                     // The line is cut to fit the toolbar, so the whole text is in the tooltip.
                     .help(problem.text)
-                    .onAppear { AccessibilityNotification.Announcement(problem.text).post() }
+                    .announcing(problem.text)
                 Button(problem.tryAgain) { chat.retryPin() }
                     .buttonStyle(.borderless)
             } else {
@@ -324,7 +324,7 @@ private struct ProblemRowView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(row.title).post() }
+        .announcing(row.title)
     }
 
     private var icon: String {
@@ -401,7 +401,7 @@ private struct LinkAskView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(ask.question).post() }
+        .announcing(ask.question)
     }
 }
 

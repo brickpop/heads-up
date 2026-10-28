@@ -26,6 +26,8 @@ public enum FocusScreen: Equatable, Sendable {
         public let title: String
         public let hint: String
         public let isSelected: Bool
+        /// "40 min, Steady block, selected": what VoiceOver says for the card.
+        public let accessibilityLabel: String
     }
 
     /// A focus or a break, running or paused.
@@ -64,6 +66,8 @@ public enum FocusScreen: Equatable, Sendable {
         /// "5 min"
         public let length: String
         public let isSelected: Bool
+        /// "Walk, 5 min, selected": what VoiceOver says for the card.
+        public let accessibilityLabel: String
     }
 
     /// One segment of the break length control.
@@ -200,7 +204,10 @@ extension FocusStore {
             lengths: FocusSettings.focusLengths.map { minutes in
                 FocusScreen.LengthCard(
                     minutes: minutes, title: Strings.Focus.minutes(minutes), hint: Strings.Focus.lengthHint(minutes),
-                    isSelected: minutes == focusLength)
+                    isSelected: minutes == focusLength,
+                    accessibilityLabel: Strings.Focus.cardAccessibility(
+                        title: Strings.Focus.minutes(minutes), hint: Strings.Focus.lengthHint(minutes),
+                        selected: minutes == focusLength))
             },
             breaksOffer: Strings.Focus.breaksOffer(settings.settings.focus.breakOptions),
             start: Strings.Focus.startFocus)
@@ -234,7 +241,10 @@ extension FocusStore {
             options: options.map { option in
                 FocusScreen.OptionCard(
                     id: option.id, label: option.label, glyph: option.icon.glyph,
-                    length: Strings.Focus.minutes(option.length), isSelected: option.id == selected)
+                    length: Strings.Focus.minutes(option.length), isSelected: option.id == selected,
+                    accessibilityLabel: Strings.Focus.cardAccessibility(
+                        title: option.label, hint: Strings.Focus.minutes(option.length),
+                        selected: option.id == selected))
             },
             lengths: FocusSettings.breakLengths.map { minutes in
                 FocusScreen.LengthChoice(

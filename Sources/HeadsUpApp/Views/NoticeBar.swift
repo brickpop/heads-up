@@ -35,7 +35,7 @@ struct NoticeBar<Actions: View>: View {
         .background(HUDStyle.Colors.raise, in: RoundedRectangle(cornerRadius: HUDStyle.Notice.cornerRadius))
         .padding(HUDStyle.Notice.margin)
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(announcement).post() }
+        .announcing(announcement)
     }
 
     private var announcement: String {

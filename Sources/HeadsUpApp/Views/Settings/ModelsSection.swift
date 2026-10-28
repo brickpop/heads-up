@@ -164,6 +164,6 @@ private struct RemoveEndpointBar: View {
             .controlSize(.small)
         }
         .accessibilityElement(children: .contain)
-        .onAppear { AccessibilityNotification.Announcement(bar.question).post() }
+        .announcing(bar.question)
     }
 }

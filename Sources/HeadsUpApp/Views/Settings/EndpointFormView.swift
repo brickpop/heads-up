@@ -138,7 +138,7 @@ struct EndpointFormView: View {
                     Button(keep) { endpoints.answerTokenHost(keep: true) }
                         .buttonStyle(.bordered)
                 }
-                .onAppear { AccessibilityNotification.Announcement(question).post() }
+                .announcing(question)
             }
         }
         .textFieldStyle(.roundedBorder)
@@ -214,7 +214,6 @@ private struct TestResultView: View {
                 .font(.system(size: HUDStyle.Settings.helpSize))
             }
         }
-        .onAppear { AccessibilityNotification.Announcement(result.text).post() }
-        .onChange(of: result.text) { _, text in AccessibilityNotification.Announcement(text).post() }
+        .announcing(result.text)
     }
 }

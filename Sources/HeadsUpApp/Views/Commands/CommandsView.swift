@@ -190,7 +190,7 @@ private struct CommandRowView: View {
                         .controlSize(.small)
                 }
                 .padding(.leading, HUDStyle.Services.drawerLeading)
-                .onAppear { AccessibilityNotification.Announcement(problem.text).post() }
+                .announcing(problem.text)
             }
         }
     }

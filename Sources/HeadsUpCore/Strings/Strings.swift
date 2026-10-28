@@ -360,6 +360,10 @@ public enum Strings {
             }
         }
         public static func minutes(_ minutes: Int) -> String { "\(minutes) min" }
+        /// What VoiceOver says for a focus length or break option card: "40 min, Steady block, selected".
+        public static func cardAccessibility(title: String, hint: String, selected: Bool) -> String {
+            selected ? "\(title), \(hint), selected" : "\(title), \(hint)"
+        }
         /// "Breaks offer: look elsewhere, drink water, stretch your arms…"
         public static func breaksOffer(_ options: [BreakOption]) -> String {
             let first = options.prefix(3).map { $0.label.lowercased() }.joined(separator: ", ")
