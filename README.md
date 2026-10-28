@@ -4,15 +4,15 @@ A no-friction HUD for casual AI prompts, for launching timers, commands and serv
 
 ## Requirements
 
-The Command Line Tools are enough; Xcode isn't needed. HeadsUp builds with one Swift series,
-the one in `.swift-version` (6.2), so you need a "Command Line Tools for Xcode 26" release that
-ships Swift 6.2.x — `swift --version` says `Apple Swift version 6.2…`.
+The Command Line Tools are enough; Xcode isn't needed. They must ship Swift 6.2 or newer
+(`swift --version`):
 
     xcode-select --install
 
-That installs the newest tools. If they ship another Swift, download a release with Swift 6.2
-from https://developer.apple.com/download/all/ and point `/Library/Developer/CommandLineTools`
-at it. The recipes stop with a clear message when the version doesn't match.
+The project is checked on Linux with the Swift in `.swift-version` (6.2). A newer Swift on
+the Mac builds too: the recipes print a one-line note saying so. Warnings are errors here, and a
+newer Swift can warn about things 6.2 doesn't; if one stops the build, paste it to the team. An
+older Swift stops the recipes with how to update.
 
 `just lint` uses `swift format` from the toolchain; if your toolchain lacks it, install it with
 `brew install swift-format`.

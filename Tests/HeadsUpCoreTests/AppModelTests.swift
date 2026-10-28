@@ -3,6 +3,12 @@ import Testing
 
 @testable import HeadsUpCore
 
+// The CGRect and CGPoint initializers come from CoreGraphics on Apple's platforms (see
+// HUDLayout.swift); Linux's Foundation has its own.
+#if canImport(CoreGraphics)
+    import CoreGraphics
+#endif
+
 @MainActor
 private func action(_ id: String, in model: AppModel) -> Action? {
     model.registry.actions.first { $0.id == ActionID(id) }

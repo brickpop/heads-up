@@ -28,8 +28,11 @@ fail() {
 # 1. Apple-only modules in the core. Matches attributed and scoped imports too, such as
 # `@preconcurrency import AppKit` and `import struct SwiftUI.Color`. Darwin is allowed:
 # the core imports it, behind `#if canImport(Darwin)`, for the POSIX calls Glibc has on Linux.
+# CoreGraphics is allowed the same way, behind `#if canImport(CoreGraphics)`: on Apple's
+# platforms it gives CGRect its geometry, which newer Foundation no longer re-exports, and
+# Linux's Foundation has its own CGRect. An unguarded import fails the Linux build anyway.
 apple_only='AppKit|Cocoa|Carbon|SwiftUI|IOKit|EventKit|Security|UserNotifications|ServiceManagement'
-apple_only+='|os|Combine|CoreGraphics|CryptoKit|ImageIO|UniformTypeIdentifiers|Network|ObjectiveC'
+apple_only+='|os|Combine|CryptoKit|ImageIO|UniformTypeIdentifiers|Network|ObjectiveC'
 import_pattern="^[[:space:]]*(@[A-Za-z_]+[[:space:]]+)*import[[:space:]]+((struct|class|enum|protocol|typealias|func|let|var)[[:space:]]+)?($apple_only)([[:space:].]|\$)"
 for dir in Sources/HeadsUpCore Tests/HeadsUpCoreTests; do
     [ -d "$root/$dir" ] || continue

@@ -1,5 +1,11 @@
 import Foundation
 
+// CGRect's geometry (contains, midX, the x:y:width:height: init…) comes from CoreGraphics on
+// Apple's platforms; newer Foundation no longer re-exports it. Linux's Foundation has its own.
+#if canImport(CoreGraphics)
+    import CoreGraphics
+#endif
+
 /// Where the HUD window goes on a screen (App shell spec, "HUD window"). The panel calls this
 /// with the screen's frame in macOS screen coordinates, where y grows upward.
 public enum HUDLayout {

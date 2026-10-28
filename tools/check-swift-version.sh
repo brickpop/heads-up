@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Checks that this Mac's Swift is the series the project builds with: the major.minor in
-# .swift-version (6.2 for 6.2.4), any patch release. Linux builds with exactly that release, so
-# a newer Swift on the Mac could accept code the Linux build refuses, and an older one could
-# refuse code Linux accepts. tools/swift.sh runs it on macOS, before a build fails less clearly.
+# Checks that this Mac's Swift is at least the series the project is checked with: the
+# major.minor in .swift-version (6.2 for 6.2.4). Linux tests with exactly that release.
+#   - Older: refused, with how to update. The code may use what that series added.
+#   - The same series, any patch release: accepted, silently.
+#   - Newer: accepted, with a one-line note. A newer Swift can warn where Linux's doesn't, and
+#     warnings are errors here: if one stops the build, paste it to the team to fix.
+# tools/swift.sh runs it on macOS, before a build fails less clearly.
 #
 # Usage: tools/check-swift-version.sh "<output of swift --version>" [path to .swift-version]
 set -euo pipefail
@@ -22,13 +25,18 @@ pinned=$(tr -d '[:space:]' <"$pin_file" 2>/dev/null || true)
     echo "Couldn't read a Swift version like 6.2.4 from $pin_file" >&2
     exit 1
 }
-series=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}
+need_major=${BASH_REMATCH[1]} need_minor=${BASH_REMATCH[2]}
+series=$need_major.$need_minor
 
 IFS=. read -r have_major have_minor _ <<<"$have"
-if [ "$have_major.${have_minor:-0}" != "$series" ]; then
-    echo "HeadsUp builds with Swift $series.x (Linux uses $pinned); this Mac has Swift $have." \
-        "Install the \"Command Line Tools for Xcode\" that ship Swift $series (see the README)," \
-        "from https://developer.apple.com/download/all/, then check with: swift --version" >&2
+have_minor=${have_minor:-0}
+# Compares number by number, so 6.10 is newer than 6.2.
+if ((10#$have_major < 10#$need_major || (10#$have_major == 10#$need_major && 10#$have_minor < 10#$need_minor))); then
+    echo "HeadsUp needs Swift $series or newer; this Mac has Swift $have. Update the Command Line Tools:" \
+        "softwareupdate --list, then install the newest \"Command Line Tools for Xcode\"." >&2
     exit 1
+fi
+if ((10#$have_major != 10#$need_major || 10#$have_minor != 10#$need_minor)); then
+    echo "Note: this Mac has Swift $have, newer than the $series that Linux checks; building anyway." >&2
 fi
 exit 0

@@ -6,7 +6,7 @@ notarization and no auto-update (ADR-001 §10).
 
 ## Once: the tools and the identity
 
-1. Install the Command Line Tools with Swift 6.2: `swift --version` must say 6.2.x (see the
+1. Install the Command Line Tools with Swift 6.2 or newer: check with `swift --version` (see the
    README). Install `just` with `brew install just`.
 2. A code-signing identity in your login keychain. **Recommended: a free Apple Development
    certificate.** Sign in with your Apple ID in Xcode's Settings → Accounts, which creates a
@@ -49,7 +49,7 @@ just build
 | Check | What it proves |
 |---|---|
 | `HEADSUP_SIGN_ID` is one whole valid identity in `security find-identity -v` (its hash or exact name; not `-`) | the identity you named exists and is trusted, checked before the build starts |
-| `swift --version` is 6.2.x | the same Swift the reviewed code was tested with |
+| `swift --version` is 6.2 or newer; a newer one prints a note | the code builds with a Swift at least as new as the one it was tested with |
 | Only versions from `Package.resolved` (F15) | no dependency changed since review |
 | Each architecture's binary has no quick timers | no debug timing in a release |
 | `lipo -archs` has arm64 and x86_64 | it runs on every Mac |

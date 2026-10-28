@@ -199,22 +199,32 @@ version_check() { # expected status, swift --version output
     [ "$status" -eq "$1" ]
 }
 echo 6.2.4 >"$work/swift-version"
-ceo_6_1="swift-driver version: 1.120.5 Apple Swift version 6.1.2 (swiftlang-6.1.2.1.2 clang-1700.0.13.5)"
-if version_check 1 "$ceo_6_1" && grep -q "builds with Swift 6.2.x (Linux uses 6.2.4); this Mac has Swift 6.1.2" "$work/out"; then
-    pass "Swift 6.1.2 is refused, naming both versions"
-else
-    fail "Swift 6.1.2 is refused, naming both versions" "$(cat "$work/out")"
-fi
-# Newer is refused too: Linux would build with 6.2 what the Mac built with 6.3.
-for refused in "Apple Swift version 6.3 (swiftlang-6.3.0.1)" "Apple Swift version 6.20" "Swift version 7.2"; do
-    if version_check 1 "$refused" && grep -q "builds with Swift 6.2.x" "$work/out"; then
-        pass "refuses: $refused"
+# Older than the pinned series: refused, naming both versions.
+for refused in "swift-driver version: 1.120.5 Apple Swift version 6.1.2 (swiftlang-6.1.2.1.2 clang-1700.0.13.5)" \
+    "Apple Swift version 5.10" "Apple Swift version 6"; do
+    if version_check 1 "$refused" && grep -q "HeadsUp needs Swift 6.2 or newer; this Mac has Swift" "$work/out"; then
+        pass "refuses an older Swift: $refused"
     else
-        fail "refuses: $refused" "$(cat "$work/out")"
+        fail "refuses an older Swift: $refused" "$(cat "$work/out")"
     fi
 done
+# The same series: accepted, with nothing printed.
 for ok in "Apple Swift version 6.2 (swiftlang-6.2.0.1)" "Apple Swift version 6.2.1" "Apple Swift version 6.2.4"; do
-    if version_check 0 "$ok"; then pass "accepts: $ok"; else fail "accepts: $ok" "$(cat "$work/out")"; fi
+    if version_check 0 "$ok" && [ ! -s "$work/out" ]; then
+        pass "accepts silently: $ok"
+    else
+        fail "accepts silently: $ok" "$(cat "$work/out")"
+    fi
+done
+# Newer: accepted, with a one-line note (the CEO's Mac has 6.4).
+ceo_6_4="swift-driver version: 1.148.6 Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-1800.0.30.1)"
+for newer in "$ceo_6_4" "Apple Swift version 6.10" "Swift version 7.0 (swift-7.0-RELEASE)"; do
+    if version_check 0 "$newer" && [ "$(wc -l <"$work/out")" -eq 1 ] &&
+        grep -q "newer than the 6.2 that Linux checks; building anyway" "$work/out"; then
+        pass "accepts a newer Swift with a note: $newer"
+    else
+        fail "accepts a newer Swift with a note: $newer" "$(cat "$work/out")"
+    fi
 done
 if "$tools/check-swift-version.sh" "Apple Swift version 6.2.3" "$repo/.swift-version" >"$work/out" 2>&1; then
     pass "the repo's .swift-version is read"
@@ -356,6 +366,10 @@ expect_lint_fails "the lint fails on os, which Linux doesn't have" 'Log.swift:1'
 lint_root
 printf '#if canImport(Darwin)\n    import Darwin\n#endif\n' >"$work/lint-root/Sources/HeadsUpCore/POSIX.swift"
 expect_lint_passes "the lint allows Darwin behind canImport, for POSIX calls"
+
+lint_root
+printf '#if canImport(CoreGraphics)\n    import CoreGraphics\n#endif\n' >"$work/lint-root/Sources/HeadsUpCore/Geometry.swift"
+expect_lint_passes "the lint allows CoreGraphics behind canImport, for CGRect's geometry"
 
 lint_root
 add_to_plist HeadsUp.entitlements '    <key>com.apple.security.get-task-allow</key>

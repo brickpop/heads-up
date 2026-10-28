@@ -1,7 +1,7 @@
 # HeadsUp's recipes (ADR-001 §10). Run `just` to list them.
 #
 # Linux: run `just setup-swift` once; `test` and `lint` then use that toolchain.
-# macOS: the Command Line Tools with Swift 6.2.x, the series in .swift-version (Xcode isn't needed). `app` and `build`
+# macOS: the Command Line Tools with Swift 6.2 or newer (Xcode isn't needed). `app` and `build`
 # need macOS.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]

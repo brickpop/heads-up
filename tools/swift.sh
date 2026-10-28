@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs swift with the right toolchain: on macOS the one the Command Line Tools (or Xcode)
-# installed, after checking it is the pinned series; on Linux the one `just setup-swift` installed,
+# installed, after checking it is the pinned series or newer; on Linux the one `just setup-swift` installed,
 # compiling and linking against its sysroot.
 #
 # Usage: tools/swift.sh <swift arguments>, e.g. tools/swift.sh test
