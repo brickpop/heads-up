@@ -68,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return self.handleKey(event, model: model, panel: panel) ? nil : event
         }
 
-        observe(
+        track(
             { model.settings.settings.general.appearance },
             apply: { appearance in
                 NSApp.appearance =

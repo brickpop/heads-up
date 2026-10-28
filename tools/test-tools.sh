@@ -298,6 +298,41 @@ else
     fail "'-' is refused as ad-hoc, with why" "$(cat "$work/out")"
 fi
 
+# --- the macOS build arguments (SwiftUI's macro plugins) ----------------------------------
+
+echo "macOS build arguments"
+
+# A fake SDK and toolchain with the plugin folders where macOS keeps them.
+sdk=$work/sdk/MacOSX.sdk
+toolchain=$work/toolchain/usr
+mkdir -p "$sdk/usr/lib/swift/host/plugins" "$toolchain/lib/swift/host/plugins" "$toolchain/bin"
+touch "$toolchain/bin/swiftc" "$toolchain/bin/swift-plugin-server"
+chmod 755 "$toolchain/bin/swift-plugin-server"
+build_args() { "$tools/swift-build-args.sh" "$@" | tr '\n' ' '; }
+expected_plugins="-Xswiftc -plugin-path -Xswiftc $toolchain/lib/swift/host/plugins -Xswiftc -external-plugin-path -Xswiftc $sdk/usr/lib/swift/host/plugins#$toolchain/bin/swift-plugin-server "
+check_args() { # name, expected, arguments
+    local name=$1 expected=$2 actual
+    shift 2
+    actual=$(build_args "$@")
+    if [ "$actual" = "$expected" ]; then pass "$name"; else fail "$name" "got: $actual"; fi
+}
+check_args "this Mac's architecture: the plugin paths, no --triple" "$expected_plugins" \
+    arm64 arm64 "$sdk" "$toolchain/bin/swiftc"
+check_args "the other architecture: --triple, then the plugin paths" "--triple x86_64-apple-macosx14.0 $expected_plugins" \
+    x86_64 arm64 "$sdk" "$toolchain/bin/swiftc"
+rm "$toolchain/bin/swift-plugin-server"
+check_args "without swift-plugin-server, the SDK's plugins load in process" \
+    "-Xswiftc -plugin-path -Xswiftc $toolchain/lib/swift/host/plugins -Xswiftc -plugin-path -Xswiftc $sdk/usr/lib/swift/host/plugins " \
+    arm64 arm64 "$sdk" "$toolchain/bin/swiftc"
+rmdir "$sdk/usr/lib/swift/host/plugins" "$toolchain/lib/swift/host/plugins"
+check_args "a missing plugin folder adds nothing" "--triple x86_64-apple-macosx14.0 " \
+    x86_64 arm64 "$sdk" "$toolchain/bin/swiftc"
+if ! "$tools/swift-build-args.sh" arm64 >/dev/null 2>&1; then
+    pass "swift-build-args.sh refuses missing arguments"
+else
+    fail "swift-build-args.sh refuses missing arguments" "it accepted one argument"
+fi
+
 # --- lint (Linux and macOS) ----------------------------------------------------------
 
 echo "lint"

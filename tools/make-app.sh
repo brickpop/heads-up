@@ -73,9 +73,17 @@ else
     architectures=(arm64 x86_64)
     build_args=(-c release)
 fi
+# The macro plugins (SwiftUI's @State) and --triple for the architecture that isn't this Mac's:
+# see tools/swift-build-args.sh.
+sdk=$(xcrun --show-sdk-path) || die "can't find the macOS SDK (xcrun --show-sdk-path). Install the Command Line Tools."
+swiftc=$(xcrun -f swiftc) || die "can't find swiftc (xcrun -f swiftc). Install the Command Line Tools."
+host_arch=$(uname -m)
 binaries=()
 for arch in "${architectures[@]}"; do
-    swift_args=("${build_args[@]}" --build-system native --triple "$arch-apple-macosx14.0" "${resolved[@]}")
+    swift_args=("${build_args[@]}" --build-system native "${resolved[@]}")
+    while IFS= read -r arg; do
+        swift_args+=("$arg")
+    done < <(tools/swift-build-args.sh "$arch" "$host_arch" "$sdk" "$swiftc")
     tools/swift.sh build "${swift_args[@]}"
     binaries+=("$(tools/swift.sh build "${swift_args[@]}" --show-bin-path)/HeadsUp")
 done

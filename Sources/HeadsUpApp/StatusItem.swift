@@ -26,7 +26,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.action = #selector(clicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-        observe(
+        track(
             { (model.statusItem, model.statusItemHighlighted) },
             apply: { [weak self] state in
                 self?.draw(state.0, highlighted: state.1)
