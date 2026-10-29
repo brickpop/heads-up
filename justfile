@@ -2,7 +2,7 @@
 #
 # Linux: run `just setup-swift` once; `test` and `lint` then use that toolchain.
 # macOS: the Command Line Tools with Swift 6.4 or newer (Xcode isn't needed). `app` and `build`
-# need macOS.
+# need macOS on Apple silicon (arm64) only; Intel isn't supported by the macOS 27 Command Line Tools.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 

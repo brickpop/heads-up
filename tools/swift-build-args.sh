@@ -12,7 +12,7 @@
 # - --triple, only for an architecture that isn't this Mac's: the host build stays a plain one.
 #
 # Usage: tools/swift-build-args.sh <arch> <host arch> <SDK path> <swiftc path>
-#   e.g. tools/swift-build-args.sh x86_64 arm64 "$(xcrun --show-sdk-path)" "$(xcrun -f swiftc)"
+#   e.g. tools/swift-build-args.sh arm64 arm64 "$(xcrun --show-sdk-path)" "$(xcrun -f swiftc)"
 set -euo pipefail
 
 [ $# -eq 4 ] || {

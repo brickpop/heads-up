@@ -1,8 +1,9 @@
 # Making a release build
 
-The release is `build/HeadsUp.dmg`, which holds `HeadsUp.app` for Apple silicon and Intel. Both
-are signed with your own code-signing identity, with the hardened runtime. There is no
-notarization and no auto-update (ADR-001 §10).
+The release is `build/HeadsUp.dmg`, which holds `HeadsUp.app` for Apple silicon (arm64) only;
+Intel isn't supported by the macOS 27 Command Line Tools. The image and the app are signed with
+your own code-signing identity, with the hardened runtime. There is no notarization and no
+auto-update (ADR-001 §10).
 
 ## Once: the tools and the identity
 
@@ -53,7 +54,7 @@ just build
 | Only versions from `Package.resolved` (F15) | no dependency changed since review |
 | The core tests pass on this Mac's Swift (`swift test`, run alongside the two builds), before anything is signed | the release compiler runs the tests too, not only Linux's |
 | Each architecture's binary has no quick timers | no debug timing in a release |
-| `lipo -archs` has arm64 and x86_64 | it runs on every Mac |
+| `lipo -archs` is exactly arm64 | it is the Apple silicon build we tested, with nothing else in it |
 | `codesign --verify --strict --deep` | the signature covers everything in the app |
 | Each architecture's entitlements are exactly `automation.apple-events` and `personal-information.calendars`, both true, and the hardened runtime is on (F8) | the app has only the permissions we reviewed |
 | The signature isn't ad-hoc, and `codesign -dv` shows its `Authority=` | that identity really signed the app |

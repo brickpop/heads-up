@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds build/HeadsUp.app on macOS (ADR-001 §10), for both arm64 and x86_64,
+# Builds build/HeadsUp.app on macOS (ADR-001 §10), for Apple silicon (arm64) only,
 # signed with the hardened runtime and the entitlements in Resources/.
 #
 # Usage: tools/make-app.sh <adhoc|identity|quick> <bundle id> <version> <build number>
@@ -23,6 +23,9 @@ die() {
 mode=$1 bundle_id=$2 version=$3 build_number=$4
 
 [ "$(uname -s)" = Darwin ] || die "building HeadsUp.app needs macOS, with the Command Line Tools (Xcode isn't needed)."
+# Apple silicon only: the macOS 27 Command Line Tools ship Swift's support libraries for arm64
+# only, so an Intel slice can't link.
+[ "$(uname -m)" = arm64 ] || die "HeadsUp builds on Apple silicon (arm64) only; Intel isn't supported by the macOS 27 Command Line Tools. This Mac is $(uname -m)."
 # Values that end up inside Info.plist: keep them to safe characters.
 [[ "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || die "'$bundle_id' is not a bundle identifier"
 [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "'$version' is not a version like 1.2.3"
@@ -75,7 +78,7 @@ trap cleanup EXIT
 
 # Starts the job "$1" (an architecture, or "tests") in the background, running the rest of the
 # arguments. It is its own process group, so cleanup stops it with everything it started. Its
-# output shows as it comes, each line marked "[arm64] ", and is kept in $logs/<name>.log.
+# output shows as it comes, each line marked "[arm64] " or "[tests] ", and is kept in $logs/<name>.log.
 start_job() {
     local name=$1
     shift
@@ -97,18 +100,15 @@ wait_jobs() {
     job_names=()
 }
 
-# One build per architecture, all at the same time: building both in one run needs Xcode's
-# build system (xcbuild), which the Command Line Tools don't have. Two SwiftPM runs can't share
-# a build folder, so each has its own. lipo then joins them into one universal binary.
+# The build, and in identity mode the core tests, run at the same time, each in its own build
+# folder (two SwiftPM runs can't share one). The app is arm64 only (see the check at the top);
+# the list of architectures has that one entry.
 # Only the versions in Package.resolved, and no resolution at build time (F15).
 resolved=(--only-use-versions-from-resolved-file --disable-automatic-resolution)
-
+architectures=(arm64)
 if [ "$mode" = quick ]; then
-    # A debug build for this Mac only.
-    architectures=("$(uname -m)")
     build_args=(-c debug -Xswiftc -DHEADSUP_QUICK_TIMERS)
 else
-    architectures=(arm64 x86_64)
     build_args=(-c release)
 fi
 # The macro plugins (SwiftUI's @State) and --triple for the architecture that isn't this Mac's:
@@ -123,7 +123,7 @@ set_args() { # the build arguments for architecture $1, into args: its own scrat
         args+=("$arg")
     done < <(tools/swift-build-args.sh "$1" "$host_arch" "$sdk" "$swiftc")
 }
-echo "make-app: building ${architectures[*]} at the same time"
+echo "make-app: building for ${architectures[*]}"
 for arch in "${architectures[@]}"; do
     set_args "$arch"
     start_job "$arch" tools/swift.sh build "${args[@]}"
@@ -163,11 +163,10 @@ fi
 app="build/$name.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-lipo -create -output "$app/Contents/MacOS/HeadsUp" "${binaries[@]}"
-archs=" $(lipo -archs "$app/Contents/MacOS/HeadsUp") "
-for arch in "${architectures[@]}"; do
-    [[ "$archs" == *" $arch "* ]] || die "the app's binary has no $arch slice: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
-done
+cp "${binaries[0]}" "$app/Contents/MacOS/HeadsUp"
+# Exactly arm64: an x86_64 (or any other) slice means something built what we don't ship.
+archs=$(lipo -archs "$app/Contents/MacOS/HeadsUp")
+[ "$archs" = arm64 ] || die "the app's binary must be arm64 only, but it has: $archs"
 echo "make-app: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
 # The app icon (CFBundleIconFile), the menu bar glyph, and the fixed AppleScript files Commands
 # compiles (F14): the shell loads them from the bundle.

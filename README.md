@@ -32,8 +32,8 @@ Run `just` with no arguments to list the recipes. The ones you want on a Mac:
 | `just test` | Runs the core tests and the tests of `tools/`. |
 | `just lint` | Checks the project's rules (no Apple-only imports in the core, the entitlements, Info.plist) and the formatting. |
 
-`just app` builds arm64 and x86_64 separately and joins them with `lipo`. To sign for
-distribution, put a code-signing identity in your keychain and set `HEADSUP_SIGN_ID` to it
+HeadsUp builds for Apple silicon (arm64) only; Intel isn't supported by the macOS 27 Command Line
+Tools. To sign for distribution, put a code-signing identity in your keychain and set `HEADSUP_SIGN_ID` to it
 (`security find-identity -v -p codesigning` lists them). The bundle identifier and the version
 are variables at the top of the `justfile`.
 

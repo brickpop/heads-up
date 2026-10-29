@@ -281,7 +281,7 @@ for refused in "valid" "-" "2" "1" "Apple Development" "Sam Lee" "3E8A1B2C" ""; 
     fi
 done
 # make-app stops before building, with a line starting "make-app:" as RELEASE.md says (Rev).
-printf '#!/usr/bin/env bash\necho Darwin\n' >"$work/fake-security/uname"
+printf '#!/usr/bin/env bash\nif [ "${1:-}" = -m ]; then echo arm64; else echo Darwin; fi\n' >"$work/fake-security/uname"
 chmod 755 "$work/fake-security/uname"
 status=0
 HEADSUP_SIGN_ID="Sam Lee" PATH="$work/fake-security:$PATH" \
@@ -310,7 +310,7 @@ events=$work/events
 mkdir -p "$fakes"
 cat >"$fakes/uname" <<'FAKE'
 #!/usr/bin/env bash
-if [ "${1:-}" = -m ]; then echo arm64; else echo Darwin; fi
+if [ "${1:-}" = -m ]; then echo "${FAKE_ARCH:-arm64}"; else echo Darwin; fi
 FAKE
 cat >"$fakes/security" <<'FAKE'
 #!/usr/bin/env bash
@@ -344,22 +344,32 @@ make_app() { # mode; the environment carries FAIL_ARCH, FAIL_TESTS, SLEEP
         "$tools/make-app.sh" "$1" dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 || status=$?
 }
 
-FAIL_ARCH=x86_64 make_app adhoc
-if [ "$status" -ne 0 ] && grep -q "^make-app: the x86_64 build failed" "$work/out" &&
-    grep -q "^\[x86_64\] error: something broke in x86_64" "$work/out" && grep -q "^\[arm64\] compiling" "$work/out"; then
-    pass "a failing x86_64 build stops make-app, named, with its marked output"
+FAIL_ARCH=arm64 make_app adhoc
+if [ "$status" -ne 0 ] && grep -q "^make-app: the arm64 build failed" "$work/out" &&
+    grep -q "^\[arm64\] error: something broke in arm64" "$work/out"; then
+    pass "a failing build stops make-app, named, with its marked output"
 else
-    fail "a failing x86_64 build stops make-app, named, with its marked output" "status $status: $(cat "$work/out")"
+    fail "a failing build stops make-app, named, with its marked output" "status $status: $(cat "$work/out")"
 fi
 
-# The two builds and the tests run at the same time: all three start before any ends.
+# Apple silicon only: an Intel Mac is refused before anything builds.
+FAKE_ARCH=x86_64 make_app adhoc
+if [ "$status" -ne 0 ] && grep -q "^make-app: HeadsUp builds on Apple silicon (arm64) only" "$work/out" &&
+    [ ! -s "$events" ]; then
+    pass "an Intel Mac is refused before anything builds"
+else
+    fail "an Intel Mac is refused before anything builds" "status $status: $(cat "$work/out")"
+fi
+
+# The arm64 build and the tests run at the same time: both start before either ends, and no
+# x86_64 build is started.
 FAIL_TESTS=1 make_app identity
 starts_before_first_end=$(awk '/^end/ { exit } /^start/ { n++ } END { print n + 0 }' "$events")
-if [ "$status" -ne 0 ] && [ "$starts_before_first_end" -eq 3 ] &&
+if [ "$status" -ne 0 ] && [ "$starts_before_first_end" -eq 2 ] && ! grep -q "x86_64" "$events" &&
     grep -q "^make-app: the core tests failed on this Mac's Swift, so no release was built" "$work/out"; then
-    pass "just build runs both builds and the tests at once, and failing tests stop it"
+    pass "just build runs the arm64 build and the tests at once, and failing tests stop it"
 else
-    fail "just build runs both builds and the tests at once, and failing tests stop it" \
+    fail "just build runs the arm64 build and the tests at once, and failing tests stop it" \
         "status $status, starts before the first end: $starts_before_first_end: $(cat "$work/out") $(cat "$events")"
 fi
 
@@ -377,7 +387,7 @@ EVENTS=$events PIDS=$work/pids SLEEP=20 PATH="$fakes:$PATH" \
     "$tools/make-app.sh" adhoc dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 &
 make_app_pid=$!
 for _ in $(seq 100); do
-    [ "$(wc -l <"$work/pids" 2>/dev/null || echo 0)" -ge 2 ] && break
+    [ "$( (wc -l <"$work/pids") 2>/dev/null || echo 0)" -ge 1 ] && break
     sleep 0.1
 done
 kill -TERM "$make_app_pid"
@@ -389,7 +399,7 @@ still=0
 while read -r pid; do
     case "$(ps -o stat= -p "$pid" 2>/dev/null)" in "" | Z*) ;; *) still=$((still + 1)) ;; esac
 done <"$work/pids"
-if [ "$(wc -l <"$work/pids")" -eq 2 ] && [ "$still" -eq 0 ]; then
+if [ "$(wc -l <"$work/pids")" -eq 1 ] && [ "$still" -eq 0 ]; then
     pass "killing make-app stops its builds"
 else
     while read -r pid; do kill "$pid" 2>/dev/null || true; done <"$work/pids"
