@@ -72,7 +72,7 @@ private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60)
         #expect(machine.phase == .focus(FocusRun(minutes: 25, endsAt: nil, pausedLeft: 20 * 60)))
     }
 
-    // MARK: stop, take a break now, keep working
+    // MARK: stop, take a break now
 
     @Test func stopDuringFocusOrBreakGoesIdleAndCountsNothing() {
         var machine = FocusMachine()
@@ -98,16 +98,7 @@ private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60)
         }
     }
 
-    @Test func keepWorkingOnlyAfterAnAutomaticPrompt() {
-        var machine = FocusMachine(phase: .prompt(.breakPrompt(manual: true)))
-        machine.keepWorking(minutes: 25, now: t0)
-        #expect(machine.phase == .prompt(.breakPrompt(manual: true)))
-        machine = FocusMachine(phase: .prompt(.breakPrompt(manual: false)))
-        machine.keepWorking(minutes: 25, now: t0)
-        #expect(machine.phase == .focus(FocusRun(minutes: 25, endsAt: at(25), pausedLeft: nil)))
-    }
-
-    // MARK: snooze, show now, done for now
+    // MARK: snooze, show now, done
 
     @Test func aSnoozedPromptReturnsWhenItsTimeIsUp() {
         var machine = FocusMachine(phase: .prompt(.breakPrompt(manual: false)))
@@ -125,13 +116,23 @@ private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60)
         #expect(machine.phase == .prompt(.backPrompt))
     }
 
-    @Test func doneForNowLeavesTheBackPromptForIdle() {
-        var machine = FocusMachine(phase: .prompt(.backPrompt))
-        machine.doneForNow()
-        #expect(machine.phase == .idle)
-        machine = FocusMachine(phase: .prompt(.breakPrompt(manual: false)))
-        machine.doneForNow()
-        #expect(machine.phase == .prompt(.breakPrompt(manual: false)))
+    @Test func doneEndsTheLoopFromEitherPrompt() {
+        for prompt: FocusPrompt in [.breakPrompt(manual: false), .breakPrompt(manual: true), .backPrompt] {
+            var machine = FocusMachine(phase: .prompt(prompt))
+            machine.doneForNow()
+            #expect(machine.phase == .idle)
+        }
+    }
+
+    @Test func doneOutsideAPromptChangesNothing() {
+        for phase: FocusPhase in [
+            .idle, .focus(.running(minutes: 25, from: t0)), .rest(.running(minutes: 5, from: t0), activity: "water"),
+            .snoozed(until: at(5), prompt: .backPrompt),
+        ] {
+            var machine = FocusMachine(phase: phase)
+            machine.doneForNow()
+            #expect(machine.phase == phase)
+        }
     }
 
     @Test func movesThatDontApplyChangeNothing() {

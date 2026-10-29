@@ -10,6 +10,8 @@ enum FocusActions {
                 run: { [weak focus, weak hud] in
                     focus?.start(minutes: minutes)
                     hud?.selectTab(.focus)
+                    // After the tab switch, which would cancel it.
+                    focus?.hideAfterStart()
                 })
         }
         switch focus.phase {

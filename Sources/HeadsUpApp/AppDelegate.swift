@@ -64,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = HUDPanel(hud: model.hud, content: HUDRootView(model: model))
         model.hud.attach(window: panel)
         prompts.panel = panel
+        // VoiceOver users keep the HUD after a Focus start, until Esc.
+        model.focus.isVoiceOverOn = { NSWorkspace.shared.isVoiceOverEnabled }
         self.panel = panel
         statusItem = StatusItemController(model: model, scheduler: scheduler)
 
@@ -159,7 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The HUD's own keys while it is key: all keys while the shortcut recorder listens,
-    /// else ⌘ shortcuts, ↑ ↓ and Return for the open model menu, ↑ ↓ for the suggestions, Esc.
+    /// else ⌘ shortcuts and the Focus tab's ⌥← ⌥→ ⌘↩, ↑ ↓ and Return for the open model menu,
+    /// ↑ ↓ for the suggestions, Esc.
     /// Returns false for keys it leaves to the text field. Return stays with the field
     /// (`onSubmit`) unless the model menu is open. While an input method is composing text
     /// (Japanese, Chinese…), ↑ ↓ and Esc belong to its candidate window.
@@ -182,12 +185,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if shortcut.modifiers == .command, shortcut.key == "V", model.clipboardHasImages {
             return model.pasteImages()
         }
+        let composing = (panel.firstResponder as? NSTextView)?.hasMarkedText() == true
+        // ⌥← ⌥→ move within the text an input method is composing.
+        if composing && shortcut.modifiers == .option { return false }
         if !shortcut.modifiers.isEmpty {
-            return hud.handleShortcut(shortcut)
+            return model.handleShortcut(shortcut)
         }
-        if let editor = panel.firstResponder as? NSTextView, editor.hasMarkedText() {
-            return false
-        }
+        if composing { return false }
         switch Int(event.keyCode) {
         // The model menu, while open, takes ↑ ↓ and Return.
         case Key.upArrow where hud.modelMenuOpen:

@@ -146,9 +146,9 @@ public enum OpenAtLoginNote: Equatable, Sendable {
 
 /// The kinds of notification HeadsUp posts, with the actions each offers (ADR-001 §7).
 public enum NotificationCategory: String, CaseIterable, Sendable {
-    /// A focus ended: Start break, Snooze.
+    /// A focus ended: Start break, Snooze, Done.
     case focusEnd = "focus.end"
-    /// A break ended: Start focus, Snooze.
+    /// A break ended: Start focus, Snooze, Done.
     case breakEnd = "break.end"
     /// A break ended and the next focus started by itself: Stop.
     case breakAutostart = "break.autostart"
@@ -157,8 +157,8 @@ public enum NotificationCategory: String, CaseIterable, Sendable {
 
     public var actions: [NotificationAction] {
         switch self {
-        case .focusEnd: [.startBreak, .snooze]
-        case .breakEnd: [.startFocus, .snooze]
+        case .focusEnd: [.startBreak, .snooze, .done]
+        case .breakEnd: [.startFocus, .snooze, .done]
         case .breakAutostart: [.stop]
         case .serviceFailed: [.showLogs]
         }
@@ -170,6 +170,8 @@ public enum NotificationAction: String, CaseIterable, Sendable {
     case startBreak = "start-break"
     case startFocus = "start-focus"
     case snooze
+    /// Ends the focus loop: back to idle.
+    case done
     case stop
     case showLogs = "show-logs"
 

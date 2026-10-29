@@ -71,11 +71,13 @@ struct FocusTitle: View {
 
 /// A selectable card: an accent border and the gray fill when selected. Used for the focus
 /// lengths, the break options and the Caffeine durations. It reads as a button with a
-/// "selected" state. In a group that is one Tab stop (`cardGroupKeys`), the card itself takes
-/// no keyboard focus.
+/// "selected" state. In a group that is one Tab stop (`cardGroupKeys`), only the selected card
+/// takes keyboard focus, through `focus` at its `index`.
 struct FocusCard<Content: View>: View {
     let isSelected: Bool
     var isTabStop = true
+    var focus: FocusState<Int?>.Binding?
+    var index = 0
     let select: @MainActor () -> Void
     @ViewBuilder var content: Content
 
@@ -100,7 +102,7 @@ struct FocusCard<Content: View>: View {
                 .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .modifier(OutOfTabOrder(isActive: !isTabStop))
+        .modifier(CardFocus(isTabStop: isTabStop, focus: focus, index: index))
         .onHover { isHovered.wrappedValue = $0 }
         .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: isSelected)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -115,54 +117,113 @@ struct FocusCard<Content: View>: View {
     }
 }
 
-/// Takes a card out of the Tab order when its group is the Tab stop. Any other card keeps the
-/// system's rule: a Tab stop only with Keyboard navigation on.
-private struct OutOfTabOrder: ViewModifier {
-    let isActive: Bool
+/// A card's keyboard focus.
+///
+/// In a group (`focus` set), the Tab-stop card is focusable whatever the system's Keyboard
+/// navigation setting, as a radio group is: a plain Button is a Tab stop only with that setting
+/// on, which would leave the group's arrow keys out of reach. Space still presses it. The
+/// others are out of the Tab order, and the card is bound to the group's focus so the focus can
+/// follow the selection.
+///
+/// Outside a group, a card keeps the system's rule, unless `isTabStop` takes it out.
+private struct CardFocus: ViewModifier {
+    let isTabStop: Bool
+    let focus: FocusState<Int?>.Binding?
+    let index: Int
 
     func body(content: Content) -> some View {
-        if isActive { content.focusable(false) } else { content }
+        if let focus {
+            content
+                .focusable(isTabStop, interactions: .activate)
+                .focused(focus, equals: index)
+        } else if !isTabStop {
+            content.focusable(false)
+        } else {
+            content
+        }
     }
 }
 
 extension View {
-    /// Makes a group of cards one Tab stop, like a macOS radio group (UX part 2, §21): with the
-    /// group focused, ← and ↑ select the previous card and → and ↓ the next, stopping at the ends.
-    /// The cards inside pass `isTabStop: false`. `labels` are the cards' VoiceOver labels, which
-    /// say which one is selected.
-    func cardGroupKeys(labels: [String], selected: Int?, select: @escaping @MainActor (Int) -> Void) -> some View {
-        modifier(CardGroupKeys(labels: labels, selected: selected, select: select))
+    /// Makes a group of cards one Tab stop, like a macOS radio group (UX part 2, §21): Tab lands
+    /// on the selected card, and with it focused ← and ↑ select the previous card and → and ↓ the
+    /// next, stopping at the ends, with the focus following. The cards pass `isTabStop` true for
+    /// the selected one, and for the focused one until the focus has moved on (so it never
+    /// falls elsewhere for a frame), and `focus` with their index. `labels` are the cards'
+    /// VoiceOver labels, which say which one is selected. `keyboardMoves` counts the moves made
+    /// with ⌥← ⌥→ from the prompt field, which VoiceOver hears too.
+    func cardGroupKeys(
+        labels: [String], selected: Int?, focus: FocusState<Int?>.Binding, keyboardMoves: Int,
+        select: @escaping @MainActor (Int) -> Void
+    ) -> some View {
+        modifier(
+            CardGroupKeys(
+                labels: labels, selected: selected, focus: focus, keyboardMoves: keyboardMoves, select: select))
     }
 }
 
 private struct CardGroupKeys: ViewModifier {
     let labels: [String]
     let selected: Int?
+    let focus: FocusState<Int?>.Binding
+    let keyboardMoves: Int
     let select: @MainActor (Int) -> Void
 
-    /// An arrow press changed the selection, so VoiceOver should hear the new card. A click
-    /// doesn't need it: VoiceOver reads the card it pressed.
-    private let announceNext = State(initialValue: false)
+    /// An arrow press changed the selection: the focus moves to the new card, and VoiceOver
+    /// should hear it. A click doesn't need either: the clicked card has them already.
+    private let arrowMove = State(initialValue: false)
 
     func body(content: Content) -> some View {
         content
-            .focusable()
             .onKeyPress(keys: [.leftArrow, .upArrow, .rightArrow, .downArrow]) { press in
                 guard !labels.isEmpty else { return .ignored }
                 let step = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
                 let current = selected ?? (step > 0 ? -1 : labels.count)
                 let next = min(max(current + step, 0), labels.count - 1)
                 if next != selected {
-                    announceNext.wrappedValue = true
+                    arrowMove.wrappedValue = true
                     select(next)
                 }
                 return .handled
             }
+            // Runs once the new card is the Tab stop, so it can take the focus.
             .onChange(of: selected) { _, new in
-                guard announceNext.wrappedValue, let new, labels.indices.contains(new) else { return }
-                announceNext.wrappedValue = false
-                AccessibilityNotification.Announcement(labels[new]).post()
+                guard arrowMove.wrappedValue, let new, labels.indices.contains(new) else { return }
+                arrowMove.wrappedValue = false
+                focus.wrappedValue = new
+                announce(new)
+            }
+            .onChange(of: keyboardMoves) {
+                if let selected { announce(selected) }
             }
             .accessibilityElement(children: .contain)
+    }
+
+    private func announce(_ index: Int) {
+        guard labels.indices.contains(index) else { return }
+        AccessibilityNotification.Announcement(labels[index]).post()
+    }
+}
+
+/// The label of the Focus tab's primary button: its title, then the ⌘↩ keycap that runs it
+/// from the prompt field. The keycap is white on an accent-filled (`.borderedProminent`)
+/// button; pass `onAccent: false` on a bordered one. The button itself adds
+/// `.accessibilityHint(Strings.Focus.primaryShortcutHint)`.
+struct FocusPrimaryLabel: View {
+    let title: String
+    var glyph: Glyph?
+    var onAccent = true
+
+    var body: some View {
+        HStack(spacing: HUDStyle.Footer.keyGap) {
+            if let glyph {
+                Label(title, systemImage: glyph.symbolName)
+            } else {
+                Text(title)
+            }
+            // VoiceOver users reach the button directly; the keycap is for the eye.
+            Keycap(key: Strings.Focus.primaryShortcut, onAccent: onAccent)
+                .accessibilityHidden(true)
+        }
     }
 }

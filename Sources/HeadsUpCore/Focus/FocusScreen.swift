@@ -51,9 +51,8 @@ public enum FocusScreen: Equatable, Sendable {
         public let lengths: [LengthChoice]
         /// The break length picked, in minutes: the one `lengths` marks selected.
         public let selectedLength: Int
-        /// "Keep working", or nil after Take a break now, where it isn't offered.
-        public let keepWorking: String?
-        public let keepWorkingHelp: String
+        /// "Done": ends the loop, back to idle.
+        public let done: String
         public let snooze: String
         public let startBreak: String
     }
@@ -81,7 +80,8 @@ public enum FocusScreen: Equatable, Sendable {
         public let label: String
         public let title: String
         public let today: String
-        public let doneForNow: String
+        /// "Done": ends the loop, back to idle.
+        public let done: String
         public let snooze: String
         public let start: String
     }
@@ -141,7 +141,7 @@ extension FocusStore {
             return .backPrompt(
                 FocusScreen.BackPrompt(
                     label: Strings.Focus.breakFinished, title: Strings.Focus.readyToGetBack,
-                    today: Strings.Focus.todayStats(today), doneForNow: Strings.Focus.doneForNow,
+                    today: Strings.Focus.todayStats(today), done: Strings.Focus.done,
                     snooze: Strings.Focus.snooze(snooze), start: Strings.Focus.startFocusOf(focusLength)))
         case .snoozed(let until, _):
             return .snoozed(
@@ -251,7 +251,7 @@ extension FocusStore {
                     minutes: minutes, title: Strings.Focus.minutes(minutes), isSelected: minutes == breakLength)
             },
             selectedLength: breakLength,
-            keepWorking: manual ? nil : Strings.Focus.keepWorking, keepWorkingHelp: Strings.Focus.keepWorkingHelp,
+            done: Strings.Focus.done,
             snooze: Strings.Focus.snooze(settings.settings.focus.snoozeMinutes),
             startBreak: Strings.Focus.startBreak(breakLength))
     }

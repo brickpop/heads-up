@@ -1,13 +1,17 @@
 import HeadsUpCore
 import SwiftUI
 
-/// "Time for a break": the break options, the length, and Keep working (only after a
-/// session that ended by itself), Snooze and Start break. VoiceOver announces it once.
+/// "Time for a break": the break options, the length, and Done, Snooze and Start break.
+/// VoiceOver announces it once.
 struct BreakPromptView: View {
     let focus: FocusStore
     let screen: FocusScreen.BreakPrompt
 
+    /// The focused break option, while one is.
+    @FocusState private var focusedCard: Int?
+
     var body: some View {
+        let selected = screen.options.firstIndex { $0.isSelected }
         VStack(alignment: .leading, spacing: HUDStyle.Focus.gap) {
             VStack(alignment: .leading, spacing: 2) {
                 FocusLabel(text: screen.label)
@@ -17,9 +21,10 @@ struct BreakPromptView: View {
                 columns: [GridItem(.adaptive(minimum: HUDStyle.Focus.optionMinWidth), spacing: HUDStyle.Focus.cardGap)],
                 spacing: HUDStyle.Focus.cardGap
             ) {
-                ForEach(screen.options, id: \.id) { option in
+                ForEach(Array(screen.options.enumerated()), id: \.element.id) { index, option in
                     FocusCard(
-                        isSelected: option.isSelected, isTabStop: false, select: { focus.selectActivity(option.id) }
+                        isSelected: option.isSelected, isTabStop: index == (selected ?? 0) || index == focusedCard,
+                        focus: $focusedCard, index: index, select: { focus.selectActivity(option.id) }
                     ) {
                         HStack(spacing: HUDStyle.Focus.cardGap) {
                             Image(systemName: option.glyph.symbolName)
@@ -42,7 +47,8 @@ struct BreakPromptView: View {
                 }
             }
             .cardGroupKeys(
-                labels: screen.options.map(\.accessibilityLabel), selected: screen.options.firstIndex { $0.isSelected }
+                labels: screen.options.map(\.accessibilityLabel), selected: selected, focus: $focusedCard,
+                keyboardMoves: focus.cardMoves
             ) {
                 focus.selectActivity(screen.options[$0].id)
             }
@@ -63,22 +69,21 @@ struct BreakPromptView: View {
                 .fixedSize()
             }
             HStack {
-                if let keepWorking = screen.keepWorking {
-                    Button(keepWorking, action: focus.keepWorking)
-                        .buttonStyle(.borderless)
-                        .help(screen.keepWorkingHelp)
-                }
+                DoneButton(title: screen.done, focus: focus)
                 Spacer()
                 SnoozeButton(title: screen.snooze, focus: focus)
-                Button(screen.startBreak, action: focus.startBreak)
-                    .buttonStyle(.borderedProminent)
+                Button(action: focus.startBreak) {
+                    FocusPrimaryLabel(title: screen.startBreak)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
         .announcing(screen.title)
     }
 }
 
-/// "Ready to get back to it?": today's stats, and Done for now, Snooze and Start focus.
+/// "Ready to get back to it?": today's stats, and Done, Snooze and Start focus.
 struct BackPromptView: View {
     let focus: FocusStore
     let screen: FocusScreen.BackPrompt
@@ -93,16 +98,16 @@ struct BackPromptView: View {
                     .foregroundStyle(.secondary)
             }
             HStack {
-                Button(screen.doneForNow, action: focus.doneForNow)
-                    .buttonStyle(.borderless)
+                DoneButton(title: screen.done, focus: focus)
                 Spacer()
                 SnoozeButton(title: screen.snooze, focus: focus)
                 Button {
                     focus.start()
                 } label: {
-                    Label(screen.start, systemImage: Glyph.play.symbolName)
+                    FocusPrimaryLabel(title: screen.start, glyph: .play)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
         .announcing(screen.title)
@@ -120,10 +125,25 @@ struct SnoozedView: View {
                 FocusLabel(text: screen.label)
                 FocusTitle(text: screen.title, size: HUDStyle.Focus.snoozedTitleSize)
             }
-            Button(screen.showNow, action: focus.showNow)
-                .buttonStyle(.bordered)
+            Button(action: focus.showNow) {
+                FocusPrimaryLabel(title: screen.showNow, onAccent: false)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint(Strings.Focus.primaryShortcutHint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Done, on both prompts: ends the loop. Bordered, so it reads as a button, not as text.
+private struct DoneButton: View {
+    let title: String
+    let focus: FocusStore
+
+    var body: some View {
+        Button(title, action: focus.doneForNow)
+            .buttonStyle(.bordered)
+            .help(Strings.Focus.doneHelp)
     }
 }
 

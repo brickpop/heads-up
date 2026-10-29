@@ -41,7 +41,8 @@ public struct FocusRun: Equatable, Sendable {
 
 /// A prompt the user answers: after a focus, or after a break.
 public enum FocusPrompt: Equatable, Sendable {
-    /// "Time for a break". `manual` for Take a break now, which offers no Keep working.
+    /// "Time for a break". `manual` for Take a break now, whose label shows today's stats
+    /// instead of the session that ended.
     case breakPrompt(manual: Bool)
     /// "Ready to get back to it?"
     case backPrompt
@@ -126,7 +127,7 @@ public struct FocusMachine: Equatable, Sendable {
         }
     }
 
-    /// Take a break now: from any phase, the break prompt, without Keep working.
+    /// Take a break now: from any phase, the break prompt.
     public mutating func takeBreakNow() {
         phase = .prompt(.breakPrompt(manual: true))
     }
@@ -140,12 +141,6 @@ public struct FocusMachine: Equatable, Sendable {
     public mutating func startBreak(activity: BreakOption.ID, minutes: Int, now: Date) {
         guard case .prompt(.breakPrompt) = phase else { return }
         phase = .rest(.running(minutes: minutes, from: now, secondsPerMinute: secondsPerMinute), activity: activity)
-    }
-
-    /// Keep working: only after a focus that ended by itself; the next focus starts.
-    public mutating func keepWorking(minutes: Int, now: Date) {
-        guard case .prompt(.breakPrompt(manual: false)) = phase else { return }
-        start(minutes: minutes, now: now)
     }
 
     /// Snooze a prompt for `minutes`.
@@ -166,9 +161,9 @@ public struct FocusMachine: Equatable, Sendable {
         phase = .prompt(.backPrompt)
     }
 
-    /// Done for now, from the back prompt.
+    /// Done, from either prompt: the loop ends, back to idle.
     public mutating func doneForNow() {
-        guard case .prompt(.backPrompt) = phase else { return }
+        guard case .prompt = phase else { return }
         phase = .idle
     }
 

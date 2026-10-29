@@ -7,7 +7,11 @@ struct FocusIdleView: View {
     let focus: FocusStore
     let screen: FocusScreen.Idle
 
+    /// The focused length card, while one is.
+    @FocusState private var focusedCard: Int?
+
     var body: some View {
+        let selected = screen.lengths.firstIndex { $0.isSelected }
         VStack(alignment: .leading, spacing: HUDStyle.Focus.gap) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -20,9 +24,10 @@ struct FocusIdleView: View {
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: HUDStyle.Focus.cardGap) {
-                ForEach(screen.lengths, id: \.minutes) { card in
+                ForEach(Array(screen.lengths.enumerated()), id: \.element.minutes) { index, card in
                     FocusCard(
-                        isSelected: card.isSelected, isTabStop: false, select: { focus.setFocusLength(card.minutes) }
+                        isSelected: card.isSelected, isTabStop: index == (selected ?? 0) || index == focusedCard,
+                        focus: $focusedCard, index: index, select: { focus.setFocusLength(card.minutes) }
                     ) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(card.title)
@@ -35,7 +40,8 @@ struct FocusIdleView: View {
                 }
             }
             .cardGroupKeys(
-                labels: screen.lengths.map(\.accessibilityLabel), selected: screen.lengths.firstIndex { $0.isSelected }
+                labels: screen.lengths.map(\.accessibilityLabel), selected: selected, focus: $focusedCard,
+                keyboardMoves: focus.cardMoves
             ) {
                 focus.setFocusLength(screen.lengths[$0].minutes)
             }
@@ -48,9 +54,10 @@ struct FocusIdleView: View {
                 Button {
                     focus.start()
                 } label: {
-                    Label(screen.start, systemImage: Glyph.play.symbolName)
+                    FocusPrimaryLabel(title: screen.start, glyph: .play)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
     }

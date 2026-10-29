@@ -295,9 +295,11 @@ public final class AppModel {
             // stops first. A pinned chat stays.
             if settings.settings.general.clearOnClose && !chat.isPinned { chat.newChat() }
             endWelcome()
-            focus.cancelSnoozeHide()
+            focus.cancelHideSoon()
+        case .inputChanged:
+            focus.cancelHideSoon()
         case .tabChanged(let tab):
-            focus.cancelSnoozeHide()
+            focus.cancelHideSoon()
             if tab == .services { services.sawServices() }
             // A terminal may have been installed or removed meanwhile; Settings → General has the picker too.
             if tab == .commands || tab == .settings { commands.refreshTerminals() }
@@ -680,6 +682,35 @@ extension AppModel {
     /// Open Privacy & Security, under a command macOS refused to open.
     public func openAutomationSettings() {
         systemSettings.openAutomation()
+    }
+
+    // MARK: Keys
+
+    /// The footer's left side: the HUD's, except that the Focus tab's cards, with the prompt
+    /// field empty, show their own keys.
+    public var footerLeft: FooterLeft {
+        let left = hud.footerLeft
+        guard case .hints = left, body == .focus, hud.input.isEmpty, focus.showsCards else { return left }
+        return .hints(Strings.Hints.focusCards)
+    }
+
+    /// A key with modifiers, while the HUD is key. The Focus tab's own keys come first, while
+    /// its view shows: ⌥← ⌥→ pick a card while the prompt field is empty (with text, they move
+    /// by word), and ⌘↩ runs the primary button. Then the HUD's ⌘ shortcuts.
+    public func handleShortcut(_ shortcut: Shortcut) -> Bool {
+        if body == .focus {
+            switch (shortcut.modifiers, shortcut.keyCode) {
+            case (.option, KeyCode.leftArrow) where hud.input.isEmpty:
+                if focus.moveCardSelection(by: -1) { return true }
+            case (.option, KeyCode.rightArrow) where hud.input.isEmpty:
+                if focus.moveCardSelection(by: 1) { return true }
+            case (.command, KeyCode.returnKey), (.command, KeyCode.keypadEnter):
+                if focus.runPrimaryAction() { return true }
+            default:
+                break
+            }
+        }
+        return hud.handleShortcut(shortcut)
     }
 
     // MARK: Forms

@@ -13,6 +13,8 @@ public final class FocusStore {
     static let notificationID = "focus.timer"
     /// How long the HUD stays after Snooze, so the user sees the toast.
     static let hideAfterSnooze: TimeInterval = 0.6
+    /// How long the HUD stays after a focus or a break starts from it (CEO, 2026-10-29).
+    static let startHideDelay: TimeInterval = 3
 
     public private(set) var machine: FocusMachine
     /// The break activity picked in the break prompt.
@@ -23,6 +25,9 @@ public final class FocusStore {
     /// The length of the focus that brought the break prompt, for its notification's title;
     /// nil after Take a break now.
     private(set) var promptMinutes: Int?
+    /// Counts the card moves made with ⌥← ⌥→ from the prompt field. The view announces the
+    /// newly selected card each time it changes, as it does for the arrow keys in the cards.
+    public private(set) var cardMoves = 0
 
     @ObservationIgnored private let clock: Clock
     @ObservationIgnored private let scheduler: Scheduler
@@ -32,7 +37,10 @@ public final class FocusStore {
     @ObservationIgnored private weak var navigator: Navigator?
     @ObservationIgnored private weak var toaster: Toaster?
     @ObservationIgnored private var wakeUp: ScheduledWork?
-    @ObservationIgnored private var snoozeHide: ScheduledWork?
+    @ObservationIgnored private var pendingHide: ScheduledWork?
+    /// Whether VoiceOver is on. The shell sets it (NSWorkspace); while it is on, a start doesn't
+    /// hide the HUD, which stays until Esc (Yuki, focus-loop-keys).
+    @ObservationIgnored public var isVoiceOverOn: @MainActor () -> Bool = { false }
 
     public init(
         clock: Clock, scheduler: Scheduler, settings: SettingsStore, history: FocusHistory, notifier: Notifier,
@@ -102,9 +110,10 @@ public final class FocusStore {
 
     // MARK: The user's moves
 
-    /// Start focus, with the selected length.
+    /// Start focus, with the selected length, from the HUD: it hides 3 s later.
     public func start() {
         start(minutes: focusLength)
+        hideAfterStart()
     }
 
     /// Start focus with `minutes`, from any phase. Toasts, and asks for notification permission
@@ -122,6 +131,7 @@ public final class FocusStore {
     public func resume() { change { $0.resume(now: clock.now) } }
     public func stop() { change { $0.stop() } }
     public func endBreak() { change { $0.endBreak() } }
+    /// Done, from either prompt: the loop ends, back to idle.
     public func doneForNow() { change { $0.doneForNow() } }
     public func showNow() { change { $0.showNow() } }
 
@@ -150,51 +160,125 @@ public final class FocusStore {
         change { $0.takeBreakNow() }
     }
 
+    /// Start break, from the HUD's break prompt: the HUD hides 3 s later.
     public func startBreak() {
-        guard case .prompt(.breakPrompt) = machine.phase else { return }
+        guard beginBreak() else { return }
+        hideAfterStart()
+    }
+
+    /// Starts the break the prompt has picked, if it shows. False when it doesn't.
+    private func beginBreak() -> Bool {
+        guard case .prompt(.breakPrompt) = machine.phase else { return false }
         let minutes = breakLength
         change { $0.startBreak(activity: activity.id, minutes: minutes, now: clock.now) }
         toaster?.toast(Strings.Focus.breakStarted(minutes))
+        return true
     }
 
-    public func keepWorking() {
-        guard case .prompt(.breakPrompt(manual: false)) = machine.phase else { return }
-        let length = focusLength
-        change { $0.keepWorking(minutes: length, now: clock.now) }
-        toaster?.toast(Strings.Focus.focusStarted(length))
-    }
-
-    /// Snooze from the HUD: toasts, then hides the HUD after 600 ms, unless the user does
-    /// something in the HUD first (`cancelSnoozeHide()`).
+    /// Snooze from the HUD: toasts, then hides the HUD after 600 ms.
     public func snooze() {
         guard case .prompt = machine.phase else { return }
         let minutes = settings.settings.focus.snoozeMinutes
         change { $0.snooze(minutes: minutes, now: clock.now) }
         toaster?.toast(Strings.Focus.snoozed(minutes))
-        snoozeHide = scheduler.schedule(at: clock.now.addingTimeInterval(Self.hideAfterSnooze)) { [weak self] in
-            self?.snoozeHide = nil
+        hideSoon(after: Self.hideAfterSnooze)
+    }
+
+    /// Hides the open HUD after `delay`, the toast having shown meanwhile, unless the user does
+    /// something in the HUD first (`cancelHideSoon()`). For moves made in the HUD only: a start
+    /// from a notification or the chat's tool never hides it.
+    func hideSoon(after delay: TimeInterval) {
+        cancelHideSoon()
+        guard navigator?.isOpen == true else { return }
+        pendingHide = scheduler.schedule(at: clock.now.addingTimeInterval(delay)) { [weak self] in
+            self?.pendingHide = nil
             self?.navigator?.close()
         }
     }
 
-    /// The user did something in the HUD after Snooze: it stays open.
-    public func cancelSnoozeHide() {
-        snoozeHide?.cancel()
-        snoozeHide = nil
+    /// A focus or a break started from the HUD: it hides 3 s later, except with VoiceOver on.
+    func hideAfterStart() {
+        if isVoiceOverOn() {
+            cancelHideSoon()
+            return
+        }
+        hideSoon(after: Self.startHideDelay)
+    }
+
+    /// The user did something in the HUD (typed, switched tab, used a Focus control): it stays
+    /// open.
+    public func cancelHideSoon() {
+        pendingHide?.cancel()
+        pendingHide = nil
     }
 
     /// Picks a break activity; the break length becomes its default.
     public func selectActivity(_ id: BreakOption.ID) {
         guard let option = settings.settings.focus.breakOptions.first(where: { $0.id == id }) else { return }
-        cancelSnoozeHide()
+        cancelHideSoon()
         breakActivity = option.id
         breakLength = option.length
     }
 
     public func setBreakLength(_ minutes: Int) {
         guard FocusSettings.breakLengths.contains(minutes) else { return }
-        cancelSnoozeHide()
+        cancelHideSoon()
         breakLength = minutes
+    }
+
+    // MARK: Keys
+
+    /// ⌥← (-1) or ⌥→ (+1): the previous or next card, stopping at the ends. Idle moves among the
+    /// focus lengths, the break prompt among the break options. Returns false where there are no
+    /// cards, so the key goes on to the prompt field.
+    public func moveCardSelection(by delta: Int) -> Bool {
+        switch machine.phase {
+        case .idle:
+            let lengths = FocusSettings.focusLengths
+            guard let next = Self.step(lengths.firstIndex(of: focusLength), by: delta, count: lengths.count) else {
+                return true
+            }
+            setFocusLength(lengths[next])
+        case .prompt(.breakPrompt):
+            let options = settings.settings.focus.breakOptions
+            let current = options.firstIndex { $0.id == activity.id }
+            guard let next = Self.step(current, by: delta, count: options.count) else { return true }
+            selectActivity(options[next].id)
+        default:
+            return false
+        }
+        // After the selection has changed: the view announces the card selected when this
+        // changes, so counting first would read out the old one.
+        cardMoves += 1
+        return true
+    }
+
+    /// The card after `current` by `delta`, or nil at an end.
+    private static func step(_ current: Int?, by delta: Int, count: Int) -> Int? {
+        let next = min(max((current ?? 0) + delta, 0), count - 1)
+        return next == current ? nil : next
+    }
+
+    /// Whether the Focus tab shows a group of cards that ⌥← ⌥→ move through: the focus lengths
+    /// when idle, the break options in the break prompt.
+    public var showsCards: Bool {
+        switch machine.phase {
+        case .idle, .prompt(.breakPrompt): true
+        default: false
+        }
+    }
+
+    /// ⌘↩: the primary button of what the Focus tab shows. Idle and the back prompt start a
+    /// focus, the break prompt starts the break, snoozed shows the prompt now. A running focus
+    /// or break has none, and returns false.
+    public func runPrimaryAction() -> Bool {
+        switch machine.phase {
+        case .idle, .prompt(.backPrompt): start()
+        case .prompt(.breakPrompt): startBreak()
+        case .snoozed: showNow()
+        case .focus, .rest: return false
+        }
+        return true
     }
 
     // MARK: Settings → Focus
@@ -286,7 +370,7 @@ public final class FocusStore {
 
     /// Applies a move, then brings the wake-up and the notification up to date.
     private func change(_ move: (inout FocusMachine) -> Void) {
-        cancelSnoozeHide()
+        cancelHideSoon()
         let before = machine.phase
         move(&machine)
         phaseChanged(from: before)
@@ -360,10 +444,13 @@ public final class FocusStore {
         }
         guard category.actions.contains(action) else { return }
         switch (action, machine.phase) {
+        // Answers from Notification Center don't hide the HUD: it may be open for something else.
         case (.startBreak, .prompt(.breakPrompt)):
-            startBreak()
+            _ = beginBreak()
         case (.startFocus, .prompt(.backPrompt)):
-            start()
+            start(minutes: focusLength)
+        case (.done, .prompt):
+            doneForNow()
         case (.snooze, .prompt):
             let minutes = settings.settings.focus.snoozeMinutes
             change { $0.snooze(minutes: minutes, now: clock.now) }

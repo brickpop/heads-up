@@ -9,6 +9,7 @@ public protocol Navigator: AnyObject {
     func autoOpen(tab: Tab, announcement: String)
     func showSettings(_ section: SettingsSection)
     func close()
+    var isOpen: Bool { get }
 }
 
 /// How stores show a toast in the footer.
@@ -43,6 +44,8 @@ public enum HUDEvent: Equatable, Sendable {
     /// The model menu opened: local servers are asked whether they run.
     case modelMenuOpened
     case settingsSectionChanged(SettingsSection)
+    /// The prompt's text changed: the user is typing.
+    case inputChanged
 }
 
 /// The HUD's state and everything the user does in it (ADR-001 §4.1, amendment 1).
@@ -291,6 +294,7 @@ public final class HUDStore: Navigator, Toaster {
         modelMenuOpen = false
         selectedIndex = nil
         selectionChange = .typing
+        onEvent?(.inputChanged)
     }
 
     /// ↑ (-1) or ↓ (+1): moves among the selectable rows, wrapping around.

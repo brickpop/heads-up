@@ -73,7 +73,7 @@ struct HUDRootView: View {
             .accessibilityElement(children: .contain)
             .accessibilitySortPriority(AccessibilityOrder.body)
         } footer: {
-            HUDFooter(left: hud.footerLeft, toastID: hud.toastID) {
+            HUDFooter(left: model.footerLeft, toastID: hud.toastID) {
                 StatusPills(focus: model.focus, caffeine: model.caffeine, isOpen: hud.isOpen)
             }
             // With no body, the header's line is the only one.

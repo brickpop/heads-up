@@ -355,7 +355,7 @@ private struct FocusHarness {
         h.minutes(25)
         h.focus.showNow()  // not snoozed: no change
         #expect(h.delivered != nil)
-        h.focus.doneForNow()  // not a back prompt: no change
+        h.focus.endBreak()  // not a break: no change
         #expect(h.delivered != nil)
         h.focus.takeBreakNow()  // the prompt gives way to a manual one
         #expect(h.delivered == nil)
@@ -406,7 +406,7 @@ private struct FocusHarness {
         h.focus.snooze()
         #expect(h.pending?.title == "Time for a break")
         #expect(h.pending?.body == "Snooze is over.")
-        #expect(h.pending?.category.actions == [.startBreak, .snooze])
+        #expect(h.pending?.category.actions == [.startBreak, .snooze, .done])
     }
 
     @Test func aSnoozedPromptReturningToAnOpenHUDInUseToastsItsTitle() {
@@ -587,7 +587,7 @@ private struct FocusHarness {
         #expect(h.focus.phase == .prompt(.backPrompt))
     }
 
-    @Test func anAutomaticBreakPromptOffersKeepWorkingAndAManualOneDoesnt() {
+    @Test func bothBreakPromptsOfferDone() {
         let h = FocusHarness()
         h.focus.start()
         h.minutes(25)
@@ -597,7 +597,7 @@ private struct FocusHarness {
         }
         #expect(automatic.label == "25 min session done · 1 today")
         #expect(automatic.title == "Time for a break")
-        #expect(automatic.keepWorking == "Keep working")
+        #expect(automatic.done == "Done")
         #expect(automatic.options.first { $0.isSelected }?.id == "water")
         #expect(
             automatic.options.prefix(2).map(\.accessibilityLabel) == [
@@ -615,7 +615,7 @@ private struct FocusHarness {
 
         h.focus.takeBreakNow()
         guard case .breakPrompt(let manual) = h.focus.screen(at: h.clock.now) else { return }
-        #expect(manual.keepWorking == nil)
+        #expect(manual.done == "Done")
         #expect(manual.label == "1 session · 25m focused today")
     }
 
@@ -631,6 +631,7 @@ private struct FocusHarness {
         #expect(back.label == "Break finished")
         #expect(back.title == "Ready to get back to it?")
         #expect(back.start == "Start 25 min focus")
+        #expect(back.done == "Done")
         h.focus.snooze()
         guard case .snoozed(let snoozed) = h.focus.screen(at: h.clock.now.addingTimeInterval(48)) else { return }
         #expect(snoozed.title == "Prompt returns in 4:12")
@@ -681,5 +682,269 @@ private struct FocusHarness {
         #expect(model.body == .suggestions)
         model.hud.setInput("")
         #expect(model.body == .focus)
+    }
+}
+
+/// The loop from the keyboard, with the prompt field focused (CEO, 2026-10-29).
+@MainActor
+@Suite(.serialized) struct FocusLoopKeysTests {
+    private let optionLeft = Shortcut(keyCode: KeyCode.leftArrow, modifiers: .option, key: "←")
+    private let optionRight = Shortcut(keyCode: KeyCode.rightArrow, modifiers: .option, key: "→")
+    private let commandReturn = Shortcut(keyCode: KeyCode.returnKey, modifiers: .command, key: "↩")
+
+    @Test func optionArrowsPickAFocusLengthAndStopAtTheEnds() {
+        let h = FocusHarness()
+        h.hud.selectTab(.focus)
+        #expect(h.model.handleShortcut(optionRight))
+        #expect(h.focus.focusLength == 40)
+        #expect(h.model.handleShortcut(optionRight))
+        #expect(h.model.handleShortcut(optionRight))  // at the end: handled, no change
+        #expect(h.focus.focusLength == 50)
+        #expect(h.focus.cardMoves == 2)
+        #expect(h.model.handleShortcut(optionLeft))
+        #expect(h.focus.focusLength == 40)
+    }
+
+    @Test func optionArrowsPickABreakOptionAndItsLength() {
+        let h = FocusHarness()
+        h.hud.selectTab(.focus)
+        h.focus.start()
+        h.minutes(25)
+        #expect(h.focus.activity.id == "water")
+        #expect(h.model.handleShortcut(optionLeft))
+        #expect(h.focus.activity.id == "look")
+        #expect(h.focus.breakLength == 2)
+        #expect(h.model.handleShortcut(optionLeft))
+        #expect(h.focus.activity.id == "look")
+    }
+
+    @Test func withTextInThePromptOptionArrowsMoveByWord() {
+        let h = FocusHarness()
+        h.hud.selectTab(.focus)
+        h.hud.setInput("x")
+        #expect(!h.model.handleShortcut(optionRight))
+        #expect(h.focus.focusLength == 25)
+    }
+
+    @Test func theKeysBelongToTheFocusViewOnly() {
+        let h = FocusHarness()
+        h.hud.selectTab(.chat)
+        #expect(!h.model.handleShortcut(optionRight))
+        #expect(!h.model.handleShortcut(commandReturn))
+        #expect(h.focus.phase == .idle && h.focus.focusLength == 25)
+    }
+
+    @Test func commandReturnRunsThePrimaryButton() {
+        let h = FocusHarness()
+        h.hud.selectTab(.focus)
+        #expect(h.model.handleShortcut(commandReturn))  // idle: Start focus
+        guard case .focus = h.focus.phase else {
+            Issue.record("expected a focus")
+            return
+        }
+        #expect(!h.model.handleShortcut(commandReturn))  // running: nothing
+        h.minutes(25)
+        #expect(h.model.handleShortcut(commandReturn))  // break prompt: Start break
+        guard case .rest(let run, "water") = h.focus.phase else {
+            Issue.record("expected the break")
+            return
+        }
+        #expect(run.minutes == 5)
+        h.minutes(5)
+        h.focus.snooze()
+        #expect(h.model.handleShortcut(commandReturn))  // snoozed: Show now
+        #expect(h.focus.phase == .prompt(.backPrompt))
+        #expect(h.model.handleShortcut(Shortcut(keyCode: KeyCode.keypadEnter, modifiers: .command, key: "⌅")))
+        guard case .focus = h.focus.phase else {
+            Issue.record("expected a focus from the back prompt")
+            return
+        }
+    }
+
+    @Test func doneFromANotificationEndsTheLoop() {
+        let h = FocusHarness()
+        h.focus.start()
+        h.minutes(25)
+        #expect(h.delivered?.category.actions == [.startBreak, .snooze, .done])
+        h.model.handleNotification(category: "focus.end", action: "done")
+        #expect(h.focus.phase == .idle)
+        #expect(h.delivered == nil)
+
+        h.focus.takeBreakNow()
+        h.focus.startBreak()
+        h.minutes(5)
+        #expect(h.delivered?.category.actions == [.startFocus, .snooze, .done])
+        h.model.handleNotification(category: "break.end", action: "done")
+        #expect(h.focus.phase == .idle)
+    }
+
+    @Test func doneOnEitherPromptEndsTheLoop() {
+        let h = FocusHarness()
+        h.focus.start()
+        h.minutes(25)
+        h.focus.doneForNow()
+        #expect(h.focus.phase == .idle)
+        h.focus.takeBreakNow()
+        h.focus.doneForNow()
+        #expect(h.focus.phase == .idle)
+    }
+
+    @Test func theFooterShowsTheCardKeysWhileCardsShowAndThePromptIsEmpty() {
+        let h = FocusHarness()
+        let cards = FooterLeft.hints(Strings.Hints.focusCards)
+        h.hud.selectTab(.focus)
+        #expect(h.model.footerLeft == cards)  // idle
+        #expect(
+            cards
+                == .hints([
+                    Hint(keys: ["⌥←→"], label: "choose"), Hint(keys: ["⌘↩"], label: "start"),
+                    Hint(keys: ["esc"], label: "close"),
+                ]))
+        h.hud.setInput("x")
+        #expect(h.model.footerLeft != cards)
+        h.hud.setInput("")
+
+        h.focus.start()
+        #expect(h.model.footerLeft == .toast("Focus started · 25 min"))  // a toast still wins
+        h.minutes(1)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTab))  // running
+        h.minutes(24)
+        #expect(h.model.footerLeft == cards)  // break prompt
+        h.focus.startBreak()
+        h.minutes(5)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTab))  // back prompt
+        h.focus.snooze()
+        h.scheduler.advance(by: 3)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTab))  // snoozed, once its toast is gone
+
+        h.hud.selectTab(.chat)
+        #expect(h.model.footerLeft == h.hud.footerLeft)
+    }
+
+    @Test func commandReturnCantBeTheWakeShortcut() {
+        #expect(commandReturn.keysProblem == .usedByHeadsUp)
+    }
+}
+
+/// After a start from the open HUD, it hides 3 s later (CEO, 2026-10-29).
+@MainActor
+@Suite(.serialized) struct FocusHideAfterStartTests {
+    @Test func startingFromTheHUDHidesItThreeSecondsLater() {
+        let h = FocusHarness()
+        h.hud.open(tab: .focus)
+        h.focus.start()
+        #expect(h.hud.footerLeft == .toast("Focus started · 25 min"))
+        h.scheduler.advance(by: 2.9)
+        #expect(h.hud.isOpen)
+        h.scheduler.advance(by: 0.1)
+        #expect(!h.hud.isOpen)
+
+        h.minutes(25)
+        h.hud.open(tab: .focus)
+        #expect(h.model.handleShortcut(Shortcut(keyCode: KeyCode.returnKey, modifiers: .command, key: "↩")))
+        guard case .rest = h.focus.phase else {
+            Issue.record("expected the break")
+            return
+        }
+        h.scheduler.advance(by: 3)
+        #expect(!h.hud.isOpen)
+    }
+
+    @Test func aTypedStartHidesTheHUDToo() {
+        let h = FocusHarness()
+        h.hud.open(tab: .chat)
+        h.hud.setInput("/start 30")
+        h.hud.submit()
+        guard case .focus(let run) = h.focus.phase else {
+            Issue.record("expected a focus")
+            return
+        }
+        #expect(run.minutes == 30)
+        #expect(h.hud.isOpen && h.hud.tab == .focus)
+        h.scheduler.advance(by: 3)
+        #expect(!h.hud.isOpen)
+    }
+
+    @Test func doingSomethingInTheHUDKeepsItOpen() {
+        let h = FocusHarness()
+        h.hud.open(tab: .focus)
+        h.focus.start()
+        h.hud.setInput("n")  // typing
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+
+        h.hud.setInput("")
+        h.focus.stop()
+        h.focus.start()
+        h.hud.selectTab(.chat)  // a tab switch
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+    }
+
+    @Test func aStartFromTheToolOrANotificationDoesntHideTheHUD() {
+        let h = FocusHarness()
+        h.hud.open(tab: .chat)
+        let tool: FocusControlling = h.focus
+        _ = tool.start(minutes: 25)  // the chat's focus.timer tool
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+
+        h.minutes(25)
+        h.hud.open(tab: .chat)
+        h.model.handleNotification(category: "focus.end", action: "start-break")
+        guard case .rest = h.focus.phase else {
+            Issue.record("expected the break")
+            return
+        }
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+
+        h.minutes(5)  // the break ends: the back prompt
+        h.hud.open(tab: .chat)
+        h.model.handleNotification(category: "break.end", action: "start-focus")
+        guard case .focus = h.focus.phase else {
+            Issue.record("expected a focus")
+            return
+        }
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+    }
+
+    @Test func withVoiceOverOnAStartLeavesTheHUDOpen() {
+        let h = FocusHarness()
+        h.focus.isVoiceOverOn = { true }
+        h.hud.open(tab: .focus)
+        h.focus.start()
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+    }
+
+    @Test func aStartRightAfterSnoozeReplacesItsHide() {
+        let h = FocusHarness()
+        h.focus.start()
+        h.minutes(25)
+        h.hud.open(tab: .focus)
+        h.focus.snooze()  // would hide at 0.6 s
+        h.scheduler.advance(by: 0.59)
+        h.focus.start()  // typed /start: hides 3 s from now
+        h.scheduler.advance(by: 0.01)
+        #expect(h.hud.isOpen)  // 0.6 s
+        h.scheduler.advance(by: 2.97)
+        #expect(h.hud.isOpen)  // 3.58 s
+        h.scheduler.advance(by: 0.02)
+        #expect(!h.hud.isOpen)  // 3.6 s
+    }
+
+    @Test func doneDoesntHideAndAClosedHUDIsntHiddenLater() {
+        let h = FocusHarness()
+        h.focus.start()  // the HUD is closed: nothing to hide
+        h.hud.open(tab: .focus)
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen)
+
+        h.minutes(25)
+        h.focus.doneForNow()
+        h.scheduler.advance(by: 3)
+        #expect(h.hud.isOpen && h.focus.phase == .idle)
     }
 }

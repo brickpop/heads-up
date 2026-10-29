@@ -57,6 +57,9 @@ enum HUDStyle {
         static var alert: Color { .red }
         /// `--warn`: something the user should act on, as an icon or short text.
         static var warn: Color { .orange }
+        /// A keycap's text and border on an accent-filled button (Yuki, focus-loop-keys).
+        static var keycapOnAccent: Color { Color.white.opacity(0.85) }
+        static var keycapOnAccentLine: Color { Color.white.opacity(0.4) }
     }
 
     /// The two mappings of the gray fills to the system fill colors, one step apart.

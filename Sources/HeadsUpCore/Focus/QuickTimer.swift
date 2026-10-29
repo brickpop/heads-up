@@ -74,6 +74,8 @@ enum QuickTimerActions {
             run: { [weak focus, weak hud] in
                 if isFocus { focus?.start(minutes: minutes) } else { focus?.takeBreak(minutes: minutes) }
                 hud?.selectTab(.focus)
+                // After the tab switch, which would cancel it.
+                focus?.hideAfterStart()
             })
     }
 

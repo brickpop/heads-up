@@ -103,6 +103,12 @@ public enum Strings {
             Hint(keys: ["/"], label: "actions"),
             Hint(keys: ["esc"], label: "close"),
         ]
+        /// The Focus tab while it shows cards (idle, break prompt) and the prompt field is empty.
+        public static let focusCards = [
+            Hint(keys: ["⌥←→"], label: "choose"),
+            Hint(keys: ["⌘↩"], label: "start"),
+            Hint(keys: ["esc"], label: "close"),
+        ]
     }
 
     public enum ActionKinds {
@@ -311,6 +317,7 @@ public enum Strings {
             case .startBreak: "Start break"
             case .startFocus: "Start focus"
             case .snooze: "Snooze"
+            case .done: "Done"
             case .stop: "Stop"
             case .showLogs: "Show Logs"
             }
@@ -404,21 +411,26 @@ public enum Strings {
         public static let pause = "Pause"
         public static let resume = "Resume"
 
+        /// Both prompts: ends the loop.
+        public static let done = "Done"
+        public static let doneHelp = "Stop here. Nothing else starts."
+        /// VoiceOver's hint on the primary buttons that show the ⌘↩ keycap.
+        public static let primaryShortcutHint = "Command-Return"
+        /// The keycap on the primary button: ⌘↩ runs it from the prompt field.
+        public static let primaryShortcut = "⌘↩"
+
         // Break prompt
         public static func sessionDone(minutes: Int, today: Int) -> String {
             "\(minutes) min session done · \(today) today"
         }
         public static let timeForABreak = "Time for a break"
         public static let length = "Length"
-        public static let keepWorking = "Keep working"
-        public static let keepWorkingHelp = "Skip the break and start the next focus session"
         public static func snooze(_ minutes: Int) -> String { "Snooze \(minutes) min" }
         public static func startBreak(_ minutes: Int) -> String { "Start \(minutes) min break" }
 
         // Back prompt
         public static let breakFinished = "Break finished"
         public static let readyToGetBack = "Ready to get back to it?"
-        public static let doneForNow = "Done for now"
         public static func startFocusOf(_ minutes: Int) -> String { "Start \(minutes) min focus" }
 
         // Snoozed
