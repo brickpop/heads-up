@@ -15,6 +15,16 @@ enum HUDStyle {
 
         /// `--line-strong`: hairlines and borders.
         static var line: Color { Color(nsColor: .separatorColor) }
+        /// The HUD's outer edge in dark mode, in place of `line`: a dark outline that sets it off
+        /// from mid-gray windows. Black at 55 %, or 90 % with Increase Contrast. HUDFrameView only.
+        static func edgeOuter(_ contrast: ColorSchemeContrast) -> Color {
+            .black.opacity(contrast == .increased ? 0.9 : 0.55)
+        }
+        /// The faint light rim just inside `edgeOuter`, which sets the HUD off from black windows
+        /// and a dark desktop. White at 16 %, or 40 % with Increase Contrast. HUDFrameView only.
+        static func edgeInner(_ contrast: ColorSchemeContrast) -> Color {
+            .white.opacity(contrast == .increased ? 0.4 : 0.16)
+        }
         /// `--raise`: the active tab, and an inactive tab under the pointer.
         static var raise: Color {
             Color(nsColor: fills == .stronger ? .tertiarySystemFill : .quaternarySystemFill)

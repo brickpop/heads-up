@@ -3,7 +3,9 @@ import HeadsUpCore
 import SwiftUI
 
 /// The HUD's container: a header area, an optional body and a footer area, on the HUD
-/// material with rounded corners and a hairline border.
+/// material with rounded corners and an edge: a hairline border in light mode; in dark mode a dark
+/// outline with a faint light rim just inside it, as native dark windows have, so the HUD stands
+/// out from dark windows and a dark desktop behind it.
 ///
 /// The panel that hosts this view must be clear and non-opaque, with `hasShadow` on:
 /// macOS then draws the window shadow around the rounded material.
@@ -12,6 +14,7 @@ struct HUDFrameView<Header: View, Content: View, Footer: View>: View {
     @ViewBuilder var content: Content
     @ViewBuilder var footer: Footer
 
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
 
@@ -27,9 +30,21 @@ struct HUDFrameView<Header: View, Content: View, Footer: View>: View {
         }
         .background(HUDMaterial())
         .clipShape(shape)
-        .overlay(
-            shape.strokeBorder(
-                HUDStyle.Colors.line, lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale)))
+        .overlay(edge)
+    }
+
+    /// Both strokes are drawn inside the shape: the window is exactly the HUD's size. Each is one
+    /// device pixel, or 1 pt with Increase Contrast.
+    @ViewBuilder private var edge: some View {
+        let width = HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale)
+        if colorScheme == .dark {
+            ZStack {
+                shape.strokeBorder(HUDStyle.Colors.edgeOuter(contrast), lineWidth: width)
+                shape.inset(by: width).strokeBorder(HUDStyle.Colors.edgeInner(contrast), lineWidth: width)
+            }
+        } else {
+            shape.strokeBorder(HUDStyle.Colors.line, lineWidth: width)
+        }
     }
 
     // Circular corners, to match the material's mask exactly.
