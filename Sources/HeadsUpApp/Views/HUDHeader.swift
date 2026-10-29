@@ -112,7 +112,7 @@ private struct TabCell<Expanded: View>: View {
         }
         .overlay(alignment: .topTrailing) { dot }
         .onHover { isHovered.wrappedValue = $0 }
-        .onGeometryChange(for: CGRect.self) {
+        .onGeometryChange(for: CGRect.self) { [rowSpace] in
             $0.frame(in: .named(rowSpace))
         } action: {
             reportFrame($0)

@@ -16,7 +16,8 @@ struct ConversationView: View {
     private let following = State(initialValue: true)
 
     private static let bottomID = "conversation.bottom"
-    private static let space = "conversation"
+    // Read inside onGeometryChange, whose closure runs off the main actor.
+    private nonisolated static let space = "conversation"
 
     var body: some View {
         let chat = model.chat

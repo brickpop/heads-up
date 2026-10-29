@@ -66,22 +66,20 @@ final class UserNotifier: NSObject, Notifier, UNUserNotificationCenterDelegate {
         completionHandler([.banner, .sound])
     }
 
+    /// The system waits for this to return before it treats the answer as handled. Everything is
+    /// read from `response` here, so only plain strings cross to the main actor.
     nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
         let category = response.notification.request.content.categoryIdentifier
         let requestID = response.notification.request.identifier
-        let action: String? =
-            switch response.actionIdentifier {
-            case UNNotificationDefaultActionIdentifier: nil
-            case UNNotificationDismissActionIdentifier: ""
-            default: response.actionIdentifier
-            }
-        Task { @MainActor in
-            // A dismissal is not an answer: the prompt keeps waiting.
-            if action != "" { self.onResponse(category, action, requestID) }
-            completionHandler()
+        let action: String?
+        switch response.actionIdentifier {
+        case UNNotificationDefaultActionIdentifier: action = nil
+        // A dismissal is not an answer: the prompt keeps waiting.
+        case UNNotificationDismissActionIdentifier: return
+        default: action = response.actionIdentifier
         }
+        await MainActor.run { self.onResponse(category, action, requestID) }
     }
 }

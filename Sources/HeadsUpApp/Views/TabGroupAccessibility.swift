@@ -96,6 +96,9 @@ final class TabElement: NSAccessibilityElement {
     }
 
     override func accessibilityPerformPress() -> Bool {
+        // Copied out, so the closure doesn't capture this non-Sendable element.
+        let select = self.select
+        let tab = self.tab
         MainActor.assumeIsolated { select?(tab) }
         return true
     }
