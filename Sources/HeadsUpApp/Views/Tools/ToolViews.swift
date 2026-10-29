@@ -166,22 +166,22 @@ private struct CardFieldValue: View {
     let field: CardField
     let canFold: Bool
 
-    @State private var expanded = false
+    private let expanded = State(initialValue: false)
     /// The value's height in full, and folded to three lines: Show all appears only when they
     /// differ, so a short Reminder has no button.
-    @State private var fullHeight: CGFloat = 0
-    @State private var foldedHeight: CGFloat = 0
+    private let fullHeight = State<CGFloat>(initialValue: 0)
+    private let foldedHeight = State<CGFloat>(initialValue: 0)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(field.value)
                 .foregroundStyle(field.isWarning ? HUDStyle.Colors.warn : Color.primary)
-                .lineLimit(canFold && !expanded ? HUDStyle.Tools.reminderLines : nil)
+                .lineLimit(canFold && !expanded.wrappedValue ? HUDStyle.Tools.reminderLines : nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) {
                     $0.size.height
                 } action: {
-                    if !expanded { foldedHeight = $0 }
+                    if !expanded.wrappedValue { foldedHeight.wrappedValue = $0 }
                 }
                 .background {
                     Text(field.value)
@@ -190,13 +190,15 @@ private struct CardFieldValue: View {
                         .onGeometryChange(for: CGFloat.self) {
                             $0.size.height
                         } action: {
-                            fullHeight = $0
+                            fullHeight.wrappedValue = $0
                         }
                 }
-            if canFold && (expanded || fullHeight > foldedHeight + 1) {
-                Button(expanded ? Strings.Tools.showLess : Strings.Tools.showAll) { expanded.toggle() }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
+            if canFold && (expanded.wrappedValue || fullHeight.wrappedValue > foldedHeight.wrappedValue + 1) {
+                Button(expanded.wrappedValue ? Strings.Tools.showLess : Strings.Tools.showAll) {
+                    expanded.wrappedValue.toggle()
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
             }
         }
     }

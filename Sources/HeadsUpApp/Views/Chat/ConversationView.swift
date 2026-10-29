@@ -10,10 +10,10 @@ import SwiftUI
 struct ConversationView: View {
     let model: AppModel
 
-    @State private var contentHeight = HUDStyle.Chat.minHeight
+    private let contentHeight = State(initialValue: HUDStyle.Chat.minHeight)
     /// Where the bottom of the messages is, measured from the top of the visible area.
-    @State private var bottomOffset: CGFloat = 0
-    @State private var following = true
+    private let bottomOffset = State<CGFloat>(initialValue: 0)
+    private let following = State(initialValue: true)
 
     private static let bottomID = "conversation.bottom"
     private static let space = "conversation"
@@ -21,7 +21,7 @@ struct ConversationView: View {
     var body: some View {
         let chat = model.chat
         let screen = chat.screen
-        let height = min(max(contentHeight, HUDStyle.Chat.minHeight), HUDStyle.Chat.maxHeight)
+        let height = min(max(contentHeight.wrappedValue, HUDStyle.Chat.minHeight), HUDStyle.Chat.maxHeight)
         VStack(spacing: 0) {
             ChatToolbar(toolbar: screen.toolbar, chat: chat, hud: model.hud)
             Hairline()
@@ -41,12 +41,12 @@ struct ConversationView: View {
                                 // When the end moves by exactly as much as the content grew, the
                                 // reply grew; any other move is the user scrolling, which decides
                                 // whether to keep following.
-                                let grew = contentHeight - contentHeightAtOffset
-                                if abs((offset - bottomOffset) - grew) > 1 {
-                                    following = offset - height <= HUDStyle.Chat.followSlack
+                                let grew = contentHeight.wrappedValue - contentHeightAtOffset.wrappedValue
+                                if abs((offset - bottomOffset.wrappedValue) - grew) > 1 {
+                                    following.wrappedValue = offset - height <= HUDStyle.Chat.followSlack
                                 }
-                                bottomOffset = offset
-                                contentHeightAtOffset = contentHeight
+                                bottomOffset.wrappedValue = offset
+                                contentHeightAtOffset.wrappedValue = contentHeight.wrappedValue
                             }
                     }
                     .padding(.top, HUDStyle.Chat.topPadding)
@@ -56,17 +56,17 @@ struct ConversationView: View {
                     .onGeometryChange(for: CGFloat.self) {
                         $0.size.height
                     } action: {
-                        contentHeight = $0
+                        contentHeight.wrappedValue = $0
                     }
                 }
                 .coordinateSpace(name: Self.space)
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: screen.messages.count) {
-                    following = true
+                    following.wrappedValue = true
                     proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 }
                 .onChange(of: screen.messages) {
-                    if following { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+                    if following.wrappedValue { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
                 }
             }
             .frame(height: height)
@@ -74,7 +74,7 @@ struct ConversationView: View {
     }
 
     /// The content's height when `bottomOffset` was last measured.
-    @State private var contentHeightAtOffset: CGFloat = 0
+    private let contentHeightAtOffset = State<CGFloat>(initialValue: 0)
 }
 
 /// The chat toolbar: whether the chat is kept, Pinned · N, Pin, Stop while the model answers,
@@ -261,17 +261,19 @@ private struct AssistantMessageView: View {
 /// Still with Reduce Motion.
 private struct ThinkingDot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var bright = false
+    private let bright = State(initialValue: false)
 
     var body: some View {
         Circle()
             .fill(Color.accentColor)
             .frame(width: HUDStyle.Chat.thinkingDotSize, height: HUDStyle.Chat.thinkingDotSize)
-            .opacity(reduceMotion || bright ? 1 : 0.35)
-            .scaleEffect(reduceMotion || bright ? 1 : 0.85)
+            .opacity(reduceMotion || bright.wrappedValue ? 1 : 0.35)
+            .scaleEffect(reduceMotion || bright.wrappedValue ? 1 : 0.85)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) { bright = true }
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    bright.wrappedValue = true
+                }
             }
             .accessibilityHidden(true)
     }

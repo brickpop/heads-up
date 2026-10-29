@@ -48,7 +48,7 @@ struct EditorListRow: View {
     let isEnabled: Bool
     let open: @MainActor () -> Void
 
-    @State private var isHovered = false
+    private let isHovered = State(initialValue: false)
 
     var body: some View {
         Button(action: open) {
@@ -74,12 +74,12 @@ struct EditorListRow: View {
             }
             .padding(.horizontal, HUDStyle.Settings.rowHorizontalPadding)
             .padding(.vertical, HUDStyle.Settings.rowVerticalPadding)
-            .background(isHovered && isEnabled ? HUDStyle.Colors.selection : Color.clear)
+            .background(isHovered.wrappedValue && isEnabled ? HUDStyle.Colors.selection : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .onHover { isHovered = $0 }
+        .onHover { isHovered.wrappedValue = $0 }
     }
 }
 

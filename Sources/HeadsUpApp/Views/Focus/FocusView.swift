@@ -79,7 +79,7 @@ struct FocusCard<Content: View>: View {
     let select: @MainActor () -> Void
     @ViewBuilder var content: Content
 
-    @State private var isHovered = false
+    private let isHovered = State(initialValue: false)
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -101,13 +101,13 @@ struct FocusCard<Content: View>: View {
         }
         .buttonStyle(.plain)
         .modifier(OutOfTabOrder(isActive: !isTabStop))
-        .onHover { isHovered = $0 }
+        .onHover { isHovered.wrappedValue = $0 }
         .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: isSelected)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private var fill: Color {
-        isSelected ? HUDStyle.Colors.selection : (isHovered ? HUDStyle.Colors.raise : Color.clear)
+        isSelected ? HUDStyle.Colors.selection : (isHovered.wrappedValue ? HUDStyle.Colors.raise : Color.clear)
     }
 
     private var shape: RoundedRectangle {
@@ -142,7 +142,7 @@ private struct CardGroupKeys: ViewModifier {
 
     /// An arrow press changed the selection, so VoiceOver should hear the new card. A click
     /// doesn't need it: VoiceOver reads the card it pressed.
-    @State private var announceNext = false
+    private let announceNext = State(initialValue: false)
 
     func body(content: Content) -> some View {
         content
@@ -153,14 +153,14 @@ private struct CardGroupKeys: ViewModifier {
                 let current = selected ?? (step > 0 ? -1 : labels.count)
                 let next = min(max(current + step, 0), labels.count - 1)
                 if next != selected {
-                    announceNext = true
+                    announceNext.wrappedValue = true
                     select(next)
                 }
                 return .handled
             }
             .onChange(of: selected) { _, new in
-                guard announceNext, let new, labels.indices.contains(new) else { return }
-                announceNext = false
+                guard announceNext.wrappedValue, let new, labels.indices.contains(new) else { return }
+                announceNext.wrappedValue = false
                 AccessibilityNotification.Announcement(labels[new]).post()
             }
             .accessibilityElement(children: .contain)

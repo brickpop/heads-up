@@ -22,7 +22,7 @@ private struct HeaderThumb: View {
     let thumb: Thumb
     let remove: @MainActor () -> Void
 
-    @State private var isHovered = false
+    private let isHovered = State(initialValue: false)
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
 
@@ -36,7 +36,7 @@ private struct HeaderThumb: View {
                     HUDStyle.Colors.line, lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale))
             )
             .overlay {
-                if isHovered {
+                if isHovered.wrappedValue {
                     Button(action: remove) {
                         Image(systemName: Symbols.close)
                             .foregroundStyle(.white)
@@ -55,7 +55,7 @@ private struct HeaderThumb: View {
                         .accessibilityHidden(true)
                 }
             }
-            .onHover { isHovered = $0 }
+            .onHover { isHovered.wrappedValue = $0 }
             .help(thumb.name)
             .accessibilityElement()
             .accessibilityLabel(thumb.accessibilityLabel)

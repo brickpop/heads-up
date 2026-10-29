@@ -5,3 +5,6 @@ import HeadsUpCore
 // ones, so these make the plain name mean the core type everywhere in the app.
 typealias Tab = HeadsUpCore.Tab
 typealias Pasteboard = HeadsUpCore.Pasteboard
+
+// Views keep their state in `State(initialValue:)`, not the @State attribute: in the new SDK
+// that is a macro, and the Command Line Tools have no SwiftUI macro plugin (tools/lint.sh, 6).

@@ -6,7 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     let model: AppModel
 
-    @State private var contentHeight = HUDStyle.Settings.minHeight
+    private let contentHeight = State(initialValue: HUDStyle.Settings.minHeight)
 
     var body: some View {
         HStack(spacing: 0) {
@@ -21,11 +21,11 @@ struct SettingsView: View {
                     .onGeometryChange(for: CGFloat.self) {
                         $0.size.height
                     } action: {
-                        contentHeight = $0
+                        contentHeight.wrappedValue = $0
                     }
             }
         }
-        .frame(height: min(max(contentHeight, HUDStyle.Settings.minHeight), HUDStyle.Settings.maxHeight))
+        .frame(height: min(max(contentHeight.wrappedValue, HUDStyle.Settings.minHeight), HUDStyle.Settings.maxHeight))
     }
 }
 

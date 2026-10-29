@@ -9,7 +9,7 @@ struct SuggestionList: View {
     /// Where the pointer was last seen over the list, in window coordinates. Rows that scroll
     /// or appear under a resting pointer report the same place, so they don't take the
     /// selection from the keyboard: only a pointer that moves selects.
-    @State private var lastPointer: CGPoint?
+    private let lastPointer = State<CGPoint?>(initialValue: nil)
 
     var body: some View {
         let rows = hud.suggestions
@@ -52,8 +52,8 @@ struct SuggestionList: View {
     }
 
     private func pointerMoved(to location: CGPoint, over index: Int) {
-        defer { lastPointer = location }
-        guard let lastPointer, lastPointer != location else { return }
+        defer { lastPointer.wrappedValue = location }
+        guard let last = lastPointer.wrappedValue, last != location else { return }
         hud.hover(index)
     }
 

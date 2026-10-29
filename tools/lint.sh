@@ -10,6 +10,7 @@
 #   5. The fixed AppleScript files Commands runs are there, each with the one handler
 #      `run_in_terminal(theDir, theCommand)` and its own app as the only one it names, and each
 #      matches its SHA-256 below, so any change fails until a reviewed diff updates the hash (F14).
+#   6. HeadsUpApp uses no @State: it is a macro the Command Line Tools can't expand.
 #
 # The plists are read with grep, so they must stay simple: every key written as
 # <key>Name</key> on one line, with no CDATA. Anything else fails, rather than risk a
@@ -155,6 +156,14 @@ for script in \
         fail "Resources/$name changed: its SHA-256 isn't the one tools/lint.sh pins. Review the change, then update the hash."
     fi
 done
+
+# 6. No @State in the app. In the new macOS SDK it is a macro, and the Command Line Tools
+# don't ship SwiftUI's macro plugin, so it can't compile without Xcode. Comment lines are fine.
+while IFS= read -r hit; do
+    where=$(printf "%s" "${hit#"$root"/}" | cut -d: -f1,2)
+    fail "$where: the Command Line Tools have no SwiftUI macro plugin: use State(initialValue:) (see CoreNames.swift)"
+done < <(grep -rnE --include='*.swift' '@State([^A-Za-z0-9_]|$)' "$root/Sources/HeadsUpApp" 2>/dev/null |
+    grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
 
 if [ "$failures" -gt 0 ]; then
     echo "lint: $failures problem(s)" >&2

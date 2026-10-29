@@ -7,8 +7,8 @@ struct FocusSection: View {
     let model: AppModel
 
     /// The option being typed, and its length, until Add.
-    @State private var newLabel = ""
-    @State private var newLength = FocusSettings.newOptionLength
+    private let newLabel = State(initialValue: "")
+    private let newLength = State(initialValue: FocusSettings.newOptionLength)
 
     var body: some View {
         let focus = model.focus
@@ -27,10 +27,10 @@ struct FocusSection: View {
             }
 
             HStack(spacing: HUDStyle.FocusSettings.chipGap) {
-                TextField(Strings.FocusSettings.addPlaceholder, text: $newLabel)
+                TextField(Strings.FocusSettings.addPlaceholder, text: newLabel.projectedValue)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(add)
-                Picker(Strings.FocusSettings.length, selection: $newLength) {
+                Picker(Strings.FocusSettings.length, selection: newLength.projectedValue) {
                     ForEach(FocusSettings.breakLengths, id: \.self) { minutes in
                         Text(Strings.FocusSettings.minutesShort(minutes)).tag(minutes)
                     }
@@ -40,7 +40,7 @@ struct FocusSection: View {
                 .fixedSize()
                 Button(Strings.FocusSettings.add, action: add)
                     .buttonStyle(.borderedProminent)
-                    .disabled(!FocusStore.canAddBreakOption(label: newLabel))
+                    .disabled(!FocusStore.canAddBreakOption(label: newLabel.wrappedValue))
             }
             Text(Strings.FocusSettings.lengthHint)
                 .font(.system(size: HUDStyle.Settings.helpSize))
@@ -77,9 +77,9 @@ struct FocusSection: View {
 
     /// Add, or Enter in the field: adds the option and empties the field for the next one.
     private func add() {
-        guard FocusStore.canAddBreakOption(label: newLabel) else { return }
-        model.focus.addBreakOption(label: newLabel, minutes: newLength)
-        newLabel = ""
+        guard FocusStore.canAddBreakOption(label: newLabel.wrappedValue) else { return }
+        model.focus.addBreakOption(label: newLabel.wrappedValue, minutes: newLength.wrappedValue)
+        newLabel.wrappedValue = ""
     }
 
     private func segmented(

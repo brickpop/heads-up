@@ -7,7 +7,7 @@ import SwiftUI
 struct CommandsView: View {
     let model: AppModel
 
-    @State private var contentHeight: CGFloat = 0
+    private let contentHeight = State<CGFloat>(initialValue: 0)
 
     var body: some View {
         ScrollView {
@@ -16,10 +16,10 @@ struct CommandsView: View {
                 .onGeometryChange(for: CGFloat.self) {
                     $0.size.height
                 } action: {
-                    contentHeight = $0
+                    contentHeight.wrappedValue = $0
                 }
         }
-        .frame(height: min(contentHeight, HUDStyle.Services.maxHeight))
+        .frame(height: min(contentHeight.wrappedValue, HUDStyle.Services.maxHeight))
     }
 }
 
@@ -119,7 +119,7 @@ private struct CommandRowView: View {
     let model: AppModel
     let row: CommandsScreen.Row
 
-    @State private var isHovered = false
+    private let isHovered = State(initialValue: false)
 
     var body: some View {
         VStack(alignment: .leading, spacing: HUDStyle.Footer.keyGap) {
@@ -171,13 +171,13 @@ private struct CommandRowView: View {
                 }
                 .padding(HUDStyle.Services.rowPadding)
                 .background(
-                    isHovered ? HUDStyle.Colors.selection : Color.clear,
+                    isHovered.wrappedValue ? HUDStyle.Colors.selection : Color.clear,
                     in: RoundedRectangle(cornerRadius: HUDStyle.Services.rowCornerRadius)
                 )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
+            .onHover { isHovered.wrappedValue = $0 }
             .accessibilityLabel(row.accessibilityLabel)
             .accessibilityValue(row.accessibilityValue)
             .accessibilityHint(row.accessibilityHint)

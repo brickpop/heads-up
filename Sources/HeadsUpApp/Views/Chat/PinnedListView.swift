@@ -55,7 +55,7 @@ private struct PinnedRowView: View {
     let model: AppModel
     let row: PinnedListScreen.Row
 
-    @State private var isHovered = false
+    private let isHovered = State(initialValue: false)
 
     var body: some View {
         HStack(spacing: HUDStyle.Services.rowGap) {
@@ -100,9 +100,9 @@ private struct PinnedRowView: View {
         }
         .padding(HUDStyle.Suggestions.rowVerticalPadding)
         .background(
-            row.isLoaded || isHovered ? HUDStyle.Colors.selection : Color.clear,
+            row.isLoaded || isHovered.wrappedValue ? HUDStyle.Colors.selection : Color.clear,
             in: RoundedRectangle(cornerRadius: HUDStyle.Suggestions.rowCornerRadius)
         )
-        .onHover { isHovered = $0 }
+        .onHover { isHovered.wrappedValue = $0 }
     }
 }

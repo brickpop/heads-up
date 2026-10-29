@@ -505,6 +505,16 @@ printf '#if canImport(CoreGraphics)\n    import CoreGraphics\n#endif\n' >"$work/
 expect_lint_passes "the lint allows CoreGraphics behind canImport, for CGRect's geometry"
 
 lint_root
+mkdir -p "$work/lint-root/Sources/HeadsUpApp"
+printf "struct Row: View {\n    @State private var isHovered = false\n}\n" >"$work/lint-root/Sources/HeadsUpApp/Row.swift"
+expect_lint_fails "the lint fails on @State in the app, which needs a macro plugin" "Row.swift:2: the Command Line Tools have no SwiftUI macro plugin"
+
+lint_root
+mkdir -p "$work/lint-root/Sources/HeadsUpApp"
+printf "struct Row: View {\n    // Not @State: no macro plugin.\n    private let isHovered = State(initialValue: false)\n    @StateObject var model = Model()\n}\n" >"$work/lint-root/Sources/HeadsUpApp/Row.swift"
+expect_lint_passes "the lint allows State(initialValue:), @StateObject and @State in a comment"
+
+lint_root
 add_to_plist HeadsUp.entitlements '    <key>com.apple.security.get-task-allow</key>
     <true/>'
 expect_lint_fails "the lint fails on an extra entitlement" 'must hold exactly these keys'

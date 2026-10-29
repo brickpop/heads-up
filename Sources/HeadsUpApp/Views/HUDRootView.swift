@@ -12,7 +12,7 @@ struct HUDRootView: View {
     let model: AppModel
 
     /// What the HUD would do with the items dragged over it, while they are.
-    @State private var dropZone: DropZone?
+    private let dropZone = State<DropZone?>(initialValue: nil)
 
     var body: some View {
         let hud = model.hud
@@ -50,7 +50,10 @@ struct HUDRootView: View {
                 }
             }
             // A collapsed HUD grows to 160 pt while something is dragged over it.
-            .frame(minHeight: dropZone == nil ? nil : HUDStyle.Attachments.dropMinHeight - HUDMetrics.collapsedHeight)
+            .frame(
+                minHeight: dropZone.wrappedValue == nil
+                    ? nil : HUDStyle.Attachments.dropMinHeight - HUDMetrics.collapsedHeight
+            )
             .accessibilityElement(children: .contain)
             .accessibilitySortPriority(AccessibilityOrder.body)
         } footer: {
@@ -65,9 +68,9 @@ struct HUDRootView: View {
             .accessibilitySortPriority(AccessibilityOrder.footer)
         }
         .overlay {
-            if let dropZone { DropZoneOverlay(zone: dropZone) }
+            if let zone = dropZone.wrappedValue { DropZoneOverlay(zone: zone) }
         }
-        .onDrop(of: [.item], delegate: ImageDropTarget(chat: model.chat, zone: $dropZone))
+        .onDrop(of: [.item], delegate: ImageDropTarget(chat: model.chat, zone: dropZone.projectedValue))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Strings.HUD.accessibilityLabel)
     }

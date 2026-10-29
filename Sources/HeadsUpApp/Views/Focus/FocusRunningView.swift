@@ -39,7 +39,7 @@ struct FocusProgressBar: View {
     let label: String
 
     /// What the bar draws: `progress`, reached with an animation only when it grows.
-    @State private var shown: Double = 0
+    private let shown = State<Double>(initialValue: 0)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -48,16 +48,16 @@ struct FocusProgressBar: View {
                 Capsule().fill(HUDStyle.Colors.track)
                 Capsule()
                     .fill(Color.accentColor)
-                    .frame(width: geometry.size.width * shown)
+                    .frame(width: geometry.size.width * shown.wrappedValue)
             }
         }
         .frame(height: HUDStyle.Focus.progressHeight)
         // A new run starts the bar at its new value at once: it never rewinds on screen.
         .onChange(of: progress, initial: true) { old, new in
             if new > old && !reduceMotion {
-                withAnimation(.linear(duration: 1)) { shown = new }
+                withAnimation(.linear(duration: 1)) { shown.wrappedValue = new }
             } else {
-                shown = new
+                shown.wrappedValue = new
             }
         }
         .accessibilityElement()

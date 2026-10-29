@@ -17,7 +17,7 @@ struct HUDHeader: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Where each tab sits in the row, for the VoiceOver tab group.
-    @State private var tabFrames: [Tab: CGRect] = [:]
+    private let tabFrames = State<[Tab: CGRect]>(initialValue: [:])
 
     private static let rowSpace = "tabs"
 
@@ -27,7 +27,7 @@ struct HUDHeader: View {
                 TabCell(
                     tab: tab, isSelected: hud.tab == tab, activity: activity[tab],
                     select: { hud.selectTab(tab) },
-                    reportFrame: { tabFrames[tab] = $0 }, rowSpace: Self.rowSpace
+                    reportFrame: { tabFrames.wrappedValue[tab] = $0 }, rowSpace: Self.rowSpace
                 ) {
                     HStack(spacing: HUDStyle.Tabs.gap) {
                         if let chip {
@@ -59,7 +59,7 @@ struct HUDHeader: View {
             TabGroupAccessibility.Item(
                 tab: tab, label: tab.title, isSelected: hud.tab == tab,
                 activity: Strings.Tabs.accessibilityValue(tab, selected: false, activity: activity[tab]),
-                hint: Strings.Tabs.accessibilityHint(tab), frame: tabFrames[tab] ?? .zero)
+                hint: Strings.Tabs.accessibilityHint(tab), frame: tabFrames.wrappedValue[tab] ?? .zero)
         }
     }
 }
@@ -76,7 +76,7 @@ private struct TabCell<Expanded: View>: View {
     let rowSpace: String
     @ViewBuilder var expanded: Expanded
 
-    @State private var isHovered = false
+    private let isHovered = State(initialValue: false)
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
 
@@ -102,7 +102,7 @@ private struct TabCell<Expanded: View>: View {
         .padding(.horizontal, isSelected ? HUDStyle.Tabs.padding : 0)
         .frame(maxWidth: isSelected ? .infinity : HUDStyle.Tabs.size, alignment: .leading)
         .frame(height: HUDStyle.Tabs.size)
-        .background(isSelected || isHovered ? HUDStyle.Colors.raise : Color.clear, in: shape)
+        .background(isSelected || isHovered.wrappedValue ? HUDStyle.Colors.raise : Color.clear, in: shape)
         .overlay {
             if isSelected {
                 shape.strokeBorder(
@@ -111,7 +111,7 @@ private struct TabCell<Expanded: View>: View {
             }
         }
         .overlay(alignment: .topTrailing) { dot }
-        .onHover { isHovered = $0 }
+        .onHover { isHovered.wrappedValue = $0 }
         .onGeometryChange(for: CGRect.self) {
             $0.frame(in: .named(rowSpace))
         } action: {

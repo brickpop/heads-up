@@ -8,7 +8,7 @@ struct ServicesView: View {
     let model: AppModel
     let isOpen: Bool
 
-    @State private var contentHeight: CGFloat = 0
+    private let contentHeight = State<CGFloat>(initialValue: 0)
 
     var body: some View {
         EverySecond(isRunning: isOpen) { now in
@@ -19,10 +19,10 @@ struct ServicesView: View {
                     .onGeometryChange(for: CGFloat.self) {
                         $0.size.height
                     } action: {
-                        contentHeight = $0
+                        contentHeight.wrappedValue = $0
                     }
             }
-            .frame(height: min(contentHeight, HUDStyle.Services.maxHeight))
+            .frame(height: min(contentHeight.wrappedValue, HUDStyle.Services.maxHeight))
         }
     }
 }
