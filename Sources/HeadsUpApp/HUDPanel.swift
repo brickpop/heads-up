@@ -25,6 +25,10 @@ final class HUDPanel: NSPanel, HUDWindow {
     private var sizeObservation: NSKeyValueObservation?
     /// The frame of the screen the HUD shows on, while it shows. Every resize keeps its top edge.
     private var screenFrame: CGRect?
+    /// Where the left button went down, to tell a click from a drag, and the modifier keys held.
+    private var mouseDown: (point: NSPoint, modifiers: NSEvent.ModifierFlags)?
+    /// How far the pointer may move between button down and up for it to count as a click.
+    private static let clickSlop: CGFloat = 3
 
     init(hud: HUDStore, content: some View) {
         self.hud = hud
@@ -69,6 +73,46 @@ final class HUDPanel: NSPanel, HUDWindow {
     override func resignKey() {
         super.resignKey()
         hud.didResignKey()
+    }
+
+    // MARK: Clicks in the chat
+
+    /// A plain click anywhere in the HUD while the conversation shows, on a message, between
+    /// them or elsewhere, gives the keyboard back to the prompt. A drag that selected text keeps
+    /// its selection and the keyboard, so ⌘C copies it. Buttons and links don't take the
+    /// keyboard, so they leave it where it is.
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            mouseDown = (event.locationInWindow, event.modifierFlags)
+            super.sendEvent(event)
+            // Selectable text follows a drag in its own event loop and returns once the button
+            // is up: then the click ended here, where the pointer is now.
+            if NSEvent.pressedMouseButtons & 1 == 0 {
+                clickEnded(at: mouseLocationOutsideOfEventStream, clickCount: event.clickCount)
+            }
+        case .leftMouseUp:
+            super.sendEvent(event)
+            clickEnded(at: event.locationInWindow, clickCount: event.clickCount)
+        default:
+            super.sendEvent(event)
+        }
+    }
+
+    private func clickEnded(at point: NSPoint, clickCount: Int) {
+        guard let start = mouseDown else { return }
+        mouseDown = nil
+        // A double click selects a word, Shift extends a selection and Control opens its menu:
+        // they keep the keyboard, like a drag.
+        let plainKeys = start.modifiers.isDisjoint(with: [.shift, .control, .option, .command])
+        let moved = hypot(point.x - start.point.x, point.y - start.point.y)
+        guard clickCount == 1, plainKeys, moved <= Self.clickSlop,
+            hud.tab == .chat, hud.chatView == .conversation
+        else { return }
+        // The prompt keeps the keyboard through a click on a button. After a click on a
+        // message, or after a selection, a message's text holds it, or nothing does.
+        if (firstResponder as? NSTextView)?.isEditable == true { return }
+        NotificationCenter.default.post(name: .focusPrompt, object: self)
     }
 
     // MARK: HUDWindow

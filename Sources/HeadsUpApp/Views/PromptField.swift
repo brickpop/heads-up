@@ -1,3 +1,5 @@
+import Combine
+import Foundation
 import HeadsUpCore
 import SwiftUI
 
@@ -23,8 +25,9 @@ struct PromptField: View {
         // onSubmit waits while an input method is composing, so Enter there picks the candidate.
         .onSubmit { hud.submit() }
         // The field takes the keyboard when the HUD becomes key, when the tab changes (each
-        // tab shows its own field) and when the model menu closes. A field made before the HUD
-        // is first key waits for that: focus set early would already be true by then.
+        // tab shows its own field), when the model menu closes and after a plain click in the
+        // chat. A field made before the HUD is first key waits for that: focus set early would
+        // already be true by then.
         .onAppear { if hud.isKey { isFocused = true } }
         .onChange(of: hud.isKey) { _, isKey in
             if isKey {
@@ -39,5 +42,14 @@ struct PromptField: View {
         .onChange(of: hud.modelMenuOpen) { _, isOpen in
             if !isOpen { isFocused = true }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .focusPrompt)) { _ in
+            isFocused = true
+        }
     }
+}
+
+extension Notification.Name {
+    /// Asks the prompt to take the keyboard back: `HUDPanel` posts it after a plain click in
+    /// the chat.
+    static let focusPrompt = Notification.Name("HeadsUp.focusPrompt")
 }

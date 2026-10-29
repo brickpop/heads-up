@@ -292,6 +292,9 @@ public final class HUDStore: Navigator, Toaster {
 
     /// The prompt's text changed. The selection goes back to the first row.
     public func setInput(_ text: String) {
+        // The text field also commits its text, unchanged, when Enter is pressed: that is not a
+        // keystroke, and must keep the row picked with ↑ ↓.
+        guard text != input else { return }
         input = text
         modelMenuOpen = false
         selectedIndex = nil

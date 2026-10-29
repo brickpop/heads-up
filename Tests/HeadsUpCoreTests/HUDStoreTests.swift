@@ -139,6 +139,19 @@ private struct Harness {
         #expect(h.chat.sent.isEmpty)
     }
 
+    // The prompt field sets its text again, unchanged, as Enter is pressed and before submit.
+    @Test func enterAfterTheFieldRecommitsTheSameTextRunsTheSelectedAction() {
+        let h = Harness()
+        h.hud.open()
+        h.hud.setInput("focus")
+        h.hud.moveSelection(1)
+        h.hud.setInput("focus")
+        #expect(h.hud.selection == 1)
+        h.hud.submit()
+        #expect(h.ran.ids == ["Start 25 min focus"])
+        #expect(h.chat.sent.isEmpty)
+    }
+
     @Test func enterOnTheAskRowSendsToChatFromAnyTab() {
         let h = Harness()
         h.hud.open(tab: .caffeine)
