@@ -40,6 +40,9 @@ public final class AppModel {
         public var loginShell: String
         public var home: String
         public var environment: [String: String]
+        /// Whether services start from the environment of an interactive login shell, read once
+        /// (`ShellEnvironment`). The app sets it; tests and previews keep `environment` as it is.
+        public var readsShellEnvironment: Bool
         /// Where settings.json lives; nil keeps settings in memory only.
         public var dataFolder: URL?
         /// Where pinned chats are kept; nil is headsup.sqlite in `dataFolder`, or memory without one.
@@ -57,7 +60,8 @@ public final class AppModel {
             dataFolder: URL?,
             focusSecondsPerMinute: TimeInterval = 60,
             loginShell: String = UserAccount.loginShell, home: String = NSHomeDirectory(),
-            environment: [String: String] = ProcessInfo.processInfo.environment
+            environment: [String: String] = ProcessInfo.processInfo.environment,
+            readsShellEnvironment: Bool = false
         ) {
             self.clock = clock
             self.scheduler = scheduler
@@ -84,6 +88,7 @@ public final class AppModel {
             self.loginShell = loginShell
             self.home = home
             self.environment = environment
+            self.readsShellEnvironment = readsShellEnvironment
             self.dataFolder = dataFolder
             self.focusSecondsPerMinute = focusSecondsPerMinute
         }
@@ -194,7 +199,8 @@ public final class AppModel {
         let services = ServiceStore(
             folder: ports.dataFolder, clock: ports.clock, scheduler: ports.scheduler, launcher: ports.serviceLauncher,
             ports: ports.portProbe, notifier: ports.notifier, files: ports.files, settings: settings, toaster: hud,
-            loginShell: ports.loginShell, home: ports.home, baseEnvironment: ports.environment)
+            loginShell: ports.loginShell, home: ports.home, baseEnvironment: ports.environment,
+            readsShellEnvironment: ports.readsShellEnvironment)
         self.services = services
         commands = CommandStore(
             folder: ports.dataFolder, launcher: ports.terminalLauncher, files: ports.files, settings: settings,

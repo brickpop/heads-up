@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 secrets: KeychainSecretStore(), httpClient: URLSessionHTTPClient(),
                 linkOpener: WorkspaceLinkOpener(), pasteboard: GeneralPasteboard(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
-                focusSecondsPerMinute: Self.focusSecondsPerMinute))
+                focusSecondsPerMinute: Self.focusSecondsPerMinute, readsShellEnvironment: true))
         self.model = model
         self.notifier = notifier
 

@@ -27,10 +27,12 @@ private final class ServicesHarness {
     var services: ServiceStore { model.services }
 
     /// `sharing` another harness uses its data folder: a second launch over the same files.
-    /// `realLauncher` starts real processes.
+    /// `realLauncher` starts real processes. `readsShellEnvironment` reads the login shell's environment
+    /// before the first service starts, through the same launcher.
     init(
         loginShell: String = "/bin/zsh", canDisclaim: Bool = true, file: String? = nil,
-        sharing other: ServicesHarness? = nil, realLauncher: Bool = false
+        sharing other: ServicesHarness? = nil, realLauncher: Bool = false, readsShellEnvironment: Bool = false,
+        environment: [String: String] = ["PATH": "/usr/bin"]
     ) throws {
         scheduler = ManualScheduler(clock: clock)
         let root =
@@ -58,7 +60,7 @@ private final class ServicesHarness {
                 secrets: MemorySecretStore(),
                 httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
                 dataFolder: folder, loginShell: loginShell,
-                home: root.path, environment: ["PATH": "/usr/bin"]),
+                home: root.path, environment: environment, readsShellEnvironment: readsShellEnvironment),
             settings: settings)
         model.launch()
     }
@@ -1094,5 +1096,356 @@ private final class ServicesHarness {
         #expect(ServiceStore.action(isLive: false, canStart: false) == .edit(title: "Edit…"))
         #expect(
             ServiceStore.action(isLive: false, canStart: true) == .run(title: "Start", glyph: .play, isPrimary: true))
+    }
+}
+
+/// Services start with the environment of the user's terminal (card service-path): read once
+/// from an interactive login shell, with the service's own variables on top.
+@MainActor
+@Suite(.serialized) struct ShellEnvironmentTests {
+    private let marker = "HEADSUP_ENV_test"
+
+    /// What the shell prints for `env`: chatter, then the environment between the markers.
+    private func shellOutput(_ variables: [String], marker: String) -> String {
+        "Last login: today\n\n\(marker)_BEGIN\n" + variables.map { $0 + "\0" }.joined() + "\n\(marker)_END\nbye\n"
+    }
+
+    /// The pid of the environment read: the first launch whose argv has `-i`.
+    private func readPID(_ h: ServicesHarness) -> Int32? {
+        h.launcher.launched.filter { $0.value.arguments.contains("-i") }.keys.sorted().last
+    }
+
+    /// The marker of a read, from its script.
+    private func marker(of plan: SpawnPlan) -> String {
+        let script = plan.arguments.last ?? ""
+        let word = script.split(separator: " ").first { $0.hasPrefix("HEADSUP_ENV_") && $0.hasSuffix("_BEGIN;") }
+        return String(word?.dropLast("_BEGIN;".count) ?? "")
+    }
+
+    /// Answers the pending read with `variables`, and lets the services start.
+    private func answerRead(_ h: ServicesHarness, _ variables: [String]) async throws {
+        let pid = try #require(readPID(h))
+        let plan = try #require(h.launcher.launched[pid])
+        h.launcher.emit(pid, shellOutput(variables, marker: marker(of: plan)))
+        await h.settle()
+        h.launcher.finish(pid, .code(0))
+        await h.settle()
+    }
+
+    // MARK: The parse
+
+    @Test func theParseReadsOnlyBetweenTheMarkers() {
+        let output = Data(
+            shellOutput(
+                [
+                    "PATH=/opt/homebrew/bin:/usr/bin", "GREETING=one\ntwo", "EMPTY=", "A=b=c", "noequals", "PWD=/tmp",
+                    "OLDPWD=/", "SHLVL=2", "_=/usr/bin/env",
+                ],
+                marker: marker
+            ).utf8)
+        let environment = ShellEnvironment.parse(output, marker: marker)
+        #expect(
+            environment == [
+                "PATH": "/opt/homebrew/bin:/usr/bin", "GREETING": "one\ntwo", "EMPTY": "", "A": "b=c",
+            ])
+        // The marker inside chatter or a value doesn't end it early.
+        let tricky = Data(
+            "\(marker)_END\n\n\(marker)_BEGIN\nNOTE=\n\(marker)_END\n\0X=1\0\n\(marker)_END\n".utf8)
+        #expect(ShellEnvironment.parse(tricky, marker: marker) == ["NOTE": "\n\(marker)_END\n", "X": "1"])
+    }
+
+    @Test func aParseWithoutBothMarkersIsNothing() {
+        #expect(ShellEnvironment.parse(Data("PATH=/usr/bin\0".utf8), marker: marker) == nil)
+        #expect(ShellEnvironment.parse(Data("\n\(marker)_BEGIN\nPATH=/usr/bin\0".utf8), marker: marker) == nil)
+        #expect(ShellEnvironment.parse(Data("\n\(marker)_BEGIN\n\0\n\(marker)_END\n".utf8), marker: marker) == nil)
+    }
+
+    @Test func theScriptIsOnlyPrintfEnvAndSemicolons() {
+        // printf, env -0 and `;` only: no $(…), no &&, no quoting a value.
+        #expect(
+            ShellEnvironment.script(marker: marker)
+                == "printf '\\n%s\\n' HEADSUP_ENV_test_BEGIN; env -0; printf '\\n%s\\n' HEADSUP_ENV_test_END")
+    }
+
+    // MARK: The usual folders
+
+    @Test func theUsualFoldersAreAppendedInOrderWhenMissing() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("headsup-path-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = root.appendingPathComponent("a").path
+        let b = root.appendingPathComponent("b").path
+        let c = root.appendingPathComponent("c").path
+        for folder in [a, b, c] {
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            #expect(chmod(folder, 0o755) == 0)
+        }
+        let missing = root.appendingPathComponent("missing").path
+        // Appended, never prepended, in the list's order; one already there isn't added twice.
+        #expect(
+            ShellEnvironment.appendingFolders([c, missing, a, b], to: "/usr/bin:\(b)") == "/usr/bin:\(b):\(c):\(a)")
+        #expect(ShellEnvironment.appendingFolders([a, b], to: "") == "\(a):\(b)")
+        // A folder others can write to is refused.
+        #expect(chmod(a, 0o775) == 0)
+        #expect(chmod(b, 0o757) == 0)
+        #expect(ShellEnvironment.appendingFolders([a, b, c], to: "/usr/bin") == "/usr/bin:\(c)")
+        // A file isn't a folder.
+        let file = root.appendingPathComponent("file").path
+        #expect(FileManager.default.createFile(atPath: file, contents: Data()))
+        #expect(ShellEnvironment.appendingFolders([file], to: "/usr/bin") == "/usr/bin")
+    }
+
+    // Scan L1: every folder from / down counts, after links are resolved.
+    @Test func aFolderUnderAWritableParentIsRefused() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("headsup-path-\(UUID().uuidString)")
+        defer {
+            chmod(root.appendingPathComponent("open").path, 0o755)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let open = root.appendingPathComponent("open")
+        let tools = open.appendingPathComponent("tools").path
+        try FileManager.default.createDirectory(atPath: tools, withIntermediateDirectories: true)
+        #expect(chmod(root.path, 0o755) == 0 && chmod(tools, 0o755) == 0)
+        #expect(ShellEnvironment.isSafeFolder(tools))
+        #expect(chmod(open.path, 0o777) == 0)
+        #expect(!ShellEnvironment.isSafeFolder(tools))
+        // A link to it is refused the same way.
+        let link = root.appendingPathComponent("link").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: tools)
+        #expect(!ShellEnvironment.isSafeFolder(link))
+        #expect(ShellEnvironment.appendingFolders([tools, link], to: "/usr/bin") == "/usr/bin")
+    }
+
+    private func folder(_ owner: uid_t, _ mode: mode_t) -> (owner: uid_t, mode: mode_t) { (owner, mode) }
+
+    @Test func aStickySharedFolderIsAllowedOnlyAboveTheUsersOwn() {
+        let me = getuid()
+        let other = me + 1
+        let root = folder(0, 0o755)
+        let sticky = folder(0, 0o1777)
+        #expect(ShellEnvironment.isSafeChain([root, sticky, folder(me, 0o755)], user: me))
+        #expect(!ShellEnvironment.isSafeChain([root, sticky, folder(0, 0o755)], user: me))
+        #expect(!ShellEnvironment.isSafeChain([root, sticky, folder(other, 0o755)], user: me))
+        // Shared without the sticky bit, or as the folder itself, it is refused.
+        #expect(!ShellEnvironment.isSafeChain([root, folder(0, 0o777), folder(me, 0o755)], user: me))
+        #expect(!ShellEnvironment.isSafeChain([root, sticky], user: me))
+        // A folder of another user's anywhere on the way is refused.
+        #expect(!ShellEnvironment.isSafeChain([root, folder(other, 0o755), folder(me, 0o755)], user: me))
+        #expect(!ShellEnvironment.isSafeChain([], user: me))
+    }
+
+    @Test func onlyFoldersOwnedByRootOrTheUserAreSafe() {
+        let me = getuid()
+        #expect(ShellEnvironment.isSafe(owner: 0, mode: 0o755, user: me))
+        #expect(ShellEnvironment.isSafe(owner: me, mode: 0o700, user: me))
+        #expect(!ShellEnvironment.isSafe(owner: me + 1, mode: 0o755, user: me))
+        #expect(!ShellEnvironment.isSafe(owner: 0, mode: 0o775, user: me))
+        #expect(!ShellEnvironment.isSafe(owner: me, mode: 0o757, user: me))
+    }
+
+    @Test func theUsualFoldersAreTheCardsInItsOrder() {
+        #expect(
+            ShellEnvironment.usualFolders(home: "/Users/ana") == [
+                "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/Users/ana/.local/bin",
+                "/Users/ana/.cargo/bin", "/Users/ana/go/bin",
+            ])
+    }
+
+    // MARK: Services
+
+    @Test func theShellIsReadOnceAndTheServicesOwnVariablesGoOnTop() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let web = h.add(env: [EnvironmentVariable(key: "FOO", value: "service")])
+        let api = h.add("API", command: "make api")
+        // Nothing is read before a service starts.
+        #expect(h.launcher.launched.isEmpty)
+        h.services.start(web)
+        // Nothing starts before the environment is read; the row looks like Starting meanwhile.
+        #expect(h.launcher.launched.count == 1 && h.services.state(web) == .stopped)
+        let row = try #require(h.services.screen(at: h.clock.now).rows.first { $0.id == web })
+        #expect(row.status == .starting && row.action == .run(title: "Stop", glyph: .stop, isPrimary: false))
+        #expect(h.services.snapshot.starting == 1)
+        #expect(h.logText(web) == ["Reading your shell's environment…"])
+        let readID = try #require(readPID(h))
+        let read = try #require(h.launcher.launched[readID])
+        #expect(read.executable == "/bin/zsh")
+        #expect(Array(read.arguments.prefix(4)) == ["/bin/zsh", "-l", "-i", "-c"])
+        #expect(read.directory == h.services.home)
+        #expect(read.environment == ["PATH=/usr/bin"])
+
+        try await answerRead(h, ["PATH=/Users/ana/bin:/usr/bin", "FOO=shell", "LANG=en_US.UTF-8", "PWD=/nowhere"])
+        let plan = try #require(h.launcher.launched[h.pid(web)])
+        // Not a login shell: its login files would put the system folders first again (Rev 1).
+        #expect(plan.arguments == ["/bin/zsh", "-c", "npm run dev"])
+        let environment = Dictionary(
+            uniqueKeysWithValues: plan.environment.map {
+                let parts = $0.split(separator: "=", maxSplits: 1)
+                return (String(parts[0]), String(parts.count > 1 ? parts[1] : ""))
+            })
+        #expect(environment["FOO"] == "service" && environment["LANG"] == "en_US.UTF-8")
+        #expect(environment["PWD"] == nil)
+        // The shell's PATH first; only folders it lacks are added after it.
+        #expect(environment["PATH"]?.hasPrefix("/Users/ana/bin:/usr/bin") == true)
+        #expect(h.logText(web) == ["Reading your shell's environment…", "$ npm run dev", "starting…"])
+
+        // The second service doesn't read it again.
+        h.services.start(api)
+        #expect(h.launcher.launched.values.filter { $0.arguments.contains("-i") }.count == 1)
+        #expect(h.launcher.launched[h.pid(api)]?.environment.contains("FOO=shell") == true)
+        // The read's process was reaped.
+        #expect(h.launcher.events.contains("reap \(readID)"))
+    }
+
+    @Test func fishIsReadAsFishThenRunsTheCommandInZsh() async throws {
+        let h = try ServicesHarness(loginShell: "/opt/homebrew/bin/fish", readsShellEnvironment: true)
+        let id = h.add()
+        h.services.start(id)
+        let readID = try #require(readPID(h))
+        let read = try #require(h.launcher.launched[readID])
+        #expect(read.executable == "/opt/homebrew/bin/fish")
+        #expect(Array(read.arguments.prefix(4)) == ["/opt/homebrew/bin/fish", "-l", "-i", "-c"])
+        try await answerRead(h, ["PATH=/Users/ana/.cargo/bin:/usr/bin"])
+        let plan = try #require(h.launcher.launched[h.pid(id)])
+        #expect(plan.executable == "/bin/zsh")
+        #expect(plan.environment.contains { $0.hasPrefix("PATH=/Users/ana/.cargo/bin:/usr/bin") })
+    }
+
+    @Test func aReadThatTimesOutKillsItAndStartsWithHeadsUpsEnvironment() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add()
+        h.services.start(id)
+        let pid = try #require(readPID(h))
+        h.launcher.emit(pid, "Enter passphrase: ")
+        await h.settle()
+        h.scheduler.advance(by: 4.9)
+        #expect(h.services.state(id) == .stopped)
+        h.scheduler.advance(by: 0.1)
+        #expect(h.launcher.events.contains("KILL \(pid)"))
+        let plan = try #require(h.launcher.launched[h.pid(id)])
+        #expect(plan.environment.contains { $0.hasPrefix("PATH=/usr/bin") })
+        // HeadsUp's own environment: the login shell sets PATH, as before.
+        #expect(plan.arguments == ["/bin/zsh", "-l", "-c", "npm run dev"])
+        #expect(
+            h.logText(id) == [
+                "Reading your shell's environment…", "$ npm run dev", "starting…",
+                "couldn't read your shell's environment (it didn't answer within 5 s); using HeadsUp's own",
+            ])
+        // Its process is reaped once it has exited.
+        h.launcher.finish(pid, .signal(SIGKILL))
+        await h.settle()
+        #expect(h.launcher.events.last == "reap \(pid)")
+    }
+
+    @Test func aShellThatExitsWithoutItsEnvironmentFallsBack() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add()
+        h.services.start(id)
+        let pid = try #require(readPID(h))
+        h.launcher.emit(pid, "zsh: command not found: env\n")
+        h.launcher.finish(pid, .code(127))
+        await h.settle()
+        // The last output may come just after the exit: it waits a moment for it.
+        #expect(h.services.state(id) == .stopped)
+        h.scheduler.advance(by: 1)
+        #expect(
+            h.logText(id).last
+                == "couldn't read your shell's environment (the shell ended with code 127); using HeadsUp's own")
+        #expect(h.services.state(id).isLive)
+    }
+
+    @Test func aReadThatCantStartFallsBackAtOnce() throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add()
+        h.launcher.failNextLaunch = LaunchError(operation: "posix_spawn /bin/zsh", code: ENOENT)
+        h.services.start(id)
+        #expect(h.services.state(id).isLive)
+        #expect(h.logText(id).last?.hasPrefix("couldn't read your shell's environment (posix_spawn /bin/zsh: ") == true)
+    }
+
+    @Test func commandNotFoundReadsTheEnvironmentAgainAtTheNextStart() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add()
+        h.services.start(id)
+        try await answerRead(h, ["PATH=/usr/bin"])
+        h.launcher.finish(h.pid(id), .code(127))
+        await h.settle()
+        #expect(h.logText(id).last == "command not found: your shell's environment is read again at the next start")
+        h.services.start(id)
+        #expect(h.launcher.launched.values.filter { $0.arguments.contains("-i") }.count == 2)
+    }
+
+    @Test func withoutTheReadTheCommandRunsInALoginShell() throws {
+        let h = try ServicesHarness()
+        let id = h.add()
+        h.services.start(id)
+        #expect(h.launcher.launched[h.pid(id)]?.arguments == ["/bin/zsh", "-l", "-c", "npm run dev"])
+    }
+
+    @Test func stopWhileWaitingForTheReadCancelsTheStart() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add()
+        h.services.toggleRun(id)
+        h.services.toggleRun(id)
+        #expect(h.toast == .toast("Stopped Web dev server"))
+        #expect(h.services.screen(at: h.clock.now).rows.first?.status == .stopped)
+        try await answerRead(h, ["PATH=/usr/bin"])
+        #expect(h.services.state(id) == .stopped && h.launcher.launched.count == 1)
+    }
+
+    // Scan L2: a shell that printed its environment but doesn't exit is killed, then reaped
+    // when it does exit.
+    @Test func aShellThatLingersAfterItsEnvironmentIsKilled() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add()
+        h.services.start(id)
+        let pid = try #require(readPID(h))
+        let plan = try #require(h.launcher.launched[pid])
+        h.launcher.emit(pid, shellOutput(["PATH=/usr/bin"], marker: marker(of: plan)))
+        await h.settle()
+        #expect(h.services.state(id).isLive)
+        h.scheduler.advance(by: 0.9)
+        #expect(!h.launcher.events.contains("KILL \(pid)"))
+        h.scheduler.advance(by: 0.1)
+        #expect(h.launcher.events.contains("KILL \(pid)") && !h.launcher.events.contains("reap \(pid)"))
+        h.launcher.finish(pid, .signal(SIGKILL))
+        await h.settle()
+        #expect(h.launcher.events.last == "reap \(pid)")
+
+        // One that exits in time isn't signalled.
+        let other = try ServicesHarness(readsShellEnvironment: true)
+        other.services.start(other.add())
+        try await answerRead(other, ["PATH=/usr/bin"])
+        other.scheduler.advance(by: 1)
+        #expect(!other.launcher.events.contains { $0.hasPrefix("KILL") })
+    }
+
+    @Test func autostartWaitsForTheReadThatStartsAtLaunch() async throws {
+        let first = try ServicesHarness()
+        let id = first.add(autostart: true)
+        let data = try Data(contentsOf: first.file)
+        let h = try ServicesHarness(file: String(decoding: data, as: UTF8.self), readsShellEnvironment: true)
+        #expect(readPID(h) != nil && h.services.state(id) == .stopped)
+        try await answerRead(h, ["PATH=/usr/bin"])
+        #expect(h.services.state(id).isLive)
+    }
+
+    /// The script, run by each shell installed here: bash, zsh and fish (Rev 2). A missing one
+    /// is skipped.
+    @Test(arguments: [
+        "/bin/bash", "/bin/zsh", "/usr/bin/zsh", "/opt/homebrew/bin/fish", "/usr/local/bin/fish", "/usr/bin/fish",
+    ])
+    func aRealShellPrintsItsEnvironment(shell: String) async throws {
+        guard FileManager.default.isExecutableFile(atPath: shell) else { return }
+        let h = try ServicesHarness(
+            loginShell: shell, realLauncher: true, readsShellEnvironment: true,
+            environment: ["PATH": "/usr/bin:/bin", "HOME": NSTemporaryDirectory(), "MULTI": "one\ntwo"])
+        let id = h.add(command: "true")
+        h.services.start(id)
+        // The service is started (or fails to, without zsh for fish) once the read is done.
+        for _ in 0..<500 where !h.logText(id).contains("$ true") {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(h.logText(id).contains("$ true"))
+        #expect(!h.logText(id).contains { $0.hasPrefix("couldn't read") })
+        await h.services.stopAll()
     }
 }

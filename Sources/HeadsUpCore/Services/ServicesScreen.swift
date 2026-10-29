@@ -129,21 +129,23 @@ extension ServiceStore {
 
     /// The row's Start / Stop button: one intent for either.
     public func toggleRun(_ id: ServiceDefinition.ID) {
-        if state(id).isLive { stop(id) } else { start(id) }
+        if state(id).isLive || isWaitingForEnvironment(id) { stop(id) } else { start(id) }
     }
 
     private func row(_ definition: ServiceDefinition, now: Date, timeZone: TimeZone) -> ServicesScreen.Row {
         let state = state(definition.id)
+        // Waiting for the shell's environment looks like Starting, with Stop.
+        let waiting = isWaitingForEnvironment(definition.id)
         let silent = silentPorts.contains(definition.id)
         let status: ServicesScreen.Status
         var meta: String?
         var metaStyle = ServicesScreen.MetaStyle.secondary
         switch state {
-        case .stopped:
-            status = .stopped
-        case .starting:
+        case _ where waiting, .starting:
             status = .starting
             meta = Strings.Services.startingMeta(port: definition.port)
+        case .stopped:
+            status = .stopped
         case .running(_, let since, let port):
             status = .running
             if silent, let port {
@@ -173,7 +175,7 @@ extension ServiceStore {
             id: definition.id, name: definition.name, status: status, meta: meta, metaStyle: metaStyle,
             commandLine: Strings.Services.actionSubtitle(command: definition.command, cwd: definition.cwd),
             logsOpen: logsOpen, logsWarning: silent && state.isLive,
-            action: Self.action(isLive: state.isLive, canStart: problem == nil),
+            action: Self.action(isLive: state.isLive || waiting, canStart: problem == nil),
             accessibilityLabel: "\(definition.name), \(Strings.Services.statusWord(status))",
             log: logsOpen
                 ? ServicesScreen.Log(

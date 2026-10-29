@@ -1,12 +1,15 @@
 import Foundation
 
-/// How a service is started (ADR-001 §7.2, F13): through the user's login shell, so `PATH` is
-/// the one their Terminal has, with the folder set by the spawn itself, never by a `cd` in a
-/// shell line. Nothing is quoted or put together into a command line by HeadsUp.
+/// How a service is started (ADR-001 §7.2, F13): through the user's shell, from the environment
+/// their Terminal has, with the folder set by the spawn itself, never by a `cd` in a shell line.
+/// Nothing is quoted or put together into a command line by HeadsUp.
 public struct SpawnPlan: Equatable, Sendable {
     /// The shell to run.
     public let executable: String
-    /// The whole argv: `[shell, "-l", "-c", command]`.
+    /// The whole argv: `[shell, "-c", command]` when the environment was read from the shell
+    /// (`ShellEnvironment`); `[shell, "-l", "-c", command]` when it wasn't, so the login files set
+    /// `PATH`. With the read environment, a login shell would run them again, and macOS's
+    /// path_helper in /etc/zprofile would put the system folders before the user's.
     public let arguments: [String]
     /// The folder, with `~` expanded; set with `posix_spawn_file_actions_addchdir_np`.
     public let directory: String
@@ -21,12 +24,13 @@ public struct SpawnPlan: Equatable, Sendable {
     public static let fallbackShell = "/bin/zsh"
 
     public init(
-        definition: ServiceDefinition, loginShell: String, home: String, baseEnvironment: [String: String]
+        definition: ServiceDefinition, loginShell: String, home: String, baseEnvironment: [String: String],
+        login: Bool = true
     ) {
         let (shell, fallback) = Self.shell(for: loginShell)
         shellFallback = fallback
         executable = shell
-        arguments = [shell, "-l", "-c", definition.command]
+        arguments = login ? [shell, "-l", "-c", definition.command] : [shell, "-c", definition.command]
         directory = Self.expand(definition.cwd, home: home)
 
         var environment = baseEnvironment
@@ -34,6 +38,15 @@ public struct SpawnPlan: Equatable, Sendable {
             environment[variable.key] = variable.value
         }
         self.environment = environment.map { "\($0.key)=\($0.value)" }.sorted()
+    }
+
+    /// A plan run as given, such as the read of the shell's environment.
+    init(executable: String, arguments: [String], directory: String, environment: [String: String]) {
+        self.executable = executable
+        self.arguments = arguments
+        self.directory = directory
+        self.environment = environment.map { "\($0.key)=\($0.value)" }.sorted()
+        shellFallback = nil
     }
 
     /// The shell that runs a command for a user whose login shell is `loginShell`, and the name

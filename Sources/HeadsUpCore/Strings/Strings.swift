@@ -551,6 +551,22 @@ public enum Strings {
             "\(shell) isn't supported for services; running in zsh"
         }
         public static let withoutSeparatePermissions = "started without separate permissions (macOS limitation)"
+        /// Logged when a service waits for the shell's environment, read once at the first start.
+        public static let readingEnvironment = "Reading your shell's environment…"
+        /// Logged when a service starts without the shell's environment, and why.
+        public static func environmentFallback(_ reason: String) -> String {
+            "couldn't read your shell's environment (\(reason)); using HeadsUp's own"
+        }
+        public static func environmentTimedOut(seconds: Int) -> String { "it didn't answer within \(seconds) s" }
+        public static let environmentTooLong = "it printed too much"
+        public static func environmentNotPrinted(_ exit: ProcessExit) -> String {
+            switch exit {
+            case .code(let code): "the shell ended with code \(code)"
+            case .signal(let signal): "the shell was stopped by \(ServiceStore.signalName(signal))"
+            }
+        }
+        public static let environmentReadAgain =
+            "command not found: your shell's environment is read again at the next start"
         public static func couldNotStart(_ reason: String) -> String { "couldn't start: \(reason)" }
 
         // Toasts

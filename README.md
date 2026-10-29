@@ -45,9 +45,22 @@ the manifest adds the shell only when it runs on macOS.
 
 ## Services
 
-A service inherits HeadsUp's environment: all of a terminal's variables if HeadsUp was started
-from one, or the short one macOS gives apps otherwise. It runs in your login shell, which adds
-what your profile sets.
+A service starts with the environment your terminal has. Your shell's interactive config runs
+once, at the first service start after HeadsUp launches: HeadsUp runs your login shell as an
+interactive login shell (`-l -i`), so it reads `.zshrc`, `.bashrc` or fish's config, and keeps
+the variables it prints. Meanwhile the service shows as Starting, and its log says "Reading your
+shell's environment…". Then these folders are added at the end of `PATH` when they are missing,
+exist, and only you or root can write to them and every folder above them:
+`/opt/homebrew/bin`, `/opt/homebrew/sbin`, `/usr/local/bin`, `~/.local/bin`, `~/.cargo/bin`,
+`~/go/bin`. An Intel Homebrew `/usr/local/bin` that its admin group can write to isn't added.
+A service's own variables go on top. The command then runs in your shell as `<shell> -c`, not a
+login shell, so the login files don't put the system folders in front of yours again (zsh is
+used for fish and other shells HeadsUp doesn't run commands with).
+
+If the shell doesn't print its environment within 5 seconds, services start with HeadsUp's own
+environment in a login shell (`-l -c`), as before, and each service's log says why. A service
+that ends with "command not found" (code 127) makes HeadsUp read the environment again at the
+next start.
 
 ## Development
 

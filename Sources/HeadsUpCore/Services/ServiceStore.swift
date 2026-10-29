@@ -11,8 +11,9 @@ import Observation
 /// processes HeadsUp started, their logs, and the editor.
 ///
 /// A service runs through the login shell in its own process group (see `SpawnPlan` and
-/// `POSIXServiceLauncher`). Stop sends SIGTERM to the group, and always SIGKILL 3 s later, so
-/// children that ignore SIGTERM go too. An exit nobody asked for is `failed`, with a
+/// `POSIXServiceLauncher`), from the environment of the user's terminal (`ShellEnvironment`),
+/// read once before the first service starts. Stop sends SIGTERM to the group, and always
+/// SIGKILL 3 s later, so children that ignore SIGTERM go too. An exit nobody asked for is `failed`, with a
 /// notification and the Services tab's red dot until the user opens Services.
 @MainActor
 @Observable
@@ -72,11 +73,29 @@ public final class ServiceStore {
     @ObservationIgnored private let loginShell: String
     @ObservationIgnored let home: String
     @ObservationIgnored private let baseEnvironment: [String: String]
+    /// Reads the shell's environment; nil starts services from `baseEnvironment` as it is.
+    @ObservationIgnored private let shellReader: ShellEnvironmentReader?
+    @ObservationIgnored private var shellEnvironment: ShellEnvironmentState
+    /// Services started while the shell's environment is read, in order, and whether each toasts.
+    /// Their rows look like Starting.
+    private var waitingForEnvironment: [(id: ServiceDefinition.ID, toast: Bool)] = []
+
+    /// The environment services start from.
+    private enum ShellEnvironmentState {
+        /// Not read yet, or being read: starts wait.
+        case unread
+        /// Read from the shell: the command runs in a plain shell, not a login one, so the login
+        /// files don't change PATH again.
+        case read([String: String])
+        /// HeadsUp's own: no read was asked for (`reason` nil), or it failed. The command runs in a
+        /// login shell, as before.
+        case own([String: String], reason: String?)
+    }
 
     public init(
         folder: URL?, clock: Clock, scheduler: Scheduler, launcher: ServiceLauncher, ports: PortProbe,
         notifier: Notifier, files: FileRevealer, settings: SettingsStore, toaster: Toaster, loginShell: String,
-        home: String, baseEnvironment: [String: String]
+        home: String, baseEnvironment: [String: String], readsShellEnvironment: Bool = false
     ) {
         file = JSONListFile(.services, folder: folder)
         self.clock = clock
@@ -90,6 +109,12 @@ public final class ServiceStore {
         self.loginShell = loginShell
         self.home = home
         self.baseEnvironment = baseEnvironment
+        shellReader =
+            readsShellEnvironment
+            ? ShellEnvironmentReader(
+                launcher: launcher, clock: clock, scheduler: scheduler, loginShell: loginShell, home: home,
+                baseEnvironment: baseEnvironment) : nil
+        shellEnvironment = readsShellEnvironment ? .unread : .own(baseEnvironment, reason: nil)
         isolationWarning = !launcher.canDisclaim
         load()
     }
@@ -114,7 +139,13 @@ public final class ServiceStore {
             case .stopped: break
             }
         }
+        snapshot.starting += waitingForEnvironment.count
         return snapshot
+    }
+
+    /// A service started while the shell's environment is read: it starts once it is.
+    func isWaitingForEnvironment(_ id: ServiceDefinition.ID) -> Bool {
+        waitingForEnvironment.contains { $0.id == id }
     }
 
     /// Services that would stop if HeadsUp quit, in their list order.
@@ -150,6 +181,11 @@ public final class ServiceStore {
 
     /// Stop: SIGTERM to the whole group, then SIGKILL to it 3 s later.
     public func stop(_ id: ServiceDefinition.ID) {
+        if let index = waitingForEnvironment.firstIndex(where: { $0.id == id }) {
+            waitingForEnvironment.remove(at: index)
+            if let definition = definition(id) { toaster?.toast(Strings.Services.stopped(definition.name)) }
+            return
+        }
         guard let definition = definition(id), let pid = state(id).pid else { return }
         terminate(id, group: pid)
         toaster?.toast(Strings.Services.stopped(definition.name))
@@ -165,6 +201,8 @@ public final class ServiceStore {
     /// Quitting: sends SIGTERM to every service, waits until they have all exited or 3 s have
     /// passed, then sends SIGKILL to every group that had a SIGTERM, whatever is left in it.
     public func stopAll() async {
+        shellReader?.cancel()
+        waitingForEnvironment = []
         for definition in liveServices {
             if let pid = state(definition.id).pid { terminate(definition.id, group: pid) }
         }
@@ -276,13 +314,31 @@ public final class ServiceStore {
 
     private func launch(_ definition: ServiceDefinition, toast: Bool) {
         let id = definition.id
+        let environment: [String: String]
+        var environmentProblem: String?
+        switch shellEnvironment {
+        case .unread:
+            if !isWaitingForEnvironment(id) {
+                waitingForEnvironment.append((id, toast))
+                log(id, Strings.Services.readingEnvironment)
+            }
+            readShellEnvironment()
+            return
+        case .read(let read): environment = read
+        case .own(let own, let reason):
+            environment = own
+            environmentProblem = reason
+        }
+        let fromShell = if case .read = shellEnvironment { true } else { false }
         let plan = SpawnPlan(
-            definition: definition, loginShell: loginShell, home: home, baseEnvironment: baseEnvironment)
+            definition: definition, loginShell: loginShell, home: home, baseEnvironment: environment,
+            login: !fromShell)
         let now = clock.now
         // The command only: env values are never written to the log (F11).
         log(id, Strings.Services.commandLine(definition.command))
         log(id, Strings.Services.starting)
         if let shell = plan.shellFallback { log(id, Strings.Services.shellFallback(shell)) }
+        if let environmentProblem { log(id, Strings.Services.environmentFallback(environmentProblem)) }
 
         let launched: LaunchedProcess
         do {
@@ -439,6 +495,11 @@ public final class ServiceStore {
             }
         runtime[id] = .failed(exitCode: code, at: now)
         failureUnseen = true
+        // "command not found": the user may have just installed it, or changed their PATH.
+        if code == 127, shellReader != nil {
+            shellEnvironment = .unread
+            log(id, Strings.Services.environmentReadAgain)
+        }
         // Failed to start: the logs open by themselves (UX part 1, §9).
         if wasStarting { openLogs = id }
         notifier.schedule(
@@ -446,6 +507,38 @@ public final class ServiceStore {
                 id: Self.notificationID(id), category: .serviceFailed,
                 title: Strings.Services.failedTitle(definition.name),
                 body: Strings.Services.failedBody(code: code), date: now))
+    }
+
+    // MARK: The shell's environment
+
+    /// Starts the read, unless it is running or done.
+    private func readShellEnvironment() {
+        guard let shellReader, case .unread = shellEnvironment, !shellReader.isReading else { return }
+        shellReader.read { [weak self] outcome in
+            self?.environmentRead(outcome)
+        }
+    }
+
+    /// The usual tool folders go after the shell's PATH, then the services that waited start.
+    private func environmentRead(_ outcome: ShellEnvironmentReader.Outcome) {
+        switch outcome {
+        case .read(let environment): shellEnvironment = .read(withToolFolders(environment))
+        case .failed(let reason):
+            shellEnvironment = .own(withToolFolders(baseEnvironment), reason: reason)
+        }
+        let waiting = waitingForEnvironment
+        waitingForEnvironment = []
+        for (id, toast) in waiting {
+            guard let definition = definition(id), definition.problems.isEmpty, !state(id).isLive else { continue }
+            launch(definition, toast: toast)
+        }
+    }
+
+    private func withToolFolders(_ environment: [String: String]) -> [String: String] {
+        guard let path = environment["PATH"] else { return environment }
+        var environment = environment
+        environment["PATH"] = ShellEnvironment.appendingFolders(ShellEnvironment.usualFolders(home: home), to: path)
+        return environment
     }
 
     /// Drops the state and log of a service that no longer exists, so it counts nowhere.
@@ -469,7 +562,7 @@ public final class ServiceStore {
         return String(requestID.dropFirst(prefix.count))
     }
 
-    static func signalName(_ signal: Int32) -> String {
+    nonisolated static func signalName(_ signal: Int32) -> String {
         switch signal {
         case SIGTERM: "SIGTERM"
         case SIGKILL: "SIGKILL"
