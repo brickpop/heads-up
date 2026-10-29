@@ -76,6 +76,10 @@ enum Symbols {
     static let photo = "photo"
     /// Pinned · N in the chat toolbar.
     static let list = "list.bullet"
+    /// A service that keeps the Mac awake while it runs, after its meta.
+    static let keepsAwake = "cup.and.saucer"
+    /// A service that restarts if it stops, after its meta.
+    static let restarts = "arrow.clockwise"
     /// A numbered step in the welcome: 1 in a circle.
     static func step(_ number: Int) -> String { "\(number).circle" }
 }

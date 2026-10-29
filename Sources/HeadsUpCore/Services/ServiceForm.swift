@@ -10,6 +10,8 @@ public struct ServiceDraft: Equatable, Sendable {
     /// As typed: empty for none.
     public var port = ""
     public var autostart = false
+    public var keepAwake = false
+    public var restartOnExit = false
 
     public init() {}
 
@@ -20,6 +22,8 @@ public struct ServiceDraft: Equatable, Sendable {
         env = definition.env
         port = definition.port.map(String.init) ?? ""
         autostart = definition.autostart
+        keepAwake = definition.keepAwake
+        restartOnExit = definition.restartOnExit
     }
 
     /// The draft as a service, or the port problem when the port isn't a number.
@@ -32,7 +36,8 @@ public struct ServiceDraft: Equatable, Sendable {
         }
         return .success(
             ServiceDefinition(
-                id: id, name: name, command: command, cwd: cwd, env: env, port: number, autostart: autostart))
+                id: id, name: name, command: command, cwd: cwd, env: env, port: number, autostart: autostart,
+                keepAwake: keepAwake, restartOnExit: restartOnExit))
     }
 
     struct PortNotANumber: Error {}
@@ -99,7 +104,8 @@ public struct ServiceFormScreen: Equatable, Sendable {
     /// "New service", or the service's name.
     public let title: String
     public let back: String
-    /// "Changes apply the next time it starts.", while the service runs.
+    /// "Changes to the command, folder or environment apply the next time it starts.", while
+    /// the service runs.
     public let runningNote: String?
     public let name: String
     public let command: String
@@ -107,6 +113,10 @@ public struct ServiceFormScreen: Equatable, Sendable {
     public let env: [EnvironmentVariable]
     public let port: String
     public let autostart: Bool
+    /// "Keep the Mac awake while it runs", under Start with HeadsUp.
+    public let keepAwake: Bool
+    /// "Restart if it stops", under Keep awake.
+    public let restartOnExit: Bool
     /// Under each field, in --danger.
     public let problems: [ServiceField: String]
     /// The bottom bar, in --danger: "Couldn't save: The disk is full."
@@ -263,7 +273,8 @@ extension ServiceStore {
             title: editing?.name ?? Strings.ServiceForm.newTitle, back: Strings.ServiceForm.back,
             runningNote: form.editing.map { state($0).isLive } == true ? Strings.ServiceForm.runningNote : nil,
             name: form.draft.name, command: form.draft.command, cwd: form.draft.cwd, env: form.draft.env,
-            port: form.draft.port, autostart: form.draft.autostart, problems: fieldProblems,
+            port: form.draft.port, autostart: form.draft.autostart, keepAwake: form.draft.keepAwake,
+            restartOnExit: form.draft.restartOnExit, problems: fieldProblems,
             saveProblem: saveProblem, saveEnabled: canEdit,
             remove: form.editing == nil ? nil : Strings.ListForm.remove, bar: bar)
     }

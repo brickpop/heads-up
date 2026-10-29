@@ -50,17 +50,16 @@ struct ServiceFormView: View {
                     .frame(width: HUDStyle.ServiceForm.portWidth)
                     .onSubmit(services.saveForm)
             }
-            Toggle(
-                isOn: Binding(get: { form.autostart }, set: { on in services.updateDraft { $0.autostart = on } })
-            ) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Strings.ServiceForm.autostart)
-                    Text(Strings.ServiceForm.autostartHelp)
-                        .font(.system(size: HUDStyle.Settings.helpSize))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .toggleStyle(.checkbox)
+            FormCheckbox(
+                title: Strings.ServiceForm.autostart, help: Strings.ServiceForm.autostartHelp, isOn: form.autostart
+            ) { on in services.updateDraft { $0.autostart = on } }
+            FormCheckbox(
+                title: Strings.ServiceForm.keepAwake, help: Strings.ServiceForm.keepAwakeHelp, isOn: form.keepAwake
+            ) { on in services.updateDraft { $0.keepAwake = on } }
+            FormCheckbox(
+                title: Strings.ServiceForm.restartOnExit, help: Strings.ServiceForm.restartOnExitHelp,
+                isOn: form.restartOnExit
+            ) { on in services.updateDraft { $0.restartOnExit = on } }
 
             Hairline()
             FormBottomBar(
@@ -146,5 +145,29 @@ private struct EnvironmentEditor: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// A checkbox with its help under it, in 12 pt secondary text, as the macOS form style has
+/// them. VoiceOver reads the title as the label and the help as the hint (UX: service flags §6).
+private struct FormCheckbox: View {
+    let title: String
+    let help: String
+    let isOn: Bool
+    let set: @MainActor (Bool) -> Void
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { isOn }, set: { set($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(help)
+                    .font(.system(size: HUDStyle.Settings.helpSize))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHidden(true)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .accessibilityHint(help)
     }
 }

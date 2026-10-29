@@ -81,10 +81,12 @@ private final class ServicesHarness {
     @discardableResult
     func add(
         _ name: String = "Web dev server", command: String = "npm run dev", port: Int? = nil,
-        env: [EnvironmentVariable] = [], autostart: Bool = false
+        env: [EnvironmentVariable] = [], autostart: Bool = false, keepAwake: Bool = false,
+        restartOnExit: Bool = false
     ) -> ServiceDefinition.ID {
         let definition = ServiceDefinition(
-            name: name, command: command, cwd: work.path, env: env, port: port, autostart: autostart)
+            name: name, command: command, cwd: work.path, env: env, port: port, autostart: autostart,
+            keepAwake: keepAwake, restartOnExit: restartOnExit)
         #expect(services.save(definition).isEmpty)
         return definition.id
     }
@@ -975,7 +977,9 @@ private final class ServicesHarness {
         let id = h.add()
         h.services.start(id)
         h.services.editService(id)
-        #expect(h.services.settingsScreen.form?.runningNote == "Changes apply the next time it starts.")
+        #expect(
+            h.services.settingsScreen.form?.runningNote
+                == "Changes to the command, folder or environment apply the next time it starts.")
         h.services.askRemove()
         #expect(
             h.services.settingsScreen.form?.bar
@@ -1453,5 +1457,443 @@ private final class ServicesHarness {
         #expect(h.logText(id).contains("$ true"))
         #expect(!h.logText(id).contains { $0.hasPrefix("couldn't read") })
         await h.services.stopAll()
+    }
+}
+
+/// The copy of slice A of the service flags (UX: service flags §1, §2).
+@Suite struct ServiceFlagsCopyTests {
+    @Test func theFormsCheckboxesTooltipsAndNote() {
+        #expect(Strings.ServiceForm.keepAwake == "Keep the Mac awake while it runs")
+        #expect(Strings.ServiceForm.restartOnExit == "Restart if it stops")
+        #expect(Strings.ServiceForm.restartOnExitHelp.contains("gives up after 5 restarts"))
+        #expect(Strings.ServiceForm.keepAwakeHelp.hasSuffix("Follows Caffeine's “Only on power adapter”."))
+        #expect(
+            Strings.ServiceForm.runningNote
+                == "Changes to the command, folder or environment apply the next time it starts.")
+        #expect(Strings.Services.keepAwakeIdleHelp == "Keeps your Mac awake while it runs")
+        #expect(Strings.Services.restartsHelp == "Restarts if it stops")
+    }
+}
+
+/// Restart if it stops (service flags addendum §2, slice A): which exits restart, the delays,
+/// the count and its resets, the give-up, the start window, and the cancel paths.
+@MainActor
+@Suite(.serialized) struct ServiceRestartTests {
+    /// A service with Restart on, started by the user, past its start window and running.
+    private func running(_ h: ServicesHarness, restartOnExit: Bool = true) -> ServiceDefinition.ID {
+        let id = h.add(restartOnExit: restartOnExit)
+        h.services.start(id)
+        h.scheduler.advance(by: ServiceStore.startWindow)
+        return id
+    }
+
+    /// The process exits by itself, after `after` seconds of running.
+    private func exits(_ h: ServicesHarness, _ id: ServiceDefinition.ID, _ exit: ProcessExit, after: Double = 0)
+        async
+    {
+        h.scheduler.advance(by: after)
+        h.launcher.finish(h.pid(id), exit)
+        await h.settle()
+    }
+
+    /// The restart's wait passes; the restarted run lasts past its start window.
+    private func restarts(_ h: ServicesHarness, _ id: ServiceDefinition.ID) {
+        guard case .waitingToRestart(_, let at, _) = h.services.state(id) else {
+            Issue.record("expected a restart to wait: \(h.services.state(id))")
+            return
+        }
+        h.scheduler.advance(by: at.timeIntervalSince(h.clock.now))
+        h.scheduler.advance(by: ServiceStore.startWindow)
+    }
+
+    // MARK: Which exits restart
+
+    @Test func codeZeroAndOthersRestartWithNoToastOrNotification() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        let launches = h.launcher.launched.count
+        await exits(h, id, .code(0))
+        #expect(
+            h.services.state(id) == .waitingToRestart(attempt: 1, at: h.clock.now.addingTimeInterval(1), lastExit: 0))
+        #expect(h.logText(id).suffix(2) == ["process exited (code 0)", "restarting in 1 s (restart 1 of 5)"])
+        h.scheduler.advance(by: 1)
+        guard case .starting = h.services.state(id) else {
+            Issue.record("expected the restart to start")
+            return
+        }
+        // No toast for an automatic restart (the user's Start toast is long gone).
+        #expect(h.launcher.launched.count == launches + 1 && h.toast != .toast("Started Web dev server"))
+        #expect(h.logText(id).suffix(2) == ["$ npm run dev", "starting…"])
+        h.scheduler.advance(by: ServiceStore.startWindow)
+        await exits(h, id, .signal(SIGTERM))
+        #expect(
+            h.services.state(id) == .waitingToRestart(attempt: 2, at: h.clock.now.addingTimeInterval(2), lastExit: 143))
+        #expect(h.notifier.pending.isEmpty && !h.services.failureUnseen)
+    }
+
+    @Test func requestedStopsNeverRestart() async throws {
+        // Stop.
+        var h = try ServicesHarness()
+        var id = running(h)
+        h.services.stop(id)
+        await exits(h, id, .signal(SIGTERM))
+        #expect(h.services.state(id) == .stopped)
+
+        // Restart: it starts again by itself, once.
+        h = try ServicesHarness()
+        id = running(h)
+        let launches = h.launcher.launched.count
+        h.services.restart(id)
+        await exits(h, id, .signal(SIGTERM))
+        guard case .starting = h.services.state(id) else {
+            Issue.record("expected Restart to start it again")
+            return
+        }
+        #expect(h.launcher.launched.count == launches + 1)
+
+        // Delete.
+        h = try ServicesHarness()
+        id = running(h)
+        let pid = h.pid(id)
+        #expect(h.services.delete(id).isEmpty)
+        h.launcher.finish(pid, .signal(SIGTERM))
+        await h.settle()
+        let launchesAfterDelete = h.launcher.launched.count
+        h.scheduler.advance(by: 60)
+        #expect(h.services.state(id) == .stopped && h.launcher.launched.count == launchesAfterDelete)
+
+        // Without the flag, an exit is a failure, as before.
+        h = try ServicesHarness()
+        id = running(h, restartOnExit: false)
+        await exits(h, id, .code(1))
+        #expect(h.services.state(id) == .failed(exitCode: 1, at: h.clock.now))
+    }
+
+    @Test func quitCancelsAWaitingRestart() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        await exits(h, id, .code(1))
+        await h.services.stopAll()
+        #expect(h.services.state(id) == .stopped && h.logText(id).last == "restart cancelled")
+        let launches = h.launcher.launched.count
+        h.scheduler.advance(by: 60)
+        #expect(h.launcher.launched.count == launches)
+    }
+
+    @Test func switchingRestartOffCancelsAWaitingRestart() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        await exits(h, id, .code(1))
+        var definition = try #require(h.services.definitions.first)
+        definition.restartOnExit = false
+        #expect(h.services.save(definition).isEmpty)
+        #expect(h.services.state(id) == .stopped && h.logText(id).last == "restart cancelled")
+        let launches = h.launcher.launched.count
+        h.scheduler.advance(by: 60)
+        #expect(h.launcher.launched.count == launches)
+    }
+
+    // MARK: The count
+
+    @Test func theDelaysGrowThenItGivesUpOnTheSixthStop() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        let firstExit = h.clock.now.addingTimeInterval(5)
+        var waits: [TimeInterval] = []
+        for _ in 1...5 {
+            await exits(h, id, .code(1), after: 5)
+            guard case .waitingToRestart(let attempt, let at, 1) = h.services.state(id) else {
+                Issue.record("expected a restart to wait: \(h.services.state(id))")
+                return
+            }
+            #expect(attempt == waits.count + 1)
+            waits.append(at.timeIntervalSince(h.clock.now))
+            restarts(h, id)
+        }
+        #expect(waits == [1, 2, 5, 10, 30])
+        #expect(h.notifier.pending.isEmpty)
+
+        await exits(h, id, .code(1), after: 5)
+        #expect(h.services.state(id) == .failed(exitCode: 1, at: h.clock.now, gaveUpSince: firstExit))
+        #expect(h.logText(id).last == "stopped again after 5 restarts; not restarting")
+        #expect(h.services.failureUnseen && h.services.openLogs == id)
+        let request = try #require(h.notifier.pending["service.failed:\(id)"])
+        #expect(request.title == "Web dev server keeps stopping")
+        #expect(request.body == "It stopped again after 5 restarts, so HeadsUp stopped restarting it.")
+        #expect(request.category == .serviceFailed)
+    }
+
+    @Test func aRunOfFiveMinutesStartsTheCountOver() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        for _ in 1...3 {
+            await exits(h, id, .code(1), after: 10)
+            restarts(h, id)
+        }
+        await exits(h, id, .code(1), after: 300)
+        #expect(
+            h.services.state(id) == .waitingToRestart(attempt: 1, at: h.clock.now.addingTimeInterval(1), lastExit: 1))
+    }
+
+    @Test func aSlowCrashLoopStillGivesUp() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        let firstExit = h.clock.now.addingTimeInterval(90)
+        for _ in 1...5 {
+            await exits(h, id, .code(1), after: 90)
+            restarts(h, id)
+        }
+        await exits(h, id, .code(1), after: 90)
+        #expect(h.services.state(id) == .failed(exitCode: 1, at: h.clock.now, gaveUpSince: firstExit))
+    }
+
+    // MARK: The start window
+
+    @Test func aUsersStartThatFailsAtOnceStaysFailed() async throws {
+        let h = try ServicesHarness()
+        let id = h.add(restartOnExit: true)
+        h.services.start(id)
+        await exits(h, id, .code(127), after: 1)
+        #expect(h.services.state(id) == .failed(exitCode: 127, at: h.clock.now))
+        #expect(h.notifier.pending["service.failed:\(id)"]?.title == "Web dev server stopped")
+        #expect(h.services.openLogs == id)
+        let launches = h.launcher.launched.count
+        h.scheduler.advance(by: 60)
+        #expect(
+            h.launcher.launched.count == launches
+                && h.services.state(id) == .failed(exitCode: 127, at: h.clock.now.addingTimeInterval(-60)))
+    }
+
+    @Test func anAutomaticRestartThatFailsAtOnceIsCountedQuietly() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        await exits(h, id, .code(1), after: 10)
+        h.scheduler.advance(by: 1)  // restart 1 runs
+        await exits(h, id, .code(1), after: 1)  // within its start window
+        #expect(
+            h.services.state(id) == .waitingToRestart(attempt: 2, at: h.clock.now.addingTimeInterval(2), lastExit: 1))
+        #expect(h.notifier.pending.isEmpty)
+    }
+
+    // MARK: During the wait, and after a give-up
+
+    @Test func stopDuringTheWaitCancelsTheRestart() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        await exits(h, id, .code(1))
+        let launches = h.launcher.launched.count
+        h.services.toggleRun(id)  // the row's button is Stop
+        #expect(h.services.state(id) == .stopped)
+        #expect(h.logText(id).last == "restart cancelled" && h.toast == .toast("Stopped Web dev server"))
+        h.scheduler.advance(by: 60)
+        #expect(h.launcher.launched.count == launches)
+    }
+
+    @Test func startOrRestartDuringTheWaitStartsAtOnceAndResetsTheCount() async throws {
+        for useRestart in [false, true] {
+            let h = try ServicesHarness()
+            let id = running(h)
+            for _ in 1...3 {
+                await exits(h, id, .code(1), after: 10)
+                restarts(h, id)
+            }
+            await exits(h, id, .code(1), after: 10)
+            let launches = h.launcher.launched.count
+            if useRestart { h.services.restart(id) } else { h.services.start(id) }
+            guard case .starting = h.services.state(id) else {
+                Issue.record("expected it to start at once")
+                return
+            }
+            #expect(h.launcher.launched.count == launches + 1)
+            // The wait that was armed doesn't start it again.
+            h.scheduler.advance(by: 30)
+            #expect(h.launcher.launched.count == launches + 1)
+            await exits(h, id, .code(1), after: 10)
+            #expect(
+                h.services.state(id)
+                    == .waitingToRestart(attempt: 1, at: h.clock.now.addingTimeInterval(1), lastExit: 1))
+        }
+    }
+
+    @Test func aStartAfterAGiveUpResetsTheCount() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        for _ in 1...5 {
+            await exits(h, id, .code(1), after: 5)
+            restarts(h, id)
+        }
+        await exits(h, id, .code(1), after: 5)
+        h.services.start(id)
+        h.scheduler.advance(by: ServiceStore.startWindow)
+        await exits(h, id, .code(1), after: 5)
+        #expect(
+            h.services.state(id) == .waitingToRestart(attempt: 1, at: h.clock.now.addingTimeInterval(1), lastExit: 1))
+    }
+
+    // MARK: Exit 127
+
+    @Test func aRestartAfter127WaitsForTheEnvironmentRead() async throws {
+        let h = try ServicesHarness(readsShellEnvironment: true)
+        let id = h.add(restartOnExit: true)
+        h.services.start(id)
+        try await answerRead(h)
+        h.scheduler.advance(by: ServiceStore.startWindow)
+        await exits(h, id, .code(127), after: 5)
+        #expect(
+            h.logText(id).suffix(2) == [
+                "command not found: your shell's environment is read again at the next start",
+                "restarting in 1 s (restart 1 of 5)",
+            ])
+        let reads = readCount(h)
+        h.scheduler.advance(by: 1)
+        // The environment is read again first; the row looks like Starting meanwhile.
+        #expect(readCount(h) == reads + 1 && h.services.state(id) == .stopped)
+        #expect(h.services.screen(at: h.clock.now).rows.first?.status == .starting)
+        #expect(h.logText(id).last == "Reading your shell's environment…")
+        try await answerRead(h)
+        guard case .starting = h.services.state(id) else {
+            Issue.record("expected the restart once the environment is read")
+            return
+        }
+        // It is still an automatic restart: failing within its window is counted, not a failure.
+        await exits(h, id, .code(1), after: 1)
+        #expect(
+            h.services.state(id) == .waitingToRestart(attempt: 2, at: h.clock.now.addingTimeInterval(2), lastExit: 1))
+    }
+
+    private func readCount(_ h: ServicesHarness) -> Int {
+        h.launcher.launched.values.filter { $0.arguments.contains("-i") }.count
+    }
+
+    /// Answers the latest environment read with a PATH, and lets the services start.
+    private func answerRead(_ h: ServicesHarness) async throws {
+        let pid = try #require(h.launcher.launched.filter { $0.value.arguments.contains("-i") }.keys.max())
+        let script = try #require(h.launcher.launched[pid]?.arguments.last)
+        let word = try #require(script.split(separator: " ").first { $0.hasSuffix("_BEGIN;") })
+        let marker = String(word.dropLast("_BEGIN;".count))
+        h.launcher.emit(pid, "\n\(marker)_BEGIN\nPATH=/usr/bin\0\n\(marker)_END\n")
+        await h.settle()
+        h.launcher.finish(pid, .code(0))
+        await h.settle()
+    }
+
+    // MARK: What the row and the actions show
+
+    @Test func theRowShowsTheFlagsTheWaitAndTheGiveUp() async throws {
+        let h = try ServicesHarness()
+        let plain = h.add("Plain")
+        let id = h.add(keepAwake: true, restartOnExit: true)
+        var rows = h.services.screen(at: h.clock.now).rows
+        #expect(rows.map(\.keepsAwake) == [false, true] && rows.map(\.restarts) == [false, true])
+        #expect(rows[0].accessibilityLabel == "Plain, stopped")
+        #expect(
+            rows[1].accessibilityLabel
+                == "Web dev server, stopped, keeps your Mac awake while it runs, restarts if it stops")
+        #expect(rows[1].accessibilityValue == nil)
+        _ = plain
+
+        h.services.start(id)
+        h.scheduler.advance(by: ServiceStore.startWindow)
+        await exits(h, id, .signal(SIGTERM), after: 10)
+        rows = h.services.screen(at: h.clock.now).rows
+        #expect(rows[1].status == .starting && rows[1].metaStyle == .warn)
+        #expect(rows[1].meta == "Restarting in 1 s · stopped by SIGTERM")
+        #expect(rows[1].action == .run(title: "Stop", glyph: .stop, isPrimary: false))
+        #expect(rows[1].accessibilityValue == "restarting in 1 second")
+        #expect(rows[1].accessibilityLabel.hasPrefix("Web dev server, starting, "))
+        #expect(h.services.snapshot.starting == 1)
+
+        restarts(h, id)
+        await exits(h, id, .code(1), after: 10)
+        #expect(
+            h.services.screen(at: h.clock.now.addingTimeInterval(0.5)).rows[1].meta
+                == "Restarting in 2 s · exited with code 1")
+        #expect(
+            h.services.screen(at: h.clock.now.addingTimeInterval(1.5)).rows[1].meta?.hasPrefix("Restarting in 1 s")
+                == true)
+
+        for _ in 2...5 {
+            restarts(h, id)
+            await exits(h, id, .code(1), after: 10)
+        }
+        guard case .failed(_, _, let since?) = h.services.state(id) else {
+            Issue.record("expected a give-up")
+            return
+        }
+        var calendar = Calendar.current
+        calendar.timeZone = .current
+        let row = h.services.screen(at: h.clock.now).rows[1]
+        #expect(row.status == .failed && row.metaStyle == .secondary)
+        #expect(row.meta == "Kept stopping since \(Format.time(since, calendar: calendar)) · gave up after 5 restarts")
+        #expect(row.action == .run(title: "Start", glyph: .play, isPrimary: true))
+    }
+
+    @Test func suggestedStartStopAndRestartAreAvailableDuringTheWait() async throws {
+        let h = try ServicesHarness()
+        let id = running(h)
+        await exits(h, id, .code(1))
+        let ids = Set(ServiceActions.make(services: h.services).map(\.id.rawValue))
+        #expect(ids == ["service.start:\(id)", "service.stop:\(id)", "service.restart:\(id)"])
+        for verb in ["start", "stop", "restart"] {
+            #expect(ServiceActions.unavailable(SuggestedActionID("service.\(verb):\(id)"), services: h.services) == nil)
+        }
+        // A suggested Stop, confirmed, cancels the restart.
+        let stop = try #require(
+            ServiceActions.make(services: h.services).first { $0.id.rawValue.hasPrefix("service.stop") })
+        stop.run()
+        #expect(h.services.state(id) == .stopped)
+    }
+
+    // MARK: services.json
+
+    @Test func anOldFileLoadsWithBothFlagsOffAndTheyAreSaved() throws {
+        let old = #"[{"id":"a","name":"Web","command":"npm run dev","cwd":"~","autostart":true}]"#
+        let decoded = try JSONDecoder().decode([ServiceDefinition].self, from: Data(old.utf8))
+        #expect(decoded.first?.keepAwake == false && decoded.first?.restartOnExit == false)
+
+        let h = try ServicesHarness()
+        let id = h.add(keepAwake: true, restartOnExit: true)
+        let text = try String(contentsOf: h.file, encoding: .utf8)
+        #expect(text.contains("\"keepAwake\" : true") && text.contains("\"restartOnExit\" : true"))
+        let next = try ServicesHarness(file: text)
+        let loaded = try #require(next.services.definitions.first { $0.id == id })
+        #expect(loaded.keepAwake && loaded.restartOnExit)
+    }
+
+    @Test func theFormEditsBothFlags() throws {
+        let h = try ServicesHarness()
+        let id = h.add()
+        h.services.editService(id)
+        h.services.updateDraft {
+            $0.keepAwake = true
+            $0.restartOnExit = true
+        }
+        let screen = try #require(h.services.settingsScreen.form)
+        #expect(screen.keepAwake && screen.restartOnExit)
+        #expect(Strings.ServiceForm.keepAwake == "Keep the Mac awake while it runs")
+        #expect(Strings.ServiceForm.restartOnExit == "Restart if it stops")
+    }
+}
+
+/// The preview fakes for the service flags show each state slice A draws.
+@MainActor
+@Suite struct ServiceFlagsPreviewTests {
+    @Test func thePreviewShowsEveryFlagState() throws {
+        let model = AppModel.preview()
+        model.services.showPreviewFlags()
+        let rows = model.services.screen(at: model.services.clock.now, timeZone: .gmt).rows
+        let byName = Dictionary(uniqueKeysWithValues: rows.map { ($0.name, $0) })
+        let web = try #require(byName["Web dev server"])
+        #expect(web.status == .running && web.keepsAwake && web.restarts)
+        let postgres = try #require(byName["Postgres"])
+        #expect(postgres.status == .starting && postgres.restarts && !postgres.keepsAwake)
+        #expect(postgres.meta == "Restarting in 5 s · stopped by SIGTERM")
+        #expect(postgres.metaStyle == .warn)
+        let worker = try #require(byName["Worker"])
+        #expect(worker.status == .failed)
+        #expect(worker.meta?.hasPrefix("Kept stopping since ") == true)
+        #expect(worker.meta?.hasSuffix(" · gave up after 5 restarts") == true)
+        let ollama = try #require(byName["Ollama"])
+        #expect(ollama.status == .stopped && ollama.keepsAwake && ollama.restarts)
     }
 }

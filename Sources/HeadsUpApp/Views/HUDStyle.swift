@@ -247,6 +247,9 @@ enum HUDStyle {
         static let drawerHeight: CGFloat = 180
         /// The drawer starts under the row's text, past the chip.
         static let drawerLeading: CGFloat = 60
+        /// The flags' glyphs after the meta (keeps awake, restarts), and the gap between them.
+        static let flagSize: CGFloat = 11
+        static let flagGap: CGFloat = 4
         static let drawerCornerRadius: CGFloat = 8
         static let drawerPadding: CGFloat = 10
         static let logFontSize: CGFloat = 11.5

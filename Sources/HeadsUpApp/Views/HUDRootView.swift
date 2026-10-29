@@ -89,6 +89,7 @@ struct HUDRootView: View {
         .onDrop(of: [.item], delegate: ImageDropTarget(chat: model.chat, zone: dropZone.projectedValue))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Strings.HUD.accessibilityLabel)
+        .modifier(GaveUpAnnouncer(model: model))
     }
 
     /// The new body comes in from the right when the tab is further right than the one
@@ -173,6 +174,17 @@ private enum AccessibilityOrder {
                         $0.services.editService(nil)
                     }
                     .previewDisplayName("New service form")
+                    hud {
+                        $0.hud.selectTab(.services)
+                        $0.services.showPreviewFlags()
+                    }
+                    .previewDisplayName("Services, flags: running, waiting, gave up, stopped")
+                    hud {
+                        $0.services.showPreviewFlags()
+                        $0.hud.showSettings(.services)
+                        $0.services.editService("preview.web")
+                    }
+                    .previewDisplayName("Service form, both flags, running")
                 }
                 .preferredColorScheme(scheme)
                 Group {

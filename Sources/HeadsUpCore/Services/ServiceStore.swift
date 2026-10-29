@@ -13,8 +13,9 @@ import Observation
 /// A service runs through the login shell in its own process group (see `SpawnPlan` and
 /// `POSIXServiceLauncher`), from the environment of the user's terminal (`ShellEnvironment`),
 /// read once before the first service starts. Stop sends SIGTERM to the group, and always
-/// SIGKILL 3 s later, so children that ignore SIGTERM go too. An exit nobody asked for is `failed`, with a
-/// notification and the Services tab's red dot until the user opens Services.
+/// SIGKILL 3 s later, so children that ignore SIGTERM go too. An exit nobody asked for is `failed`,
+/// with a notification and the Services tab's red dot until the user opens Services; with
+/// Restart on, it is started again, up to `maxRestarts` times in a row (service flags addendum §2).
 @MainActor
 @Observable
 public final class ServiceStore {
@@ -31,6 +32,12 @@ public final class ServiceStore {
     static let portCheckWhileSilent: TimeInterval = 5
     /// The UI hears about new output at most this often.
     static let outputInterval: TimeInterval = 0.1
+    /// Automatic restarts in a row before HeadsUp gives up: the 6th stop isn't restarted.
+    public static let maxRestarts = 5
+    /// The wait before automatic restarts 1 to 5.
+    static let restartDelays: [TimeInterval] = [1, 2, 5, 10, 30]
+    /// A run this long starts the restart count over.
+    static let streakReset: TimeInterval = 5 * 60
 
     public private(set) var definitions: [ServiceDefinition] = []
     public private(set) var runtime: [ServiceDefinition.ID: ServiceState] = [:]
@@ -60,6 +67,13 @@ public final class ServiceStore {
     /// Leaders that have exited but wait, unreaped, for their group's SIGKILL, so the group id
     /// can't go to another process before it is sent.
     @ObservationIgnored private var unreaped: Set<Int32> = []
+    /// With Restart on: the automatic restarts run in this streak, and when its first
+    /// unrequested exit was.
+    @ObservationIgnored private var restartStreaks: [ServiceDefinition.ID: (restarts: Int, since: Date)] = [:]
+    /// The wake-up of each restart that waits.
+    @ObservationIgnored private var restartWaits: [ServiceDefinition.ID: ScheduledWork] = [:]
+    /// Services whose current run is an automatic restart, not a user's start.
+    @ObservationIgnored private var automaticRestarts: Set<ServiceDefinition.ID> = []
 
     @ObservationIgnored private let file: JSONListFile<ServiceDefinition>
     @ObservationIgnored let clock: Clock
@@ -134,7 +148,8 @@ public final class ServiceStore {
         for state in runtime.values {
             switch state {
             case .running: snapshot.running += 1
-            case .starting: snapshot.starting += 1
+            // Waiting to restart counts as starting: the tab shows its accent dot.
+            case .starting, .waitingToRestart: snapshot.starting += 1
             case .failed: snapshot.failed += 1
             case .stopped: break
             }
@@ -146,6 +161,12 @@ public final class ServiceStore {
     /// A service started while the shell's environment is read: it starts once it is.
     func isWaitingForEnvironment(_ id: ServiceDefinition.ID) -> Bool {
         waitingForEnvironment.contains { $0.id == id }
+    }
+
+    /// Stopped without being asked to, with a restart waiting.
+    func isWaitingToRestart(_ id: ServiceDefinition.ID) -> Bool {
+        if case .waitingToRestart = state(id) { return true }
+        return false
     }
 
     /// Services that would stop if HeadsUp quit, in their list order.
@@ -169,20 +190,29 @@ public final class ServiceStore {
     /// Starts every service marked Start with HeadsUp. AppModel calls it at launch.
     public func startAutostart() {
         for definition in definitions where definition.autostart && definition.problems.isEmpty {
+            userStarts(definition.id)
             launch(definition, toast: false)
         }
     }
 
     /// Start. A service from services.json that breaks a rule can't start until it is fixed.
+    /// While a restart waits, it starts at once; either way the restart count starts over.
     public func start(_ id: ServiceDefinition.ID) {
         guard let definition = definition(id), definition.problems.isEmpty, !state(id).isLive else { return }
+        userStarts(id)
         launch(definition, toast: true)
     }
 
-    /// Stop: SIGTERM to the whole group, then SIGKILL to it 3 s later.
+    /// Stop: SIGTERM to the whole group, then SIGKILL to it 3 s later. While a restart waits, it
+    /// cancels the restart.
     public func stop(_ id: ServiceDefinition.ID) {
+        if cancelRestart(id) {
+            if let definition = definition(id) { toaster?.toast(Strings.Services.stopped(definition.name)) }
+            return
+        }
         if let index = waitingForEnvironment.firstIndex(where: { $0.id == id }) {
             waitingForEnvironment.remove(at: index)
+            automaticRestarts.remove(id)
             if let definition = definition(id) { toaster?.toast(Strings.Services.stopped(definition.name)) }
             return
         }
@@ -194,6 +224,7 @@ public final class ServiceStore {
     /// Restart a running service: stop it, and start it again once it has exited.
     public func restart(_ id: ServiceDefinition.ID) {
         guard state(id).isLive else { return start(id) }
+        userStarts(id)
         restartAfterStop.insert(id)
         stop(id)
     }
@@ -203,6 +234,7 @@ public final class ServiceStore {
     public func stopAll() async {
         shellReader?.cancel()
         waitingForEnvironment = []
+        for id in Array(restartWaits.keys) { _ = cancelRestart(id) }
         for definition in liveServices {
             if let pid = state(definition.id).pid { terminate(definition.id, group: pid) }
         }
@@ -268,6 +300,8 @@ public final class ServiceStore {
         }
         if let problem = file.write(list) { return [.file: problem] }
         definitions = list
+        // Restart switched off: a restart that waits doesn't run.
+        if !trimmed.restartOnExit { _ = cancelRestart(trimmed.id) }
         toaster?.toast(isNew ? Strings.Services.added(trimmed.name) : Strings.Services.saved(trimmed.name))
         return [:]
     }
@@ -351,6 +385,7 @@ public final class ServiceStore {
                     Task { @MainActor in self?.exited(id, exit) }
                 })
         } catch {
+            automaticRestarts.remove(id)
             log(id, Strings.Services.couldNotStart(error.description))
             runtime[id] = .failed(exitCode: -1, at: now)
             openLogs = id
@@ -476,6 +511,12 @@ public final class ServiceStore {
         logs[id]?.flush(at: now)
         silentPorts.remove(id)
         let wasStarting = if case .starting = state(id) { true } else { false }
+        let runSince: Date? =
+            switch state(id) {
+            case .starting(_, let since), .running(_, let since, _): since
+            default: nil
+            }
+        let wasAutomatic = automaticRestarts.remove(id) != nil
 
         switch exit {
         case .code(let code): log(id, Strings.Services.exited(code: code))
@@ -493,13 +534,19 @@ public final class ServiceStore {
             case .code(let code): code
             case .signal(let signal): 128 + signal
             }
-        runtime[id] = .failed(exitCode: code, at: now)
-        failureUnseen = true
         // "command not found": the user may have just installed it, or changed their PATH.
         if code == 127, shellReader != nil {
             shellEnvironment = .unread
             log(id, Strings.Services.environmentReadAgain)
         }
+        // A user's start that fails within its start window stays failed: a typo doesn't loop.
+        // An automatic restart that does is just another unrequested exit.
+        if definition.restartOnExit && (!wasStarting || wasAutomatic) {
+            restartAfterExit(definition, code: code, runSince: runSince, now: now)
+            return
+        }
+        runtime[id] = .failed(exitCode: code, at: now)
+        failureUnseen = true
         // Failed to start: the logs open by themselves (UX part 1, §9).
         if wasStarting { openLogs = id }
         notifier.schedule(
@@ -507,6 +554,84 @@ public final class ServiceStore {
                 id: Self.notificationID(id), category: .serviceFailed,
                 title: Strings.Services.failedTitle(definition.name),
                 body: Strings.Services.failedBody(code: code), date: now))
+    }
+
+    // MARK: Restart if it stops
+
+    /// An unrequested exit with Restart on: the count resets after a run of 5 minutes; the
+    /// next restart waits 1, 2, 5, 10 or 30 s; after `maxRestarts` in a row, HeadsUp gives up.
+    private func restartAfterExit(_ definition: ServiceDefinition, code: Int32, runSince: Date?, now: Date) {
+        let id = definition.id
+        var streak = restartStreaks[id] ?? (restarts: 0, since: now)
+        if let runSince, now.timeIntervalSince(runSince) >= Self.streakReset { streak.restarts = 0 }
+        if streak.restarts == 0 { streak.since = now }
+        guard streak.restarts < Self.maxRestarts else {
+            giveUp(definition, code: code, since: streak.since, now: now)
+            return
+        }
+        streak.restarts += 1
+        restartStreaks[id] = streak
+        let attempt = streak.restarts
+        let delay = Self.restartDelays[attempt - 1]
+        let at = now.addingTimeInterval(delay)
+        runtime[id] = .waitingToRestart(attempt: attempt, at: at, lastExit: code)
+        log(id, Strings.Services.restartingIn(seconds: Int(delay), attempt: attempt, of: Self.maxRestarts))
+        restartWaits[id] = scheduler.schedule(at: at) { [weak self] in
+            self?.runRestart(id, attempt: attempt)
+        }
+    }
+
+    /// The wait is over: the restart runs, as a start that isn't the user's. No toast.
+    private func runRestart(_ id: ServiceDefinition.ID, attempt: Int) {
+        guard case .waitingToRestart(attempt, _, _) = state(id), let definition = definition(id) else { return }
+        restartWaits[id] = nil
+        runtime[id] = nil
+        // It gained a problem during the wait: it can't start, and the streak ends here.
+        if let problem = definition.firstProblem {
+            restartStreaks[id] = nil
+            log(id, Strings.Services.cantStart(problem))
+            return
+        }
+        automaticRestarts.insert(id)
+        launch(definition, toast: false)
+    }
+
+    /// The 6th unrequested exit in a row: failed, with the give-up notification in place of the
+    /// plain one, and the log open.
+    private func giveUp(_ definition: ServiceDefinition, code: Int32, since: Date, now: Date) {
+        let id = definition.id
+        restartStreaks[id] = nil
+        runtime[id] = .failed(exitCode: code, at: now, gaveUpSince: since)
+        failureUnseen = true
+        openLogs = id
+        log(id, Strings.Services.gaveUpLog(restarts: Self.maxRestarts))
+        notifier.schedule(
+            NotificationRequest(
+                id: Self.notificationID(id), category: .serviceFailed,
+                title: Strings.Services.gaveUpTitle(definition.name),
+                body: Strings.Services.gaveUpBody(restarts: Self.maxRestarts), date: now))
+    }
+
+    /// Start, Restart or autostart by the user: the count starts over, and a waiting restart
+    /// gives way to this start.
+    private func userStarts(_ id: ServiceDefinition.ID) {
+        restartStreaks[id] = nil
+        automaticRestarts.remove(id)
+        if let wait = restartWaits.removeValue(forKey: id) {
+            wait.cancel()
+            runtime[id] = nil
+        }
+    }
+
+    /// Stop, quit, or Restart switched off, while a restart waits: it doesn't run, and the
+    /// service is stopped. False when no restart waits.
+    private func cancelRestart(_ id: ServiceDefinition.ID) -> Bool {
+        guard isWaitingToRestart(id) else { return false }
+        restartWaits.removeValue(forKey: id)?.cancel()
+        restartStreaks[id] = nil
+        runtime[id] = .stopped
+        log(id, Strings.Services.restartCancelled)
+        return true
     }
 
     // MARK: The shell's environment
@@ -543,6 +668,9 @@ public final class ServiceStore {
 
     /// Drops the state and log of a service that no longer exists, so it counts nowhere.
     private func forget(_ id: ServiceDefinition.ID) {
+        restartWaits.removeValue(forKey: id)?.cancel()
+        restartStreaks[id] = nil
+        automaticRestarts.remove(id)
         runtime[id] = nil
         logs[id] = nil
         pendingOutput[id] = nil
@@ -585,3 +713,35 @@ public final class ServiceStore {
         }
     }
 }
+
+#if DEBUG
+    extension ServiceStore {
+        /// For SwiftUI previews: four services with the flags, one in each state slice A draws.
+        /// Web dev server runs and keeps the Mac awake; Postgres waits 5 s to restart after a
+        /// SIGTERM; Worker gave up after 5 restarts; Ollama is stopped, with both flags. The
+        /// states are set directly, so nothing runs. Every folder is `~`, which exists on any Mac:
+        /// `save` refuses a missing one.
+        public func showPreviewFlags() {
+            let now = clock.now
+            let services = [
+                ServiceDefinition(
+                    id: "preview.web", name: "Web dev server", command: "npm run dev",
+                    port: 3000, keepAwake: true, restartOnExit: true),
+                ServiceDefinition(
+                    id: "preview.postgres", name: "Postgres", command: "postgres -D /usr/local/var/postgres",
+                    restartOnExit: true),
+                ServiceDefinition(
+                    id: "preview.worker", name: "Worker", command: "sleep 5; exit 1", restartOnExit: true),
+                ServiceDefinition(
+                    id: "preview.ollama", name: "Ollama", command: "ollama serve", keepAwake: true,
+                    restartOnExit: true),
+            ]
+            for service in services { _ = save(service) }
+            runtime["preview.web"] = .running(pid: 1001, since: now.addingTimeInterval(-42 * 60), port: 3000)
+            runtime["preview.postgres"] = .waitingToRestart(
+                attempt: 2, at: now.addingTimeInterval(5), lastExit: 128 + SIGTERM)
+            runtime["preview.worker"] = .failed(
+                exitCode: 1, at: now.addingTimeInterval(-60), gaveUpSince: now.addingTimeInterval(-140))
+        }
+    }
+#endif

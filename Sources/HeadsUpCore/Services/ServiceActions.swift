@@ -2,6 +2,8 @@
 /// each service by its state, and Restart for a running one. A model may only suggest them
 /// with the user's confirmation, which shows the command and the folder (F1).
 /// A service from services.json that breaks a rule has no Start: it can't start until fixed.
+/// While a restart waits, all three are offered: Start and Restart start it at once, and Stop
+/// cancels the restart.
 @MainActor
 enum ServiceActions {
     static func make(services: ServiceStore) -> [Action] {
@@ -13,7 +15,18 @@ enum ServiceActions {
                 .confirm(
                     Confirmation(verb: verb, name: definition.name, command: definition.command, cwd: definition.cwd))
             }
-            if services.state(id).isLive {
+            let live = services.state(id).isLive
+            let waiting = services.isWaitingToRestart(id)
+            if (!live || waiting) && definition.problems.isEmpty {
+                actions.append(
+                    Action(
+                        id: ActionID("service.start:\(id)"), title: Strings.Services.startAction(definition.name),
+                        subtitle: subtitle, kind: .service, glyph: .server,
+                        keywords: "service server run start launch \(definition.command)",
+                        suggest: confirmation(Strings.Services.startVerb),
+                        run: { [weak services] in services?.start(id) }))
+            }
+            if live || waiting {
                 actions.append(
                     Action(
                         id: ActionID("service.stop:\(id)"), title: Strings.Services.stopAction(definition.name),
@@ -28,14 +41,6 @@ enum ServiceActions {
                         keywords: "service server run restart \(definition.command)",
                         suggest: confirmation(Strings.Services.restartVerb),
                         run: { [weak services] in services?.restart(id) }))
-            } else if definition.problems.isEmpty {
-                actions.append(
-                    Action(
-                        id: ActionID("service.start:\(id)"), title: Strings.Services.startAction(definition.name),
-                        subtitle: subtitle, kind: .service, glyph: .server,
-                        keywords: "service server run start launch \(definition.command)",
-                        suggest: confirmation(Strings.Services.startVerb),
-                        run: { [weak services] in services?.start(id) }))
             }
         }
         return actions
@@ -51,16 +56,17 @@ extension ServiceActions {
             return nil
         }
         let live = services.state(definition.id).isLive
+        let stoppable = live || services.isWaitingToRestart(definition.id)
         switch parts[0] {
         case "service.start" where live:
             return UnavailableAction(
                 title: Strings.Services.startAction(definition.name), glyph: .server,
                 reason: Strings.Services.alreadyRunning(definition.name))
-        case "service.stop" where !live:
+        case "service.stop" where !stoppable:
             return UnavailableAction(
                 title: Strings.Services.stopAction(definition.name), glyph: .server,
                 reason: Strings.Services.notRunning(definition.name))
-        case "service.restart" where !live:
+        case "service.restart" where !stoppable:
             return UnavailableAction(
                 title: Strings.Services.restartAction(definition.name), glyph: .server,
                 reason: Strings.Services.notRunning(definition.name))

@@ -16,10 +16,16 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
     public var port: Int?
     /// Start with HeadsUp.
     public var autostart: Bool
+    /// Keep the Mac from going to sleep on its own while it runs (slice B holds it).
+    public var keepAwake: Bool
+    /// Start it again when it stops without being asked to, up to `ServiceStore.maxRestarts`
+    /// times in a row.
+    public var restartOnExit: Bool
 
     public init(
         id: ID = UUID().uuidString, name: String, command: String, cwd: String = "~",
-        env: [EnvironmentVariable] = [], port: Int? = nil, autostart: Bool = false
+        env: [EnvironmentVariable] = [], port: Int? = nil, autostart: Bool = false, keepAwake: Bool = false,
+        restartOnExit: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -28,6 +34,8 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
         self.env = env
         self.port = port
         self.autostart = autostart
+        self.keepAwake = keepAwake
+        self.restartOnExit = restartOnExit
     }
 
     /// Lenient: a field left out takes its default, and a missing id gets a new one.
@@ -40,6 +48,9 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
         env = try container.decodeIfPresent([EnvironmentVariable].self, forKey: .env) ?? []
         port = try container.decodeIfPresent(Int.self, forKey: .port)
         autostart = try container.decodeIfPresent(Bool.self, forKey: .autostart) ?? false
+        // Added later: a file without them has both off.
+        keepAwake = try container.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? false
+        restartOnExit = try container.decodeIfPresent(Bool.self, forKey: .restartOnExit) ?? false
     }
 
     /// The problems that keep this definition from being saved or started, by field; empty

@@ -612,6 +612,15 @@ public enum Strings {
         public static let environmentReadAgain =
             "command not found: your shell's environment is read again at the next start"
         public static func couldNotStart(_ reason: String) -> String { "couldn't start: \(reason)" }
+        /// "restarting in 5 s (restart 2 of 5)", after an exit nobody asked for, with Restart on.
+        public static func restartingIn(seconds: Int, attempt: Int, of total: Int) -> String {
+            "restarting in \(seconds) s (restart \(attempt) of \(total))"
+        }
+        public static func gaveUpLog(restarts: Int) -> String {
+            "stopped again after \(restarts) restarts; not restarting"
+        }
+        /// Stop, delete, quit or Restart switched off, while a restart waits.
+        public static let restartCancelled = "restart cancelled"
 
         // Toasts
         public static func started(_ name: String) -> String { "Started \(name)" }
@@ -647,6 +656,38 @@ public enum Strings {
         public static func silentMeta(port: Int) -> String { "Running · nothing on :\(port) yet" }
         /// "Exited with code 1 · 2 min ago"
         public static func failedMeta(code: Int32, ago: String) -> String { "Exited with code \(code) · \(ago)" }
+        /// "Restarting in 5 s · stopped by SIGTERM", in --warn, counting down to the restart.
+        public static func restartingMeta(seconds: Int, exit: String) -> String {
+            "Restarting in \(seconds) s · \(exit)"
+        }
+        /// "Kept stopping since 3:12 PM · gave up after 5 restarts"
+        public static func gaveUpMeta(since time: String, restarts: Int) -> String {
+            "Kept stopping since \(time) · gave up after \(restarts) restarts"
+        }
+        /// How a process ended, from its exit code (128 + the signal for a signal): "exited with
+        /// code 1", or "stopped by SIGTERM".
+        public static func exitPhrase(_ code: Int32) -> String {
+            if (129...159).contains(code) { return "stopped by \(ServiceStore.signalName(code - 128))" }
+            return "exited with code \(code)"
+        }
+        /// The row's VoiceOver value while a restart waits: "restarting in 5 seconds". A value, so
+        /// it isn't announced every second (UX §6).
+        public static func restartingAccessibility(seconds: Int) -> String {
+            seconds == 1 ? "restarting in 1 second" : "restarting in \(seconds) seconds"
+        }
+        /// The glyph tooltips while the service doesn't run (UX §2).
+        public static let keepAwakeIdleHelp = "Keeps your Mac awake while it runs"
+        public static let restartsHelp = "Restarts if it stops"
+        /// The row's VoiceOver label: "Web dev server, running, keeps your Mac awake while it runs,
+        /// restarts if it stops". Slice B makes the awake part follow the hold.
+        public static func rowAccessibility(
+            name: String, status: ServicesScreen.Status, keepsAwake: Bool, restarts: Bool
+        ) -> String {
+            var parts = [name, statusWord(status)]
+            if keepsAwake { parts.append("keeps your Mac awake while it runs") }
+            if restarts { parts.append("restarts if it stops") }
+            return parts.joined(separator: ", ")
+        }
         /// "just now", "12 min ago", "5 h ago", "yesterday", then the short local date: "Oct 21".
         public static func ago(
             _ date: Date, now: Date, locale: Locale = .current, timeZone: TimeZone = .current
@@ -702,6 +743,15 @@ public enum Strings {
 
         public static func failedTitle(_ name: String) -> String { "\(name) stopped" }
         public static func failedBody(code: Int32) -> String { "It exited with code \(code)." }
+        /// The give-up notification, in place of the plain "stopped" one (UX §4).
+        public static func gaveUpTitle(_ name: String) -> String { "\(name) keeps stopping" }
+        public static func gaveUpBody(restarts: Int) -> String {
+            "It stopped again after \(restarts) restarts, so HeadsUp stopped restarting it."
+        }
+        /// VoiceOver, once, if the HUD is open when it gives up.
+        public static func gaveUpAnnouncement(_ name: String) -> String {
+            "\(name) keeps stopping. HeadsUp stopped restarting it."
+        }
     }
 
     /// services.json and commands.json (Yuki's Services copy, the same for Commands): the card in
@@ -860,7 +910,13 @@ public enum Strings {
         public static let portHelp = "Leave empty to detect it after start."
         public static let autostart = "Start with HeadsUp"
         public static let autostartHelp = "Starts this service when HeadsUp opens."
-        public static let runningNote = "Changes apply the next time it starts."
+        public static let keepAwake = "Keep the Mac awake while it runs"
+        public static let keepAwakeHelp =
+            "Your Mac doesn't go to sleep on its own while this runs. The display can still sleep, and closing the lid still sleeps. Follows Caffeine's “Only on power adapter”."
+        public static let restartOnExit = "Restart if it stops"
+        public static let restartOnExitHelp =
+            "If it stops without you stopping it, HeadsUp starts it again. If it keeps stopping, HeadsUp gives up after 5 restarts and tells you."
+        public static let runningNote = "Changes to the command, folder or environment apply the next time it starts."
         public static let add = "Add service"
         public static let intro = "Long-running commands you start and stop from the HUD."
         public static let empty = "No services yet. Add one to start and stop it from the HUD."

@@ -57,17 +57,26 @@ public struct ServicesScreen: Equatable, Sendable {
         public let name: String
         public let status: Status
         /// ":3000 · 42m", "Starting… waiting for :3000", "Running · nothing on :3000 yet",
-        /// "Exited with code 1 · 2 min ago", "Can't start · enter a command to run", or nil.
+        /// "Exited with code 1 · 2 min ago", "Restarting in 5 s · stopped by SIGTERM" (--warn,
+        /// counting down), "Kept stopping since 3:12 PM · gave up after 5 restarts",
+        /// "Can't start · enter a command to run", or nil.
         public let meta: String?
         public let metaStyle: MetaStyle
         /// "npm run dev · ~/code/web-app"
         public let commandLine: String
+        /// Keep the Mac awake while it runs: the cup glyph after the meta.
+        public let keepsAwake: Bool
+        /// Restart if it stops: the arrow glyph after the meta.
+        public let restarts: Bool
         public let logsOpen: Bool
         /// A small --warn dot on the Logs toggle: running while its port is silent.
         public let logsWarning: Bool
         /// The row's button.
         public let action: RowAction
+        /// "Web dev server, running, keeps your Mac awake while it runs, restarts if it stops"
         public let accessibilityLabel: String
+        /// "restarting in 5 seconds" while a restart waits; nil otherwise.
+        public let accessibilityValue: String?
         /// The drawer, while open.
         public let log: Log?
     }
@@ -129,7 +138,7 @@ extension ServiceStore {
 
     /// The row's Start / Stop button: one intent for either.
     public func toggleRun(_ id: ServiceDefinition.ID) {
-        if state(id).isLive || isWaitingForEnvironment(id) { stop(id) } else { start(id) }
+        if state(id).isLive || isWaitingForEnvironment(id) || isWaitingToRestart(id) { stop(id) } else { start(id) }
     }
 
     private func row(_ definition: ServiceDefinition, now: Date, timeZone: TimeZone) -> ServicesScreen.Row {
@@ -140,6 +149,7 @@ extension ServiceStore {
         let status: ServicesScreen.Status
         var meta: String?
         var metaStyle = ServicesScreen.MetaStyle.secondary
+        var spoken: String?
         switch state {
         case _ where waiting, .starting:
             status = .starting
@@ -156,7 +166,20 @@ extension ServiceStore {
                     port: port, uptime: Format.minutes(now.timeIntervalSince(since), rounding: .up))
                 metaStyle = .accent
             }
-        case .failed(let code, let at):
+        case .waitingToRestart(_, let at, let lastExit):
+            // The starting ring, with Stop; the view redraws the countdown each second.
+            status = .starting
+            let seconds = max(1, Int(at.timeIntervalSince(now).rounded(.up)))
+            meta = Strings.Services.restartingMeta(seconds: seconds, exit: Strings.Services.exitPhrase(lastExit))
+            metaStyle = .warn
+            spoken = Strings.Services.restartingAccessibility(seconds: seconds)
+        case .failed(_, _, let since?):
+            status = .failed
+            var calendar = Calendar.current
+            calendar.timeZone = timeZone
+            meta = Strings.Services.gaveUpMeta(
+                since: Format.time(since, calendar: calendar), restarts: Self.maxRestarts)
+        case .failed(let code, let at, nil):
             status = .failed
             meta = Strings.Services.failedMeta(code: code, ago: Strings.Services.ago(at, now: now))
         }
@@ -174,9 +197,14 @@ extension ServiceStore {
         return ServicesScreen.Row(
             id: definition.id, name: definition.name, status: status, meta: meta, metaStyle: metaStyle,
             commandLine: Strings.Services.actionSubtitle(command: definition.command, cwd: definition.cwd),
+            keepsAwake: definition.keepAwake, restarts: definition.restartOnExit,
             logsOpen: logsOpen, logsWarning: silent && state.isLive,
-            action: Self.action(isLive: state.isLive || waiting, canStart: problem == nil),
-            accessibilityLabel: "\(definition.name), \(Strings.Services.statusWord(status))",
+            action: Self.action(
+                isLive: state.isLive || waiting || isWaitingToRestart(definition.id), canStart: problem == nil),
+            accessibilityLabel: Strings.Services.rowAccessibility(
+                name: definition.name, status: status, keepsAwake: definition.keepAwake,
+                restarts: definition.restartOnExit),
+            accessibilityValue: spoken,
             log: logsOpen
                 ? ServicesScreen.Log(
                     lines: lines, emptyText: lines.isEmpty ? Strings.Services.noOutput : nil,

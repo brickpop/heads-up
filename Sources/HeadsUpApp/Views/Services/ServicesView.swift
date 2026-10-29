@@ -118,6 +118,7 @@ private struct ServiceRowView: View {
                                 .font(.system(size: HUDStyle.Services.metaSize).monospacedDigit())
                                 .foregroundStyle(metaColor)
                         }
+                        ServiceFlags(keepsAwake: row.keepsAwake, restarts: row.restarts)
                     }
                     .lineLimit(1)
                     Text(row.commandLine)
@@ -128,6 +129,8 @@ private struct ServiceRowView: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(row.accessibilityLabel)
+                // "restarting in 5 seconds" while it waits: read when focused, never announced.
+                .accessibilityValue(row.accessibilityValue ?? "")
                 Spacer(minLength: HUDStyle.Services.rowGap)
                 LogsToggle(isOpen: row.logsOpen, warning: row.logsWarning) { services.toggleLogs(row.id) }
                 RowActionButton(
@@ -149,6 +152,29 @@ private struct ServiceRowView: View {
         case .warn: HUDStyle.Colors.warn
         case .secondary: .secondary
         }
+    }
+}
+
+/// The flags' glyphs after the meta, 11 pt and secondary, each shown while its flag is on, with
+/// a tooltip. VoiceOver reads them through the row's label instead.
+private struct ServiceFlags: View {
+    let keepsAwake: Bool
+    let restarts: Bool
+
+    var body: some View {
+        HStack(spacing: HUDStyle.Services.flagGap) {
+            if keepsAwake {
+                Image(systemName: Symbols.keepsAwake)
+                    .help(Strings.Services.keepAwakeIdleHelp)
+            }
+            if restarts {
+                Image(systemName: Symbols.restarts)
+                    .help(Strings.Services.restartsHelp)
+            }
+        }
+        .font(.system(size: HUDStyle.Services.flagSize))
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
     }
 }
 
@@ -277,5 +303,31 @@ private struct LogDrawer: View {
             HUDStyle.Colors.codeBackground, in: RoundedRectangle(cornerRadius: HUDStyle.Services.drawerCornerRadius)
         )
         .padding(.leading, HUDStyle.Services.drawerLeading - HUDStyle.Services.rowPadding)
+    }
+}
+
+/// Has VoiceOver say, once, that a service kept stopping and HeadsUp gave up on it
+/// (UX: service flags §4), while the HUD is open, whichever tab shows. It sits on the HUD's
+/// root, which is always there, rather than on the row, which exists only on the Services tab.
+struct GaveUpAnnouncer: ViewModifier {
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        content.onChange(of: gaveUp) { old, new in
+            guard model.hud.isOpen else { return }
+            for definition in model.services.definitions
+            where new.contains(definition.id) && !old.contains(definition.id) {
+                AccessibilityNotification.Announcement(Strings.Services.gaveUpAnnouncement(definition.name)).post()
+            }
+        }
+    }
+
+    /// The services that gave up restarting.
+    private var gaveUp: Set<ServiceDefinition.ID> {
+        Set(
+            model.services.definitions.map(\.id).filter { id in
+                if case .failed(_, _, _?) = model.services.state(id) { return true }
+                return false
+            })
     }
 }
