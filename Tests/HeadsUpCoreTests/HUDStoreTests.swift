@@ -294,7 +294,7 @@ private struct Harness {
         h.hud.open(tab: .chat)
         #expect(h.hud.footerLeft == .hints(Strings.Hints.chat))
         h.hud.selectTab(.focus)
-        #expect(h.hud.footerLeft == .hints(Strings.Hints.otherTab))
+        #expect(h.hud.footerLeft == .hints(Strings.Hints.otherTabEmpty))  // ⌘←→ tabs, with the prompt empty
         h.hud.setInput("focus")
         #expect(h.hud.footerLeft == .hints(Strings.Hints.suggestions))
     }
@@ -307,7 +307,7 @@ private struct Harness {
         h.scheduler.advance(by: 2.5)
         #expect(h.hud.footerLeft == .toast("Focus started · 25 min"))
         h.scheduler.advance(by: 0.1)
-        #expect(h.hud.footerLeft == .hints(Strings.Hints.otherTab))
+        #expect(h.hud.footerLeft == .hints(Strings.Hints.otherTabEmpty))
     }
 
     @Test func aNewToastReplacesTheCurrentOneAndRestartsTheTimer() {

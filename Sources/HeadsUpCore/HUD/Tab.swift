@@ -11,6 +11,13 @@ public enum Tab: String, CaseIterable, Codable, Sendable {
         self = Tab.allCases[number - 1]
     }
 
+    /// The tab `delta` places away in the bar, wrapping at the ends: ⌘← (-1) and ⌘→ (+1).
+    public func step(_ delta: Int) -> Tab {
+        let tabs = Tab.allCases
+        let count = tabs.count
+        return tabs[((tabs.firstIndex(of: self)! + delta) % count + count) % count]
+    }
+
     public var title: String { Strings.Tabs.title(self) }
     public var glyph: Glyph {
         switch self {

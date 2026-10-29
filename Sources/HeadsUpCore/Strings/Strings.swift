@@ -103,6 +103,18 @@ public enum Strings {
             Hint(keys: ["/"], label: "actions"),
             Hint(keys: ["esc"], label: "close"),
         ]
+        /// Another tab with the prompt empty: ⌘← ⌘→ walk the tabs.
+        public static let otherTabEmpty = [
+            Hint(keys: ["⌘←→"], label: "tabs"),
+            Hint(keys: ["/"], label: "actions"),
+            Hint(keys: ["esc"], label: "close"),
+        ]
+        /// The Caffeine tab with the prompt empty: ⌥← ⌥→ pick a duration.
+        public static let caffeineCards = [
+            Hint(keys: ["⌥←→"], label: "choose"),
+            Hint(keys: ["⌘←→"], label: "tabs"),
+            Hint(keys: ["esc"], label: "close"),
+        ]
         /// The Focus tab while it shows cards (idle, break prompt) and the prompt field is empty.
         public static let focusCards = [
             Hint(keys: ["⌥←→"], label: "choose"),
@@ -517,6 +529,10 @@ public enum Strings {
             case .twoHours: "2 hours"
             case .untilOff: "Until off"
             }
+        }
+        /// "1 hour, selected": what VoiceOver says for a duration card.
+        public static func cardAccessibility(_ duration: CaffeineDuration, selected: Bool) -> String {
+            selected ? "\(cardTitle(duration)), selected" : cardTitle(duration)
         }
 
         // Options

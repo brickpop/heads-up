@@ -14,6 +14,9 @@ public final class CaffeineStore {
     public private(set) var endsAt: Date?
     /// What macOS refused at the last start or change; nil once a start works.
     public private(set) var assertionProblem: CaffeineAssertionProblem?
+    /// Counts the duration moves made with ⌥← ⌥→ from the prompt field. The view announces the
+    /// newly selected card each time it changes, as it does for the arrow keys in the cards.
+    public private(set) var cardMoves = 0
     private var onBattery: Bool
 
     @ObservationIgnored private let clock: Clock
@@ -85,6 +88,30 @@ public final class CaffeineStore {
         guard start(duration), !wasOn else { return }
         let label = Strings.Caffeine.cardTitle(duration)
         toaster?.toast(pausedOnBattery ? Strings.Caffeine.onPaused(label) : Strings.Caffeine.onByCard(duration))
+    }
+
+    /// A duration picked from the keyboard (⌥← ⌥→, or the arrow keys in the cards). While off,
+    /// it only becomes the selected, last-used duration, as a Focus length does: the switch
+    /// turns Caffeine on. While on, it restarts the timer with it, as a click does.
+    public func chooseDuration(_ duration: CaffeineDuration) {
+        if isOn {
+            selectDuration(duration)
+        } else {
+            settings.update { $0.caffeine.lastDuration = duration }
+        }
+    }
+
+    /// ⌥← (-1) or ⌥→ (+1) on the Caffeine tab: the previous or next duration, stopping at the
+    /// ends (`chooseDuration`).
+    public func moveDurationSelection(by delta: Int) {
+        let durations = CaffeineDuration.allCases
+        let current = durations.firstIndex(of: lastDuration) ?? 0
+        let next = min(max(current + delta, 0), durations.count - 1)
+        guard next != current else { return }
+        chooseDuration(durations[next])
+        // After the selection has changed: the view announces the card selected when this
+        // changes, so counting first would read out the old one.
+        cardMoves += 1
     }
 
     /// An autocomplete action: "Keep awake for 1 hour" and the like.

@@ -185,9 +185,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if shortcut.modifiers == .command, shortcut.key == "V", model.clipboardHasImages {
             return model.pasteImages()
         }
-        let composing = (panel.firstResponder as? NSTextView)?.hasMarkedText() == true
-        // ⌥← ⌥→ move within the text an input method is composing.
-        if composing && shortcut.modifiers == .option { return false }
+        let editor = panel.firstResponder as? NSTextView
+        let composing = editor?.hasMarkedText() == true
+        // ⌥← ⌥→ and ⌘← ⌘→ move within text: the text an input method is composing, or any field
+        // with text in it (the prompt, or a Settings field). Only from an empty field do they pick
+        // a card or a tab.
+        let isHorizontalArrow = shortcut.keyCode == KeyCode.leftArrow || shortcut.keyCode == KeyCode.rightArrow
+        let editingText = editor.map { $0.isEditable && !$0.string.isEmpty } ?? false
+        if isHorizontalArrow && (shortcut.modifiers == .option || shortcut.modifiers == .command)
+            && (composing || editingText)
+        {
+            return false
+        }
         if !shortcut.modifiers.isEmpty {
             return model.handleShortcut(shortcut)
         }

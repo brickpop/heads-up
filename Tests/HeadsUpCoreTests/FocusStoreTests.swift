@@ -474,7 +474,7 @@ private struct FocusHarness {
         h.hud.open(tab: .focus)
         h.minutes(25)
         #expect(h.hud.isOpen && h.hud.isKey && h.hud.tab == .focus)
-        #expect(h.hud.footerLeft == .hints(Strings.Hints.otherTab))
+        #expect(h.hud.footerLeft == .hints(Strings.Hints.otherTabEmpty))
     }
 
     // (d) the snooze hide
@@ -807,15 +807,15 @@ private struct FocusHarness {
         h.focus.start()
         #expect(h.model.footerLeft == .toast("Focus started · 25 min"))  // a toast still wins
         h.minutes(1)
-        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTab))  // running
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTabEmpty))  // running
         h.minutes(24)
         #expect(h.model.footerLeft == cards)  // break prompt
         h.focus.startBreak()
         h.minutes(5)
-        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTab))  // back prompt
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTabEmpty))  // back prompt
         h.focus.snooze()
         h.scheduler.advance(by: 3)
-        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTab))  // snoozed, once its toast is gone
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTabEmpty))  // snoozed, once its toast is gone
 
         h.hud.selectTab(.chat)
         #expect(h.model.footerLeft == h.hud.footerLeft)
@@ -967,5 +967,112 @@ private struct FocusHarness {
         h.focus.doneForNow()
         h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen && h.focus.phase == .idle)
+    }
+}
+
+/// ⌘← ⌘→ walk the tabs; ⌥← ⌥→ pick a Caffeine duration (CEO, 2026-10-29).
+@MainActor
+@Suite(.serialized) struct TabAndCaffeineKeysTests {
+    private func key(_ keyCode: UInt32, _ modifiers: Shortcut.Modifiers) -> Shortcut {
+        Shortcut(keyCode: keyCode, modifiers: modifiers, key: keyCode == KeyCode.leftArrow ? "←" : "→")
+    }
+
+    @Test func tabsStepInTheBarsOrderAndWrap() {
+        #expect(Tab.chat.step(1) == .focus)
+        #expect(Tab.settings.step(1) == .chat)
+        #expect(Tab.chat.step(-1) == .settings)
+        #expect(Tab.caffeine.step(-1) == .focus)
+    }
+
+    @Test func commandArrowsWalkTheTabsWhileThePromptIsEmpty() {
+        let h = FocusHarness()
+        h.hud.open(tab: .chat)
+        var walked: [Tab] = []
+        for _ in Tab.allCases {
+            #expect(h.model.handleShortcut(key(KeyCode.rightArrow, .command)))
+            walked.append(h.hud.tab)
+        }
+        #expect(walked == [.focus, .caffeine, .services, .commands, .settings, .chat])
+        #expect(h.model.handleShortcut(key(KeyCode.leftArrow, .command)))
+        #expect(h.hud.tab == .settings)
+    }
+
+    @Test func withTextCommandArrowsMoveInTheLine() {
+        let h = FocusHarness()
+        h.hud.open(tab: .focus)
+        h.hud.setInput("x")
+        #expect(!h.model.handleShortcut(key(KeyCode.leftArrow, .command)))
+        #expect(!h.model.handleShortcut(key(KeyCode.rightArrow, .command)))
+        #expect(h.hud.tab == .focus)
+    }
+
+    @Test func optionArrowsPickACaffeineDurationWithoutTurningItOn() {
+        let h = FocusHarness()
+        let caffeine = h.model.caffeine
+        h.hud.open(tab: .caffeine)
+        let start = caffeine.lastDuration
+        let durations = CaffeineDuration.allCases
+        let index = durations.firstIndex(of: start)!
+        #expect(h.model.handleShortcut(key(KeyCode.rightArrow, .option)))
+        #expect(caffeine.lastDuration == durations[min(index + 1, durations.count - 1)])
+        #expect(!caffeine.isOn)  // off: the keyboard only picks; the switch turns it on
+
+        for _ in durations { _ = h.model.handleShortcut(key(KeyCode.leftArrow, .option)) }
+        #expect(caffeine.lastDuration == durations[0])  // stops at the start
+        let moves = caffeine.cardMoves
+        #expect(h.model.handleShortcut(key(KeyCode.leftArrow, .option)))
+        #expect(caffeine.cardMoves == moves)  // nothing to announce at an end
+        let screen = caffeine.screen(at: h.clock.now)
+        #expect(screen.durations[0].accessibilityLabel == "15 min, selected")
+        #expect(screen.durations[1].accessibilityLabel == "1 hour")
+    }
+
+    @Test func whileOnAKeyboardPickRestartsTheTimerWithIt() {
+        let h = FocusHarness()
+        let caffeine = h.model.caffeine
+        h.hud.open(tab: .caffeine)
+        caffeine.selectDuration(.fifteenMinutes)
+        #expect(caffeine.isOn)
+        h.scheduler.advance(by: 3)  // the toast goes
+        #expect(h.model.handleShortcut(key(KeyCode.rightArrow, .option)))
+        #expect(caffeine.isOn && caffeine.lastDuration == .oneHour)
+        #expect(caffeine.endsAt == h.clock.now.addingTimeInterval(3600))
+        #expect(h.hud.footerLeft != .toast(Strings.Caffeine.onByCard(.oneHour)))  // no toast, as a click while on
+    }
+
+    @Test func withTextOptionArrowsMoveByWordOnCaffeine() {
+        let h = FocusHarness()
+        h.hud.open(tab: .caffeine)
+        let start = h.model.caffeine.lastDuration
+        h.hud.setInput("x")
+        #expect(!h.model.handleShortcut(key(KeyCode.rightArrow, .option)))
+        #expect(h.model.caffeine.lastDuration == start)
+    }
+
+    @Test func theFooterNamesTheArrowKeysWhileThePromptIsEmpty() {
+        let h = FocusHarness()
+        h.hud.open(tab: .services)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.otherTabEmpty))
+        #expect(
+            Strings.Hints.otherTabEmpty == [
+                Hint(keys: ["⌘←→"], label: "tabs"), Hint(keys: ["/"], label: "actions"),
+                Hint(keys: ["esc"], label: "close"),
+            ])
+        h.hud.selectTab(.caffeine)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.caffeineCards))
+        #expect(
+            Strings.Hints.caffeineCards == [
+                Hint(keys: ["⌥←→"], label: "choose"), Hint(keys: ["⌘←→"], label: "tabs"),
+                Hint(keys: ["esc"], label: "close"),
+            ])
+        h.hud.selectTab(.focus)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.focusCards))  // Focus keeps its three
+        h.hud.selectTab(.chat)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.chat))
+    }
+
+    @Test func commandArrowsCantBeTheWakeShortcut() {
+        #expect(key(KeyCode.leftArrow, .command).keysProblem == .usedByHeadsUp)
+        #expect(key(KeyCode.rightArrow, .command).keysProblem == .usedByHeadsUp)
     }
 }

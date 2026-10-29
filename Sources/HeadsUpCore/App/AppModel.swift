@@ -686,17 +686,20 @@ extension AppModel {
 
     // MARK: Keys
 
-    /// The footer's left side: the HUD's, except that the Focus tab's cards, with the prompt
-    /// field empty, show their own keys.
+    /// The footer's left side: the HUD's, except that the Focus tab's cards and the Caffeine
+    /// durations, with the prompt field empty, show their own keys.
     public var footerLeft: FooterLeft {
         let left = hud.footerLeft
-        guard case .hints = left, body == .focus, hud.input.isEmpty, focus.showsCards else { return left }
-        return .hints(Strings.Hints.focusCards)
+        guard case .hints = left, hud.input.isEmpty else { return left }
+        if body == .focus && focus.showsCards { return .hints(Strings.Hints.focusCards) }
+        if body == .caffeine { return .hints(Strings.Hints.caffeineCards) }
+        return left
     }
 
-    /// A key with modifiers, while the HUD is key. The Focus tab's own keys come first, while
-    /// its view shows: ⌥← ⌥→ pick a card while the prompt field is empty (with text, they move
-    /// by word), and ⌘↩ runs the primary button. Then the HUD's ⌘ shortcuts.
+    /// A key with modifiers, while the HUD is key. The Focus and Caffeine tabs' own keys come
+    /// first, while their view shows: ⌥← ⌥→ pick a card while the prompt field is empty (with
+    /// text, they move by word), and on Focus ⌘↩ runs the primary button. Then the HUD's ⌘
+    /// shortcuts, ⌘← ⌘→ for the tabs among them.
     public func handleShortcut(_ shortcut: Shortcut) -> Bool {
         if body == .focus {
             switch (shortcut.modifiers, shortcut.keyCode) {
@@ -706,6 +709,18 @@ extension AppModel {
                 if focus.moveCardSelection(by: 1) { return true }
             case (.command, KeyCode.returnKey), (.command, KeyCode.keypadEnter):
                 if focus.runPrimaryAction() { return true }
+            default:
+                break
+            }
+        }
+        if body == .caffeine, shortcut.modifiers == .option, hud.input.isEmpty {
+            switch shortcut.keyCode {
+            case KeyCode.leftArrow:
+                caffeine.moveDurationSelection(by: -1)
+                return true
+            case KeyCode.rightArrow:
+                caffeine.moveDurationSelection(by: 1)
+                return true
             default:
                 break
             }

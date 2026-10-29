@@ -70,8 +70,10 @@ public enum KeyCode {
     public static let rightArrow: UInt32 = 124
     /// ⌘1…⌘6, by the keys' position.
     public static let digits: [UInt32] = [18, 19, 20, 21, 23, 22]
-    /// The keys HeadsUp uses with ⌘ alone: ⌘1…⌘6, ⌘, ⌘N ⌘P ⌘. ⌘Q, and ⌘↩ on the Focus tab.
-    public static let headsUpCommandKeys: Set<UInt32> = Set(digits + [comma, n, p, period, q, returnKey, keypadEnter])
+    /// The keys HeadsUp uses with ⌘ alone: ⌘1…⌘6, ⌘, ⌘N ⌘P ⌘. ⌘Q, ⌘← ⌘→ for the tabs, and ⌘↩ on the
+    /// Focus tab.
+    public static let headsUpCommandKeys: Set<UInt32> = Set(
+        digits + [comma, n, p, period, q, returnKey, keypadEnter, leftArrow, rightArrow])
 }
 
 /// Whether the wake shortcut works, known at launch (ADR-001 §4.1).

@@ -149,7 +149,7 @@ public final class HUDStore: Navigator, Toaster {
         if !rows.isEmpty {
             return .hints(rows.first?.isSelectable == false ? Strings.Hints.noMatch : Strings.Hints.suggestions)
         }
-        guard tab == .chat else { return .hints(Strings.Hints.otherTab) }
+        guard tab == .chat else { return .hints(input.isEmpty ? Strings.Hints.otherTabEmpty : Strings.Hints.otherTab) }
         return .hints(chat.isBusy ? Strings.Hints.chatBusy : Strings.Hints.chat)
     }
 
@@ -371,8 +371,8 @@ public final class HUDStore: Navigator, Toaster {
         }
     }
 
-    /// ⌘1…6, ⌘, and ⌘N while the HUD is key. Returns false for keys it doesn't handle,
-    /// so the text field gets them.
+    /// ⌘1…6, ⌘←/⌘→ (with the prompt empty), ⌘, ⌘N ⌘P ⌘. while the HUD is key. Returns false for
+    /// keys it doesn't handle, so the text field gets them.
     public func handleShortcut(_ shortcut: Shortcut) -> Bool {
         guard shortcut.modifiers == .command else { return false }
         if let digit = KeyCode.digits.firstIndex(of: shortcut.keyCode), let tab = Tab(number: digit + 1) {
@@ -396,6 +396,12 @@ public final class HUDStore: Navigator, Toaster {
             // ⌘. stops a reply; Esc never does.
             guard chat.isBusy else { return false }
             chat.stop()
+            return true
+        case KeyCode.leftArrow, KeyCode.rightArrow:
+            // ⌘← ⌘→ walk the tabs, wrapping, while the prompt is empty. With text, they move to
+            // the start or the end of the line.
+            guard input.isEmpty else { return false }
+            selectTab(tab.step(shortcut.keyCode == KeyCode.leftArrow ? -1 : 1))
             return true
         default:
             return false

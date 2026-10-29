@@ -46,6 +46,8 @@ public struct CaffeineScreen: Equatable, Sendable {
         public let title: String
         /// The last-used duration.
         public let isSelected: Bool
+        /// "1 hour, selected": what VoiceOver says for the card.
+        public let accessibilityLabel: String
     }
 
     /// A switch in the options list.
@@ -78,7 +80,9 @@ extension CaffeineStore {
             durations: CaffeineDuration.allCases.map { duration in
                 CaffeineScreen.DurationCard(
                     duration: duration, title: Strings.Caffeine.cardTitle(duration),
-                    isSelected: duration == lastDuration)
+                    isSelected: duration == lastDuration,
+                    accessibilityLabel: Strings.Caffeine.cardAccessibility(duration, selected: duration == lastDuration)
+                )
             },
             options: [
                 CaffeineScreen.OptionRow(

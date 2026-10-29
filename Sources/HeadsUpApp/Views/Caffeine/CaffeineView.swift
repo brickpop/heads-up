@@ -23,7 +23,11 @@ private struct CaffeineScreenView: View {
     let caffeine: CaffeineStore
     let screen: CaffeineScreen
 
+    /// The focused duration card, while one is.
+    @FocusState private var focusedCard: Int?
+
     var body: some View {
+        let selected = screen.durations.firstIndex { $0.isSelected }
         VStack(alignment: .leading, spacing: HUDStyle.Focus.gap) {
             VStack(alignment: .leading, spacing: HUDStyle.Footer.keyGap) {
                 CaffeineHeader(caffeine: caffeine, header: screen.header)
@@ -37,12 +41,23 @@ private struct CaffeineScreenView: View {
             VStack(alignment: .leading, spacing: HUDStyle.Settings.sectionSpacing) {
                 FocusLabel(text: screen.durationsLabel)
                 HStack(spacing: HUDStyle.Focus.cardGap) {
-                    ForEach(screen.durations, id: \.duration) { card in
-                        FocusCard(isSelected: card.isSelected, select: { caffeine.selectDuration(card.duration) }) {
+                    ForEach(Array(screen.durations.enumerated()), id: \.element.duration) { index, card in
+                        // A click turns Caffeine on with the card; the keyboard only picks it
+                        // while off (`chooseDuration`).
+                        FocusCard(
+                            isSelected: card.isSelected, isTabStop: index == (selected ?? 0) || index == focusedCard,
+                            focus: $focusedCard, index: index, select: { caffeine.selectDuration(card.duration) }
+                        ) {
                             Text(card.title)
                                 .font(.system(size: HUDStyle.Settings.labelSize, weight: .semibold))
                         }
                     }
+                }
+                .cardGroupKeys(
+                    labels: screen.durations.map(\.accessibilityLabel), selected: selected, focus: $focusedCard,
+                    keyboardMoves: caffeine.cardMoves
+                ) {
+                    caffeine.chooseDuration(screen.durations[$0].duration)
                 }
             }
             SettingsList {
