@@ -45,13 +45,16 @@ extension HUDFrameView where Header == EmptyView, Content == EmptyView, Footer =
     }
 }
 
-/// The HUD's background: the system HUD material, blurring what is behind the window.
+/// The HUD's background: the popover material, blurring what is behind the window. It is
+/// light in light appearance and dark in dark, as Spotlight is; the HUD window material
+/// (`.hudWindow`) stays dark-tinted in light appearance. It follows the app's appearance,
+/// which Settings → General → Appearance sets (AppDelegate).
 ///
 /// With Reduce Transparency on, macOS makes this material opaque by itself.
 private struct HUDMaterial: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .hudWindow
+        view.material = .popover
         view.blendingMode = .behindWindow
         // The HUD panel never becomes the main window, so the material must not follow
         // the window's active state, or it would always look inactive.

@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         track(
             { model.settings.settings.general.appearance },
             apply: { appearance in
+                // Every window, the HUD and its material included, follows the app's appearance.
                 NSApp.appearance =
                     switch appearance {
                     case .system: nil
