@@ -133,7 +133,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model, !model.services.liveServices.isEmpty else { return .terminateNow }
         if !poweringOff, let question = model.quitQuestion {
-            NSApp.activate(ignoringOtherApps: true)
             model.hud.beginModal()
             let alert = NSAlert()
             alert.alertStyle = .warning
@@ -141,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = [question.message, question.detail].compactMap { $0 }.joined(separator: "\n")
             alert.addButton(withTitle: question.quit)  // the default: Return
             alert.addButton(withTitle: question.cancel).keyEquivalent = "\u{1b}"  // Esc
-            alert.window.level = HUDPanel.aboveHUD
+            presentInFront(alert)
             let answer = alert.runModal()
             model.hud.endModal()
             guard answer == .alertFirstButtonReturn else { return .terminateCancel }
@@ -151,6 +150,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    /// Puts the quit alert in front of every window, with the keyboard, though HeadsUp is an
+    /// accessory app that is usually not active (its HUD panel takes keys without activating it).
+    /// - The panel is built now (`layout()`), so the level set here isn't replaced when it runs,
+    ///   and it doesn't hide while HeadsUp isn't active.
+    /// - `NSApp.activate()` asks to become active. Since macOS 14 that is a request, and
+    ///   `ignoringOtherApps` is ignored, but the user has just chosen Quit in HeadsUp, so it is
+    ///   granted.
+    /// - Once `runModal` has shown the alert, it is put at the level above the HUD again, ordered
+    ///   in front of everything, and made key, whatever the modal session did first. The task runs
+    ///   on the main queue, which the modal run loop serves.
+    private func presentInFront(_ alert: NSAlert) {
+        alert.layout()
+        let window = alert.window
+        window.hidesOnDeactivate = false
+        window.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary])
+        window.level = HUDPanel.aboveHUD
+        NSApp.activate()
+        let log = self.log
+        Task { @MainActor in
+            window.level = HUDPanel.aboveHUD
+            // Answered already: nothing to bring back.
+            guard window.isVisible else { return }
+            window.orderFrontRegardless()
+            window.makeKey()
+            // What the Mac run checks in Console: whether HeadsUp became active, and the level.
+            log.info(
+                "quit alert shown: active \(NSApp.isActive, privacy: .public), key \(window.isKeyWindow, privacy: .public), level \(window.level.rawValue, privacy: .public)"
+            )
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
