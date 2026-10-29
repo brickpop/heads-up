@@ -81,9 +81,8 @@ public final class CommandStore {
         else { return nil }
         runProblem[id] = nil
         let result = await launcher.run(plan)
-        if result == .opened {
-            toaster?.toast(Strings.Commands.opened(terminal.terminal.name, definition.command))
-        } else if self.definition(id) != nil {
+        // An opened command shows no toast: the HUD closes at once (AppModel.runCommand).
+        if result != .opened, self.definition(id) != nil {
             runProblem[id] = result
         }
         return result

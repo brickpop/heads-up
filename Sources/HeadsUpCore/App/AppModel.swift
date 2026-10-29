@@ -620,9 +620,10 @@ extension AppModel {
     /// A row's click, or the Run action: opens the command in the chosen terminal.
     ///
     /// The Automation prompt and the terminal coming forward both take the keyboard from the
-    /// HUD, so it is held open meanwhile. When the command opened, the toast shows, then the
-    /// click-outside rule applies as usual. When it didn't, Commands shows the problem under
-    /// the row.
+    /// HUD, so it is held open meanwhile. The run returns only once the prompt, if any, is
+    /// answered. When the command opened, the HUD closes, as Spotlight does: the terminal is
+    /// what the user wants to see (App shell, "After launching a command"). When it didn't, the
+    /// HUD stays open and Commands shows the problem under the row.
     @discardableResult
     public func runCommand(_ id: CommandDefinition.ID) -> Task<Void, Never> {
         hud.beginModal()
@@ -630,7 +631,7 @@ extension AppModel {
             let result = await commands.run(id)
             hud.endModal()
             switch result {
-            case .opened: hud.closeIfNotKey()
+            case .opened: hud.close()
             case nil: break
             case .some: hud.selectTab(.commands)
             }

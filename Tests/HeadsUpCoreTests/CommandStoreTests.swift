@@ -196,9 +196,11 @@ private final class CommandsHarness {
         let h = try CommandsHarness()
         let id = h.add(command: #"echo "a\b" $HOME; ls"#)
         h.model.hud.selectTab(.commands)
+        let toasts = h.model.hud.toastID
         await h.model.runCommand(id).value
         #expect(h.terminals.ran == [.script(.terminal, directory: h.work.path, command: #"echo "a\b" $HOME; ls"#)])
-        #expect(h.toast == .toast(#"Opened in Terminal · echo "a\b" $HOME; ls"#))
+        // No toast: the HUD closes at once, so nothing would show it.
+        #expect(h.model.hud.toastID == toasts)
     }
 
     @Test func kittyRunsThroughOpenWithAnArgv() async throws {
@@ -215,16 +217,30 @@ private final class CommandsHarness {
             Array(arguments.prefix(4)) == ["-na", "/Applications/Kitty.app", "--args", "--directory=\(h.work.path)"])
     }
 
-    @Test func theHUDClosesAfterwardsOnlyWhenTheTerminalTookTheKeyboard() async throws {
+    // App shell, "After launching a command": the terminal is what the user wants to see.
+    @Test func theHUDClosesOnceTheCommandOpenedEvenWhileItIsKey() async throws {
         let h = try CommandsHarness()
         let id = h.add()
         h.model.hud.selectTab(.commands)
         h.model.hud.didBecomeKey()
+        h.model.hud.setInput("ssh")
         let running = h.model.runCommand(id)
         h.model.hud.didResignKey()  // the terminal comes forward while the command opens
-        #expect(h.model.hud.isOpen)
+        #expect(h.model.hud.isOpen)  // held open while the terminal opens
         await running.value
         #expect(!h.model.hud.isOpen)
+        #expect(h.model.hud.input == "")
+    }
+
+    @Test func aFailedLaunchKeepsTheHUDOpenWithTheProblem() async throws {
+        let h = try CommandsHarness()
+        let id = h.add()
+        h.terminals.result = .failed("no such app")
+        h.model.hud.selectTab(.commands)
+        h.model.hud.didBecomeKey()
+        await h.model.runCommand(id).value
+        #expect(h.model.hud.isOpen && h.model.hud.tab == .commands)
+        #expect(h.commands.screen.rows.first?.problem?.text == "Couldn't open Terminal (no such app).")
     }
 
     @Test func aRefusalShowsUnderTheRowWithTheFixAndKeepsTheHUDOpen() async throws {
@@ -234,11 +250,12 @@ private final class CommandsHarness {
         h.terminals.result = .notAllowed
         h.model.hud.selectTab(.chat)
         h.model.hud.didBecomeKey()
+        let toasts = h.model.hud.toastID
         let running = h.model.runCommand(id)
         h.model.hud.didResignKey()  // the Automation prompt takes the keyboard
         await running.value
         #expect(h.model.hud.isOpen && h.model.hud.tab == .commands)
-        #expect(h.toast != .toast("Opened in iTerm2 · ssh deploy@staging"))
+        #expect(h.model.hud.toastID == toasts)
         let problem = try #require(h.commands.screen.rows.first?.problem)
         #expect(problem.text == "macOS didn't let HeadsUp open iTerm2. Allow it in Privacy & Security → Automation.")
         #expect(problem.fix == CommandsScreen.Fix(kind: .openAutomation, title: "Open System Settings"))

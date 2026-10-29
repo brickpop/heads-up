@@ -722,7 +722,6 @@ public enum Strings {
         public static func accessibilityHint(terminal: String) -> String { "Opens in \(terminal)" }
 
         // Toasts
-        public static func opened(_ app: String, _ command: String) -> String { "Opened in \(app) · \(command)" }
         public static func added(_ name: String) -> String { "Added \(name)" }
         public static func saved(_ name: String) -> String { "Saved \(name)" }
         public static func removed(_ name: String) -> String { "Removed \(name)" }
