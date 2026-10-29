@@ -20,13 +20,19 @@ fi
 
 # Each valid identity is a line like:
 #   1) 3E8A…(40 hex) "Apple Development: Name (ABCDE12345)"
-found=$(security find-identity -v -p codesigning | awk -v want="$identity" '
+# The list is read whole first: awk stops at the first match, and a pipe from security under
+# pipefail would then fail on SIGPIPE.
+identities=$(security find-identity -v -p codesigning) || {
+    echo "couldn't list the code-signing identities (security find-identity failed). $list" >&2
+    exit 1
+}
+found=$(awk -v want="$identity" '
     match($0, /^[[:space:]]*[0-9]+\)[[:space:]]+[0-9A-Fa-f]{40}[[:space:]]+"/) {
         hash = $2
         name = substr($0, RLENGTH + 1)
         sub(/"[[:space:]]*$/, "", name)
         if (toupper(hash) == toupper(want) || name == want) { print "yes"; exit }
-    }')
+    }' <<<"$identities")
 if [ "$found" != yes ]; then
     echo "no valid code-signing identity is exactly HEADSUP_SIGN_ID='$identity'. Use its 40-character hash or its full name in quotes. $list" >&2
     exit 1

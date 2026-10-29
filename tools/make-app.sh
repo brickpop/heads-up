@@ -54,7 +54,8 @@ esac
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 
-echo "make-app: $(swift --version 2>&1 | head -n 1)"
+swift_version=$(swift --version 2>&1 || true)
+echo "make-app: ${swift_version%%$'\n'*}"
 
 # What to clean up, whatever happens, even a failure halfway: the background jobs (and what they
 # started), the opened image, and the temporary folders (Scan I21).
@@ -205,18 +206,25 @@ for arch in "${architectures[@]}"; do
     if ! cmp -s "$check/signed-$arch.json" "$check/expected.json"; then
         die "the $arch slice's signed entitlements are not exactly apple-events and calendars, both true. Signed: $(cat "$check/signed-$arch.json")"
     fi
-    codesign -dv --arch "$arch" "$app" 2>&1 | grep -qE 'flags=0x[0-9a-f]+\([^)]*runtime' ||
+    # codesign's output is read whole first, then matched. Piping it into `grep -q` breaks under
+    # pipefail: grep stops at its first match, codesign gets SIGPIPE writing the rest, and the
+    # pipeline fails even though the line was there.
+    info=$(codesign -dv --arch "$arch" "$app" 2>&1) || die "couldn't read the $arch slice's signature"
+    grep -qE 'flags=0x[0-9a-f]+\([^)]*runtime' <<<"$info" ||
         die "the $arch slice is signed without the hardened runtime"
     echo "make-app: $arch: signed entitlements $(cat "$check/signed-$arch.json"), hardened runtime on"
 done
 echo "make-app: built $app ($bundle_id $version, build $build_number)"
 
 if [ "$mode" = identity ]; then
-    # The identity really signed it: an ad-hoc signature here means the wrong recipe ran.
-    if codesign -dv "$app" 2>&1 | grep -q '^Signature=adhoc'; then
+    # The identity really signed it: an ad-hoc signature here means the wrong recipe ran. Read
+    # whole, then matched, as above: a pipe into grep could let an ad-hoc signature through.
+    info=$(codesign -dv "$app" 2>&1) || die "couldn't read the app's signature"
+    if grep -q '^Signature=adhoc' <<<"$info"; then
         die "the app is signed ad-hoc, not with HEADSUP_SIGN_ID"
     fi
-    echo "make-app: signed by $(codesign -dv "$app" 2>&1 | grep -m1 '^Authority=' || echo "$sign_id")"
+    authority=$(grep -m1 '^Authority=' <<<"$info" || true)
+    echo "make-app: signed by ${authority:-$sign_id}"
 
     dmg=build/HeadsUp.dmg
     rm -f "$dmg"

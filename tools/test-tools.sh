@@ -441,6 +441,76 @@ else
     fail "swift-build-args.sh refuses missing arguments" "it accepted one argument"
 fi
 
+# --- the signature checks read codesign's whole output (pipefail and SIGPIPE) ------------
+
+echo "signature checks"
+
+# make-app.sh runs to the end on a fake Mac, from a copy of the repo so nothing is written here.
+# The fake `codesign -dv` prints the line that matters first, then 200 KB more: a reader that
+# stops at its first match (grep -q) would leave codesign to die of SIGPIPE.
+copy=$work/repo-copy
+mkdir -p "$copy"
+cp -R "$repo/tools" "$repo/Resources" "$repo/.swift-version" "$copy/"
+full=$work/fake-full-mac
+mkdir -p "$full" "$work/fake-bin"
+printf 'fake binary' >"$work/fake-bin/HeadsUp"
+cp "$fakes/uname" "$fakes/security" "$fakes/xcrun" "$full/"
+cat >"$full/swift" <<FAKE
+#!/usr/bin/env bash
+case "\$*" in *--version*) echo "Apple Swift version 6.4.1" ;; *--show-bin-path*) echo "$work/fake-bin" ;; esac
+exit 0
+FAKE
+cat >"$full/lipo" <<'FAKE'
+#!/usr/bin/env bash
+case "$1" in -archs) echo arm64 ;; *) echo "Non-fat file: HeadsUp is architecture: arm64" ;; esac
+FAKE
+cat >"$full/plutil" <<'FAKE'
+#!/usr/bin/env bash
+# -convert json -o <out> <in>: the same JSON for every plist, so the entitlements compare equal.
+[ "$1" = -convert ] && echo '{"ok":true}' >"$4"
+exit 0
+FAKE
+cat >"$full/hdiutil" <<'FAKE'
+#!/usr/bin/env bash
+exit 0
+FAKE
+cat >"$full/codesign" <<'FAKE'
+#!/usr/bin/env bash
+case "$*" in
+*-dv*)
+    echo "Executable=/fake/HeadsUp.app/Contents/MacOS/HeadsUp"
+    echo "CodeDirectory v=20500 size=1234 flags=0x10000(runtime) hashes=30+7 location=embedded"
+    echo "Signature=${FAKE_SIGNATURE:-Apple Development: Sam Lee (ABCDE12345)}" | sed 's/^Signature=Apple/Authority=Apple/'
+    for i in $(seq 5000); do echo "filler line $i ......................................"; done
+    ;;
+esac >&2
+exit 0
+FAKE
+chmod 755 "$full"/*
+signed_app() { # mode; FAKE_SIGNATURE in the environment
+    status=0
+    EVENTS=$events HEADSUP_SIGN_ID="Apple Development: Sam Lee (ABCDE12345)" PATH="$full:$PATH" \
+        "$copy/tools/make-app.sh" "$1" dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 || status=$?
+}
+signed_app adhoc
+if [ "$status" -eq 0 ] && grep -q "^make-app: arm64: signed entitlements .*, hardened runtime on" "$work/out"; then
+    pass "the hardened runtime check passes on a long codesign output"
+else
+    fail "the hardened runtime check passes on a long codesign output" "status $status: $(tail -5 "$work/out")"
+fi
+FAKE_SIGNATURE=adhoc signed_app identity
+if [ "$status" -ne 0 ] && grep -q "^make-app: the app is signed ad-hoc, not with HEADSUP_SIGN_ID" "$work/out"; then
+    pass "just build refuses an ad-hoc signature on a long codesign output"
+else
+    fail "just build refuses an ad-hoc signature on a long codesign output" "status $status: $(tail -5 "$work/out")"
+fi
+signed_app identity
+if [ "$status" -eq 0 ] && grep -q "^make-app: signed by Authority=Apple Development: Sam Lee" "$work/out"; then
+    pass "just build names the identity that signed it"
+else
+    fail "just build names the identity that signed it" "status $status: $(tail -5 "$work/out")"
+fi
+
 # --- lint (Linux and macOS) ----------------------------------------------------------
 
 echo "lint"
