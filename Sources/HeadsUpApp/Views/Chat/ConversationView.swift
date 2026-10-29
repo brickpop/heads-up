@@ -116,7 +116,7 @@ private struct ChatToolbar: View {
             } label: {
                 Label(toolbar.pinnedList, systemImage: Symbols.list)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.ghost)
             PinToggle(pin: toolbar.pin) { chat.togglePin() }
             if let stop = toolbar.stop {
                 Button {

@@ -13,6 +13,11 @@ import HeadsUpCore
 @MainActor
 final class SystemTerminalLauncher: TerminalLauncher {
     private var scripts: [TerminalScript: NSAppleScript] = [:]
+    private let prompts: PermissionPrompts
+
+    init(prompts: PermissionPrompts) {
+        self.prompts = prompts
+    }
 
     func installed() -> [InstalledTerminal] {
         Terminal.allCases.compactMap { terminal in
@@ -54,7 +59,10 @@ final class SystemTerminalLauncher: TerminalLauncher {
             forKeyword: AEKeyword(keyASSubroutineName))
         event.setParam(list, forKeyword: AEKeyword(keyDirectObject))
         var error: NSDictionary?
+        // The first run for a terminal may show the Automation prompt, and waits for its answer.
+        prompts.begin()
         compiled.executeAppleEvent(event, error: &error)
+        prompts.end()
         return error.map(Self.result) ?? .opened
     }
 

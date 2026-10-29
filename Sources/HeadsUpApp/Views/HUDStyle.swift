@@ -30,6 +30,8 @@ enum HUDStyle {
         /// `--danger`: failures, as an icon, a dot or short text, never a large fill.
         /// `--raise2`: the footer pills, and the model chip while its menu is open.
         static var raise2: Color { Color(nsColor: .secondarySystemFill) }
+        /// A step stronger than `--raise2`: a ghost or outline button while pressed.
+        static var pressed: Color { Color(nsColor: .systemFill) }
         /// `--track`: the empty part of a progress bar.
         static var track: Color { Color(nsColor: .tertiarySystemFill) }
         /// `--green`: a running service.
@@ -391,5 +393,7 @@ enum HUDStyle {
         /// 200 ms ease-out, `cubic-bezier(0, 0, .58, 1)`: tab widths and selection fills.
         /// No springs or bounces anywhere.
         static var standard: Animation { .timingCurve(0, 0, 0.58, 1, duration: 0.2) }
+        /// How far a tab's body shifts sideways as it comes in on a tab switch.
+        static let tabShift: CGFloat = 24
     }
 }

@@ -8,6 +8,9 @@ struct PromptField: View {
     let hud: HUDStore
 
     @FocusState private var isFocused: Bool
+    /// Whether the field had the keyboard when the HUD last lost it. A Settings field that had
+    /// it gets it back from macOS instead; after a close, the field takes it on the next open.
+    private let hadFocus = State(initialValue: true)
 
     var body: some View {
         TextField(text: Binding(get: { hud.input }, set: { hud.setInput($0) }), prompt: Text(hud.placeholder)) {
@@ -19,11 +22,19 @@ struct PromptField: View {
         .focused($isFocused)
         // onSubmit waits while an input method is composing, so Enter there picks the candidate.
         .onSubmit { hud.submit() }
-        // The field takes the keyboard when the HUD opens, when the tab changes (each tab
-        // shows its own field) and when the model menu closes.
-        .onAppear { isFocused = true }
+        // The field takes the keyboard when the HUD becomes key, when the tab changes (each
+        // tab shows its own field) and when the model menu closes. A field made before the HUD
+        // is first key waits for that: focus set early would already be true by then.
+        .onAppear { if hud.isKey { isFocused = true } }
         .onChange(of: hud.isKey) { _, isKey in
-            if isKey { isFocused = true }
+            if isKey {
+                if hadFocus.wrappedValue { isFocused = true }
+            } else {
+                hadFocus.wrappedValue = isFocused || !hud.isOpen
+                // Let go while the HUD isn't key, so taking it back is a change SwiftUI acts
+                // on: setting a focus that is already true would leave the field without a caret.
+                isFocused = false
+            }
         }
         .onChange(of: hud.modelMenuOpen) { _, isOpen in
             if !isOpen { isFocused = true }

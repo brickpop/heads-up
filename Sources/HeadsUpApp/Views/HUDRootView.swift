@@ -13,6 +13,10 @@ struct HUDRootView: View {
 
     /// What the HUD would do with the items dragged over it, while they are.
     private let dropZone = State<DropZone?>(initialValue: nil)
+    /// The tab whose body is on screen, until a switch has drawn the next one: it says which
+    /// way the next body shifts in.
+    private let shownTab = State<Tab?>(initialValue: nil)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let hud = model.hud
@@ -35,20 +39,32 @@ struct HUDRootView: View {
                 } else if let attachmentNotice = model.chat.attachmentNotice {
                     AttachmentNoticeBar(model: model, notice: attachmentNotice)
                 }
-                switch hudBody {
-                case .modelMenu: ModelMenuView(model: model, screen: model.modelMenu)
-                case .conversation: ConversationView(model: model)
-                case .pinnedList: PinnedListView(model: model)
-                case .suggestions: SuggestionList(hud: hud)
-                case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
-                case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
-                case .services: ServicesView(model: model, isOpen: hud.isOpen)
-                case .commands: CommandsView(model: model)
-                case .settings: SettingsView(model: model)
-                case .welcome: WelcomeView(model: model)
-                case .empty: EmptyView()
+                // Each tab's body is its own view: on a switch the old one goes at once and the
+                // new one shifts in sideways, and the HUD's height follows. Nothing moves up or down.
+                ZStack(alignment: .top) {
+                    VStack(spacing: 0) {
+                        switch hudBody {
+                        case .modelMenu: ModelMenuView(model: model, screen: model.modelMenu)
+                        case .conversation: ConversationView(model: model)
+                        case .pinnedList: PinnedListView(model: model)
+                        case .suggestions: SuggestionList(hud: hud)
+                        case .focus: FocusView(focus: model.focus, isOpen: hud.isOpen)
+                        case .caffeine: CaffeineView(caffeine: model.caffeine, isOpen: hud.isOpen)
+                        case .services: ServicesView(model: model, isOpen: hud.isOpen)
+                        case .commands: CommandsView(model: model)
+                        case .settings: SettingsView(model: model)
+                        case .welcome: WelcomeView(model: model)
+                        case .empty: EmptyView()
+                        }
+                    }
+                    .id(hud.tab)
+                    .transition(tabSwitch(to: hud.tab))
                 }
+                .clipped()
             }
+            .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: hud.tab)
+            .onAppear { shownTab.wrappedValue = hud.tab }
+            .onChange(of: hud.tab) { _, new in shownTab.wrappedValue = new }
             // A collapsed HUD grows to 160 pt while something is dragged over it.
             .frame(
                 minHeight: dropZone.wrappedValue == nil
@@ -73,6 +89,17 @@ struct HUDRootView: View {
         .onDrop(of: [.item], delegate: ImageDropTarget(chat: model.chat, zone: dropZone.projectedValue))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Strings.HUD.accessibilityLabel)
+    }
+
+    /// The new body comes in from the right when the tab is further right than the one
+    /// before, else from the left, and fades in. The old body goes at once, so the HUD's height
+    /// changes only once.
+    private func tabSwitch(to tab: Tab) -> AnyTransition {
+        let order = Tab.allCases
+        let from = shownTab.wrappedValue.flatMap { order.firstIndex(of: $0) } ?? 0
+        let to = order.firstIndex(of: tab) ?? 0
+        let shift = to < from ? -HUDStyle.Motion.tabShift : HUDStyle.Motion.tabShift
+        return .asymmetric(insertion: .offset(x: shift).combined(with: .opacity), removal: .identity)
     }
 }
 

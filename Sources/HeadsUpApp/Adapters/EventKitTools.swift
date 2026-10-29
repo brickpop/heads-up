@@ -9,10 +9,13 @@ import HeadsUpCore
 /// Only the fields the tools may share are read: an event's title, times, location and URL,
 /// never its notes or attendees (F10).
 final class EventKitTools: CalendarReader, RemindersAccess, @unchecked Sendable {
-    static let shared = EventKitTools()
-
     /// EventKit's store is safe to use from any thread; one serves the whole app.
     private let store = EKEventStore()
+    private let prompts: PermissionPrompts
+
+    init(prompts: PermissionPrompts) {
+        self.prompts = prompts
+    }
 
     // MARK: Calendar
 
@@ -92,15 +95,16 @@ final class EventKitTools: CalendarReader, RemindersAccess, @unchecked Sendable 
         case .fullAccess:
             return
         case .notDetermined:
-            let granted: Bool
-            do {
-                granted =
-                    type == .event
-                    ? try await store.requestFullAccessToEvents() : try await store.requestFullAccessToReminders()
-            } catch {
-                throw .blockedByMacOS(permission: permission)
+            // An error is a refusal too.
+            await prompts.begin()
+            let granted: Bool?
+            if type == .event {
+                granted = try? await store.requestFullAccessToEvents()
+            } else {
+                granted = try? await store.requestFullAccessToReminders()
             }
-            guard granted else { throw .blockedByMacOS(permission: permission) }
+            await prompts.end()
+            guard granted == true else { throw .blockedByMacOS(permission: permission) }
         default:
             throw .blockedByMacOS(permission: permission)
         }

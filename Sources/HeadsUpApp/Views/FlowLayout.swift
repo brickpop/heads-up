@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Lays its views out in rows, left to right, starting a new row when one is full.
-/// For chips that wrap, such as the break options in Settings → Focus.
+/// For buttons that wrap, such as the action buttons in a chat reply.
 struct FlowLayout: Layout {
     var spacing: CGFloat
 

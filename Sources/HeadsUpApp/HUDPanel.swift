@@ -8,18 +8,28 @@ import SwiftUI
 ///
 /// HUDStore drives it through the `HUDWindow` port, and it reports key changes back.
 /// The panel is clear: `HUDFrameView` draws the rounded material and border, and macOS
-/// draws the window shadow around the material's shape. `HUDLayout` places it; its height
-/// follows the SwiftUI content, growing downward from a fixed top edge.
+/// draws the window shadow around the material's shape. `HUDLayout` places it and sets its
+/// width, which no content changes; its height follows the SwiftUI content, growing downward
+/// from a fixed top edge.
 final class HUDPanel: NSPanel, HUDWindow {
+    /// The HUD floats over other apps' windows and full-screen apps.
+    static let hudLevel = NSWindow.Level.statusBar
+    /// For HeadsUp's own panels and alerts, which must show above the HUD.
+    static let aboveHUD = NSWindow.Level(rawValue: hudLevel.rawValue + 1)
+
     private let hud: HUDStore
+    private let content: AnyView
     private let hosting: NSHostingController<AnyView>
+    /// The HUD's width on its screen, which the content is laid out at.
+    private var width = HUDLayout.maxWidth
     private var sizeObservation: NSKeyValueObservation?
     /// The frame of the screen the HUD shows on, while it shows. Every resize keeps its top edge.
     private var screenFrame: CGRect?
 
     init(hud: HUDStore, content: some View) {
         self.hud = hud
-        hosting = NSHostingController(rootView: AnyView(content))
+        self.content = AnyView(content)
+        hosting = NSHostingController(rootView: Self.sized(self.content, width: width))
         // The content owns the height (ADR-001 amendment 1): it reports its ideal size, and
         // the panel takes the height from it. The width stays the panel's, from HUDLayout.
         hosting.sizingOptions = [.preferredContentSize]
@@ -29,7 +39,7 @@ final class HUDPanel: NSPanel, HUDWindow {
             backing: .buffered,
             defer: true
         )
-        level = .statusBar
+        level = Self.hudLevel
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         isOpaque = false
         backgroundColor = .clear
@@ -73,6 +83,11 @@ final class HUDPanel: NSPanel, HUDWindow {
                     under: NSEvent.mouseLocation, in: NSScreen.screens.map(\.frame))
             else { return }
             screenFrame = screen
+            let width = HUDLayout.frame(screen: screen, contentHeight: 0).width
+            if width != self.width {
+                self.width = width
+                hosting.rootView = Self.sized(content, width: width)
+            }
             setFrame(HUDLayout.frame(screen: screen, contentHeight: contentHeight), display: true)
         }
         if makeKey {
@@ -87,6 +102,22 @@ final class HUDPanel: NSPanel, HUDWindow {
     func hide() {
         orderOut(nil)
         screenFrame = nil
+    }
+
+    // MARK: Permission prompts
+
+    /// macOS is asking the user for a permission. Its prompt is another process's window, which
+    /// can't be raised, so the HUD drops to the normal level under it, still in front of the
+    /// other apps' windows. It is held open meanwhile: a click on the prompt takes the keyboard.
+    func permissionPromptBegan() {
+        hud.beginModal()
+        level = .normal
+        if isVisible { orderFrontRegardless() }
+    }
+
+    func permissionPromptEnded() {
+        level = Self.hudLevel
+        hud.endModal()
     }
 
     // MARK: Size
@@ -104,10 +135,23 @@ final class HUDPanel: NSPanel, HUDWindow {
         setFrame(next, display: true)
     }
 
-    /// Every resize, ours or AppKit's, keeps the top edge where HUDLayout put it.
+    /// The content at the HUD's width, with its top at the top of the window. The content
+    /// then reports its height for that width, and a long line or a wide row wraps or is cut
+    /// rather than widening the HUD. While the window catches up with a new height, the
+    /// content stays under the header instead of moving up or down.
+    private static func sized(_ content: AnyView, width: CGFloat) -> AnyView {
+        AnyView(content.frame(width: width).frame(maxHeight: .infinity, alignment: .top))
+    }
+
+    /// Every resize, ours or AppKit's, keeps the width and the top edge where HUDLayout put
+    /// them. AppKit resizes the window to the content's preferred size, which would otherwise
+    /// move its left edge.
     override func setFrame(_ frameRect: NSRect, display flag: Bool) {
         var anchored = frameRect
         if let screenFrame {
+            let layout = HUDLayout.frame(screen: screenFrame, contentHeight: frameRect.height)
+            anchored.origin.x = layout.minX
+            anchored.size.width = layout.width
             anchored.origin.y = screenFrame.maxY - HUDLayout.topOffset - anchored.height
         }
         super.setFrame(anchored, display: flag)

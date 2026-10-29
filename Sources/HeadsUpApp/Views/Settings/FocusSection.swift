@@ -20,7 +20,14 @@ struct FocusSection: View {
                 .font(.system(size: HUDStyle.Settings.helpSize))
                 .foregroundStyle(.secondary)
 
-            FlowLayout(spacing: HUDStyle.FocusSettings.chipGap) {
+            // Cells at least 150 pt wide, as many to a row as fit: more options wrap to new rows,
+            // so the HUD never widens.
+            LazyVGrid(
+                columns: [
+                    GridItem(.adaptive(minimum: HUDStyle.Focus.optionMinWidth), spacing: HUDStyle.FocusSettings.chipGap)
+                ],
+                alignment: .leading, spacing: HUDStyle.FocusSettings.chipGap
+            ) {
                 ForEach(screen.options, id: \.id) { chip in
                     BreakOptionChip(focus: focus, chip: chip)
                 }
@@ -106,8 +113,8 @@ struct FocusSection: View {
     }
 }
 
-/// One break option: its icon in accent, its label, a length pill that cycles
-/// 2 → 5 → 10 → 20 → 50 min, and × to remove it (disabled for the last one).
+/// One break option, filling its grid cell: its icon in accent, its label, a length pill that
+/// cycles 2 → 5 → 10 → 20 → 50 min, and × to remove it (disabled for the last one).
 private struct BreakOptionChip: View {
     let focus: FocusStore
     let chip: FocusSettingsScreen.OptionChip
@@ -122,6 +129,10 @@ private struct BreakOptionChip: View {
                 .accessibilityHidden(true)
             Text(chip.label)
                 .font(.system(size: HUDStyle.Settings.labelSize))
+                .lineLimit(1)
+                // A long label is cut to fit its cell, so the whole label is in the tooltip.
+                .help(chip.label)
+            Spacer(minLength: 0)
             Button {
                 focus.cycleBreakOptionLength(chip.id)
             } label: {
@@ -147,6 +158,7 @@ private struct BreakOptionChip: View {
         }
         .padding(.horizontal, HUDStyle.FocusSettings.chipPadding)
         .frame(height: HUDStyle.FocusSettings.chipHeight)
+        .frame(maxWidth: .infinity)
         .overlay(
             Capsule().strokeBorder(
                 HUDStyle.Colors.line, lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale))

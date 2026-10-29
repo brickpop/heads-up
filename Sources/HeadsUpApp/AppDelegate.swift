@@ -24,10 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = MainMenu.make()
 
         let scheduler = SystemScheduler()
+        // The HUD gets out of the way of macOS permission prompts, once it exists.
+        let prompts = PermissionPrompts()
         // Answers from Notification Center go to the model, once it exists.
-        let notifier = UserNotifier { [weak self] category, action, requestID in
+        let notifier = UserNotifier(prompts: prompts) { [weak self] category, action, requestID in
             self?.model?.handleNotification(category: category, action: action, requestID: requestID)
         }
+        let eventKit = EventKitTools(prompts: prompts)
         let model = AppModel(
             ports: AppModel.Ports(
                 clock: SystemClock(), scheduler: scheduler, hotkeys: hotkeys,
@@ -35,9 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
                 powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
-                openPanels: OpenPanelsAdapter(), imageProcessor: ImageIOProcessor(), calendar: EventKitTools.shared,
-                reminders: EventKitTools.shared,
-                terminalLauncher: SystemTerminalLauncher(),
+                openPanels: OpenPanelsAdapter(), imageProcessor: ImageIOProcessor(), calendar: eventKit,
+                reminders: eventKit,
+                terminalLauncher: SystemTerminalLauncher(prompts: prompts),
                 secrets: KeychainSecretStore(), httpClient: URLSessionHTTPClient(),
                 linkOpener: WorkspaceLinkOpener(), pasteboard: GeneralPasteboard(),
                 dataFolder: SettingsStore.dataFolder(quickTimers: Self.quickTimers),
@@ -60,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let panel = HUDPanel(hud: model.hud, content: HUDRootView(model: model))
         model.hud.attach(window: panel)
+        prompts.panel = panel
         self.panel = panel
         statusItem = StatusItemController(model: model, scheduler: scheduler)
 
@@ -134,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = [question.message, question.detail].compactMap { $0 }.joined(separator: "\n")
             alert.addButton(withTitle: question.quit)  // the default: Return
             alert.addButton(withTitle: question.cancel).keyEquivalent = "\u{1b}"  // Esc
+            alert.window.level = HUDPanel.aboveHUD
             let answer = alert.runModal()
             model.hud.endModal()
             guard answer == .alertFirstButtonReturn else { return .terminateCancel }

@@ -10,9 +10,14 @@ import UserNotifications
 final class UserNotifier: NSObject, Notifier, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
     private var askedForAuthorization = false
+    private let prompts: PermissionPrompts
     private let onResponse: @MainActor (_ category: String, _ action: String?, _ requestID: String) -> Void
 
-    init(onResponse: @escaping @MainActor (_ category: String, _ action: String?, _ requestID: String) -> Void) {
+    init(
+        prompts: PermissionPrompts,
+        onResponse: @escaping @MainActor (_ category: String, _ action: String?, _ requestID: String) -> Void
+    ) {
+        self.prompts = prompts
         self.onResponse = onResponse
         super.init()
         center.delegate = self
@@ -31,7 +36,11 @@ final class UserNotifier: NSObject, Notifier, UNUserNotificationCenterDelegate {
     func requestAuthorization() {
         guard !askedForAuthorization else { return }
         askedForAuthorization = true
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        // Answered at once if the user has decided before; otherwise after the prompt.
+        prompts.begin()
+        center.requestAuthorization(options: [.alert, .sound]) { [prompts] _, _ in
+            Task { @MainActor in prompts.end() }
+        }
     }
 
     func schedule(_ request: NotificationRequest) {

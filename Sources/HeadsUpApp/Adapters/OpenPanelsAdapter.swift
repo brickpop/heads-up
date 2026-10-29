@@ -31,6 +31,8 @@ final class OpenPanelsAdapter: OpenPanels {
     }
 
     private func run(_ panel: NSOpenPanel) async -> NSApplication.ModalResponse {
+        // Over the HUD, which floats above ordinary windows.
+        panel.level = HUDPanel.aboveHUD
         await withCheckedContinuation { continuation in
             panel.begin { continuation.resume(returning: $0) }
         }
