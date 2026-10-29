@@ -3,7 +3,7 @@ import HeadsUpCore
 import SwiftUI
 
 /// The HUD's container: a header area, an optional body and a footer area, on the HUD
-/// material with rounded corners and an edge: a hairline border in light mode; in dark mode a dark
+/// material under the `--hud` tint, with rounded corners and an edge: a hairline border in light mode; in dark mode a dark
 /// outline with a faint light rim just inside it, as native dark windows have, so the HUD stands
 /// out from dark windows and a dark desktop behind it.
 ///
@@ -28,7 +28,13 @@ struct HUDFrameView<Header: View, Content: View, Footer: View>: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: HUDMetrics.footerHeight)
         }
-        .background(HUDMaterial())
+        // The blur, with the `--hud` tint over it; one mask rounds both. The edge draws above.
+        .background {
+            ZStack {
+                HUDMaterial()
+                HUDStyle.Colors.hudTint(colorScheme, contrast: contrast)
+            }
+        }
         .clipShape(shape)
         .overlay(edge)
     }

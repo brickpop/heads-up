@@ -17,6 +17,18 @@ enum HUDStyle {
         static var line: Color { Color(nsColor: .separatorColor) }
         /// The HUD's outer edge in dark mode, in place of `line`: a dark outline that sets it off
         /// from mid-gray windows. Black at 55 %, or 90 % with Increase Contrast. HUDFrameView only.
+        /// `--hud`: the solid tint over the HUD's blurred material, so it reads dark in dark mode and
+        /// near-white in light mode whatever is behind it. Drawn at `hudTintOpacity`.
+        static let hudTintDark = Color(red: 0x1E / 255, green: 0x1E / 255, blue: 0x21 / 255)
+        static let hudTintLight = Color(red: 0xF6 / 255, green: 0xF6 / 255, blue: 0xF8 / 255)
+        /// How much the tint covers the blur. The one value to change after a look on the Mac.
+        static let hudTintOpacity = 0.85
+        /// With Increase Contrast, the blur shows through less.
+        static let hudTintOpacityIncreased = 0.95
+        static func hudTint(_ scheme: ColorScheme, contrast: ColorSchemeContrast) -> Color {
+            (scheme == .dark ? hudTintDark : hudTintLight)
+                .opacity(contrast == .increased ? hudTintOpacityIncreased : hudTintOpacity)
+        }
         static func edgeOuter(_ contrast: ColorSchemeContrast) -> Color {
             .black.opacity(contrast == .increased ? 0.9 : 0.55)
         }
