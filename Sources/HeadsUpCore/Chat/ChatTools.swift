@@ -17,6 +17,9 @@ public struct ToolRecord: Equatable, Sendable, Identifiable {
         case failed(String)
         /// A reminder that can't be added as asked: "no list named “Secret”". No card showed.
         case notAdded(String)
+        /// A focus timer that didn't start: "a focus is running", "the length must be 1 to 180
+        /// minutes".
+        case notStarted(String)
     }
 
     public let id: String
@@ -27,6 +30,8 @@ public struct ToolRecord: Equatable, Sendable, Identifiable {
     public internal(set) var status: Status
     /// "Oct 25 – Oct 31", "Groceries", "1,284 characters" (F10, F2 d).
     var summary: String?
+    /// The mono call with its arguments, "focus.timer(focus, 35)", shown in place of the name.
+    var call: String?
     /// What the model got back, in bytes.
     var bytes: Int?
     /// A calendar read's events, for the events block.
@@ -44,6 +49,8 @@ public struct PendingCard: Equatable, Sendable {
     let isShared: Bool
     /// Its buttons ignore input for 600 ms after (F6).
     let shownAt: Date
+    /// The focus or break the focus timer card asks to start.
+    var timer: TimerRequest? = nil
 }
 
 // MARK: - Screens
@@ -164,6 +171,7 @@ extension ToolID {
         case .calendar: .calendar
         case .remindersRead, .remindersCreate: .check
         case .clipboard: .clipboard
+        case .focusTimer: .timer
         }
     }
 }
@@ -268,7 +276,7 @@ extension ChatStore {
 
     private func rowScreen(_ record: ToolRecord) -> ToolRowScreen {
         let label = record.tool.map(Strings.Tools.label) ?? record.name
-        let fn = record.tool?.displayName ?? record.name
+        let fn = record.call ?? record.tool?.displayName ?? record.name
         let size = record.bytes.map(Format.bytes)
         let (status, outcome): (String, ToolRowScreen.Outcome) =
             switch record.status {
@@ -281,6 +289,7 @@ extension ChatStore {
             case .disabled: (Strings.Tools.disabled, .refused)
             case .notAvailable: (Strings.Tools.notAvailable, .refused)
             case .notAdded(let reason): (Strings.Tools.notAdded(reason), .refused)
+            case .notStarted(let reason): (Strings.Tools.notStarted(reason), .refused)
             case .concealed: (Strings.Tools.concealed, .refused)
             case .blocked: (Strings.Tools.blocked, .error)
             case .failed(let reason): (Strings.Tools.failed(reason), .error)
@@ -297,6 +306,8 @@ extension ChatStore {
         let subtitle: String
         if card.tool.effect == .write {
             subtitle = card.isShared ? Strings.Tools.sharedList : Strings.Tools.nothingAdded
+        } else if card.tool.effect == .localControl {
+            subtitle = Strings.Tools.notAllowlistedControl(card.tool)
         } else {
             subtitle = Strings.Tools.notAllowlisted(card.tool)
         }
@@ -310,10 +321,12 @@ extension ChatStore {
             }
         }
         return ApprovalCardScreen(
-            id: id, glyph: card.tool.glyph, title: Strings.Tools.cardTitle(card.model, card.tool), subtitle: subtitle,
+            id: id, glyph: card.tool.glyph, title: Strings.Tools.cardTitle(card.model, card.tool, timer: card.timer),
+            subtitle: subtitle,
             preview: card.preview, fields: card.fields, buttons: buttons, isArmed: guardAllows(card.shownAt),
             armedAt: armedAt(card.shownAt),
-            announcement: Strings.Tools.cardAnnouncement(Strings.Tools.cardTitle(card.model, card.tool)))
+            announcement: Strings.Tools.cardAnnouncement(
+                Strings.Tools.cardTitle(card.model, card.tool, timer: card.timer)))
     }
 
     private func eventsBlock(_ id: String, _ events: [CalendarEvent]) -> EventsBlock {

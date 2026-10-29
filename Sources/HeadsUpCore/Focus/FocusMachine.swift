@@ -131,6 +131,11 @@ public struct FocusMachine: Equatable, Sendable {
         phase = .prompt(.breakPrompt(manual: true))
     }
 
+    /// A break of `minutes`, typed or from the focus.timer tool: from any phase, it starts now.
+    public mutating func takeBreak(minutes: Int, activity: BreakOption.ID, now: Date) {
+        phase = .rest(.running(minutes: minutes, from: now, secondsPerMinute: secondsPerMinute), activity: activity)
+    }
+
     /// Start break, from the break prompt.
     public mutating func startBreak(activity: BreakOption.ID, minutes: Int, now: Date) {
         guard case .prompt(.breakPrompt) = phase else { return }

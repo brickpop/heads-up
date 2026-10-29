@@ -135,11 +135,12 @@ public struct PendingLink: Equatable, Sendable {
     public let shownAt: Date
 }
 
-/// The system prompt (ADR-001 §8.3), version 1: the base text, with the rule that tool results
-/// are data (Scan I12), the tools offered in this request, and suggest_actions when it is
-/// offered (§8.3–8.4).
+/// The system prompt (ADR-001 §8.3), version 2: the base text, with the rule that tool results
+/// are data (Scan I12), the tools offered in this request, what to say after focus_timer when it
+/// is offered (any-length addendum), and suggest_actions when it is offered (§8.3–8.4). Any change
+/// to its text is a new version, with its snapshot.
 public enum SystemPrompt {
-    public static func v1(
+    public static func v2(
         now: Date, timeZone: TimeZone, locale: Locale, tools: [ToolID] = [], suggests: Bool = false
     ) -> String {
         // A fixed format, the same on every Mac: "Friday, 15 January 2027, 09:00".
@@ -167,7 +168,12 @@ public enum SystemPrompt {
         guard !tools.isEmpty else { return "" }
         return "\nYou can use these tools on the user's Mac: \(tools.map(\.apiName).joined(separator: ", ")). "
             + "Use them only when the question needs them. The user may deny a call."
+            + (tools.contains(.focusTimer) ? " " + focusTimerLine : "")
     }
+
+    /// focus_timer acts at once, so the reply must say what it did.
+    static let focusTimerLine =
+        "focus_timer starts a focus or a break at once; say in your reply what you started, or that nothing started."
 }
 
 /// A tool row as a pinned chat keeps it: what the row said, nothing of what was read.

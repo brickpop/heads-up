@@ -103,6 +103,28 @@ private func titles(_ rows: [SuggestionRow]) -> [String] {
         #expect(rows[0].isSelectable == false)
     }
 
+    /// The typed `/start 35` comes in parsed, with its row; the matcher only places it.
+    @Test func aTypedTimerIsPlacedAsGiven() {
+        let row = Action(
+            id: ActionID("focus.start:any:35"), title: "Start 35 min focus", subtitle: "focus · ends 3:42 PM",
+            kind: .focus, glyph: .timer, keywords: "", suggest: .never, run: {})
+        let started = Matcher.match(
+            input: "/start 35", actions: catalogue(), ask: llama, inConversation: false, typed: (.focus(35), row))
+        #expect(started == [.action(row)])
+        let bad = Matcher.match(
+            input: "/start 0", actions: catalogue(), ask: llama, inConversation: false,
+            typed: (.invalid(.outOfRange(.focus)), nil))
+        #expect(
+            bad == [
+                .noMatch("A focus can be 1 to 180 minutes"), .ask(title: "Ask Llama 3.1 8B", subtitle: "“/start 0”"),
+            ])
+        // Words that still find actions keep filtering.
+        let words = Matcher.match(
+            input: "/start foc", actions: catalogue(), ask: llama, inConversation: false,
+            typed: (.invalid(.notANumber(.focus)), nil))
+        #expect(titles(words).first == "Start 25 min focus")
+    }
+
     @Test func everyWordMustMatch() {
         let rows = Matcher.match(input: "start 50", actions: catalogue(), ask: llama, inConversation: false)
         #expect(titles(rows) == ["Ask Llama 3.1 8B", "Start 50 min focus"])

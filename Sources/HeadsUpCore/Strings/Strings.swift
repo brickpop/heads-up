@@ -341,6 +341,22 @@ public enum Strings {
         public static func stopSubtitle(break isBreak: Bool) -> String { "pomodoro · \(isBreak ? "break" : "focus")" }
         public static let breakNowAction = "Take a break now"
         public static let breakNowSubtitle = "pomodoro · break options"
+        // Any length, typed: /start 35, /break 5 (ADR-001 addendum: any length)
+        public static func takeBreakAction(_ minutes: Int) -> String { "Take a \(minutes) min break" }
+        /// "focus · ends 3:42 PM"
+        public static func endsSubtitle(break isBreak: Bool, at time: String) -> String {
+            "\(isBreak ? "break" : "focus") · ends \(time)"
+        }
+        /// "replaces your focus · 12 min left": Enter replaces what runs.
+        public static func replaces(break isBreak: Bool, minutesLeft: Int) -> String {
+            "replaces your \(isBreak ? "break" : "focus") · \(minutesLeft) min left"
+        }
+        public static func anyLengthBounds(_ kind: QuickTimer.Kind) -> String {
+            kind == .focus ? "A focus can be 1 to 180 minutes" : "A break can be 1 to 60 minutes"
+        }
+        public static func typeTheMinutes(_ kind: QuickTimer.Kind) -> String {
+            "Type the minutes, like \(kind == .focus ? "/start 35" : "/break 5")"
+        }
 
         // Idle
         public static let idleLabel = "Focus session"
@@ -987,6 +1003,7 @@ public enum Strings {
             case .remindersRead: "Reminders"
             case .remindersCreate: "Add reminders"
             case .clipboard: "Clipboard"
+            case .focusTimer: "Focus timer"
             }
         }
         public static func description(_ tool: ToolID) -> String {
@@ -995,6 +1012,7 @@ public enum Strings {
             case .remindersRead: "Read your reminders"
             case .remindersCreate: "Create new reminders"
             case .clipboard: "Read the current clipboard"
+            case .focusTimer: "Start a focus or a break"
             }
         }
         public static func permission(_ permission: ToolPermission) -> String {
@@ -1023,13 +1041,22 @@ public enum Strings {
         public static func rowLabel(_ parts: [String?]) -> String { parts.compactMap { $0 }.joined(separator: ", ") }
 
         // Cards (Chat spec; addendum 3, F3 and F4)
-        public static func cardTitle(_ model: String, _ tool: ToolID) -> String {
+        public static func cardTitle(_ model: String, _ tool: ToolID, timer: TimerRequest? = nil) -> String {
             switch tool {
             case .calendar: "\(model) wants to read your calendar"
             case .remindersRead: "\(model) wants to read your reminders"
             case .remindersCreate: "\(model) wants to add a reminder"
             case .clipboard: "\(model) wants to read your clipboard"
+            case .focusTimer:
+                switch timer?.kind {
+                case .break: "\(model) wants to start a \(timer?.minutes ?? 0) min break"
+                default: "\(model) wants to start a \(timer?.minutes ?? 0) min focus"
+                }
             }
+        }
+        /// A local control's card: it shares nothing, so it says only that it isn't allowed yet.
+        public static func notAllowlistedControl(_ tool: ToolID) -> String {
+            "\(label(tool)) isn’t on your allowlist."
         }
         public static func notAllowlisted(_ tool: ToolID) -> String {
             "\(label(tool)) isn’t on your allowlist. Nothing is shared until you approve."
@@ -1053,6 +1080,40 @@ public enum Strings {
         public static let noLists = "you don't have a reminders list"
         /// "Not added · no list named “Secret”": a reminder that couldn't be added as asked.
         public static func notAdded(_ reason: String) -> String { "Not added · \(reason)" }
+
+        // The focus timer (ADR-001 addendum: any length)
+        /// "Not started · a focus is running": a focus timer call that started nothing.
+        public static func notStarted(_ reason: String) -> String { "Not started · \(reason)" }
+        /// "Started 35 min focus · ends 3:42 PM"
+        public static func timerStarted(_ request: TimerRequest, endsAt time: String) -> String {
+            "Started \(request.minutes) min \(request.kind == .focus ? "focus" : "break") · ends \(time)"
+        }
+        public static let timerKindProblem = "it wasn't clear if this is a focus or a break"
+        public static func timerLengthProblem(_ kind: QuickTimer.Kind) -> String {
+            "the length must be 1 to \(kind.range.upperBound) minutes"
+        }
+        public static let notRunHere = "the focus timer starts only from the chat"
+        /// Why it didn't start, for the row: the phase, never the time left.
+        public static func timerBusy(_ phase: FocusPhase) -> String? {
+            switch phase {
+            case .idle: nil
+            case .focus(let run): run.isPaused ? "your focus is paused" : "a focus is running"
+            case .rest(let run, _): run.isPaused ? "your break is paused" : "a break is running"
+            case .prompt(.breakPrompt), .snoozed(_, .breakPrompt): "a break prompt is waiting for your answer"
+            case .prompt(.backPrompt), .snoozed(_, .backPrompt): "“Ready to get back to it?” is waiting for your answer"
+            }
+        }
+        /// Why it didn't start, for the model (Scan C4): the phase only.
+        public static func timerBusyForModel(_ phase: FocusPhase) -> String? {
+            switch phase {
+            case .idle: nil
+            case .focus(let run): run.isPaused ? "The user's focus is paused." : "A focus is already running."
+            case .rest(let run, _): run.isPaused ? "The user's break is paused." : "A break is already running."
+            case .prompt(.breakPrompt), .snoozed(_, .breakPrompt): "A break prompt is waiting for the user's answer."
+            case .prompt(.backPrompt), .snoozed(_, .backPrompt):
+                "A prompt to start the next focus is waiting for the user's answer."
+            }
+        }
         /// VoiceOver, when a card appears: the title, then what to do (Yuki).
         public static func cardAnnouncement(_ title: String) -> String { "\(title). Allow or deny." }
         /// The Reminder field's fold past 3 lines.

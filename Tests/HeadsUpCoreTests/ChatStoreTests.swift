@@ -445,7 +445,7 @@ private final class ChatHarness {
     // MARK: The system prompt and parsing time
 
     @Test func theSystemPromptSnapshot() {
-        let prompt = SystemPrompt.v1(
+        let prompt = SystemPrompt.v2(
             now: Date(timeIntervalSince1970: 1_800_000_000), timeZone: TimeZone(identifier: "Europe/Madrid")!,
             locale: Locale(identifier: "en_GB"))
         #expect(

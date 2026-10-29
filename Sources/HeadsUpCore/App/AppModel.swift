@@ -217,7 +217,7 @@ public final class AppModel {
         imageProcessor = ports.imageProcessor
         let gatedTools = GatedTools(
             settings: settings, ports: ToolPorts(calendar: ports.calendar, reminders: ports.reminders),
-            pasteboard: ports.pasteboard, clock: ports.clock, modal: hud)
+            pasteboard: ports.pasteboard, clock: ports.clock, modal: hud, focus: focus)
         let chatStore = ChatStore(
             endpoints: endpoints, settings: settings,
             provider: ports.llmProvider ?? OpenAICompatibleProvider(transport: endpoints.transport),
@@ -249,6 +249,12 @@ public final class AppModel {
         registry.add(.focus) { [weak focus, weak hud] in
             guard let focus, let hud else { return [] }
             return FocusActions.make(focus: focus, hud: hud)
+        }
+        // A typed /start 35 or /break 5: its row, made for each query.
+        registry.quickTimer = { [weak focus, weak hud, clock = ports.clock] kind, minutes in
+            guard let focus else { return nil }
+            return QuickTimerActions.make(
+                kind: kind, minutes: minutes, focus: focus, hud: hud, now: clock.now, calendar: .current)
         }
         registry.add(.caffeine) { [weak caffeine] in caffeine.map { CaffeineActions.make(caffeine: $0) } ?? [] }
         registry.add(.service) { [weak services] in services.map { ServiceActions.make(services: $0) } ?? [] }

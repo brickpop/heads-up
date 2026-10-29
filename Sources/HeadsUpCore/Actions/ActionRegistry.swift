@@ -19,6 +19,8 @@ public final class ActionRegistry {
     private var providers: [(section: CatalogueSection, provider: Provider)] = []
     /// Say why a suggested id doesn't apply now (see `unavailable`).
     var explainers: [@MainActor (SuggestedActionID) -> UnavailableAction?] = []
+    /// The row for a typed `/start 35` or `/break 5`: made per query, never in the catalogue.
+    var quickTimer: @MainActor (QuickTimer.Kind, Int) -> Action? = { _, _ in nil }
 
     public init() {}
 
@@ -37,6 +39,15 @@ public final class ActionRegistry {
     }
 
     public func match(input: String, ask: AskTarget, inConversation: Bool) -> [SuggestionRow] {
-        Matcher.match(input: input, actions: actions, ask: ask, inConversation: inConversation)
+        // Parsed once, and the typed row made here, on the main actor; the matcher only places it.
+        let typed = QuickTimer.parse(input.trimmingCharacters(in: .whitespacesAndNewlines)).map {
+            timer -> (timer: QuickTimer, action: Action?) in
+            switch timer {
+            case .focus(let minutes): (timer, quickTimer(.focus, minutes))
+            case .break(let minutes): (timer, quickTimer(.break, minutes))
+            case .invalid: (timer, nil)
+            }
+        }
+        return Matcher.match(input: input, actions: actions, ask: ask, inConversation: inConversation, typed: typed)
     }
 }

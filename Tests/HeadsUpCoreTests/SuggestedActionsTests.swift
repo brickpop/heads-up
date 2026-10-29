@@ -337,7 +337,7 @@ private final class SuggestHarness {
     }
 
     @Test func thePromptSnapshotWithSuggestions() {
-        let prompt = SystemPrompt.v1(
+        let prompt = SystemPrompt.v2(
             now: ISO8601DateFormatter().date(from: "2027-01-15T09:00:00Z")!,
             timeZone: TimeZone(identifier: "Europe/Madrid")!, locale: Locale(identifier: "en_GB"), tools: [.calendar],
             suggests: true)

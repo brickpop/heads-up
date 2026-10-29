@@ -10,10 +10,16 @@ public enum ToolPermission: String, Codable, CaseIterable, Sendable {
 
 /// The local tools, by their permission key in settings.json (ADR-001 §9, R2).
 public enum ToolID: String, Codable, CaseIterable, Sendable {
-    case calendar, remindersRead, remindersCreate, clipboard
+    case calendar, remindersRead, remindersCreate, clipboard, focusTimer
 
     public enum Effect: Sendable {
         case read, write
+        /// Starts something on this Mac that the user sees and can undo, such as a focus timer:
+        /// not a write, so it may run on Allow (gate rule 2a). A tool may be one only if it runs
+        /// no user-defined command, starts no process, reads and sends no data, is bounded in
+        /// time, and is undone by one visible control. Adding one needs a design gate with Scan;
+        /// a test pins the list.
+        case localControl
     }
 
     /// The name the API uses: the display name with `.` → `_`.
@@ -26,11 +32,18 @@ public enum ToolID: String, Codable, CaseIterable, Sendable {
         case .remindersRead: "reminders.read"
         case .remindersCreate: "reminders.create"
         case .clipboard: "clipboard.read"
+        case .focusTimer: "focus.timer"
         }
     }
 
     /// Whether running it changes anything. A write always asks, whatever the settings say (F4).
-    public var effect: Effect { self == .remindersCreate ? .write : .read }
+    public var effect: Effect {
+        switch self {
+        case .calendar, .remindersRead, .clipboard: .read
+        case .remindersCreate: .write
+        case .focusTimer: .localControl
+        }
+    }
 
     /// The values Settings offers: a write can't be allowed (F4).
     public var allowed: [ToolPermission] { effect == .write ? [.ask, .off] : [.allow, .ask, .off] }
@@ -43,12 +56,13 @@ public enum ToolID: String, Codable, CaseIterable, Sendable {
 }
 
 /// settings.json's `tools`: each tool's permission (ADR-001 §6.1). The defaults are the CEO's:
-/// Calendar Allow, the rest Ask.
+/// Calendar and Focus timer Allow, the rest Ask.
 public struct ToolSettings: Equatable, Codable, Sendable {
     public var calendar: ToolPermission = .allow
     public var remindersRead: ToolPermission = .ask
     public var remindersCreate: ToolPermission = .ask
     public var clipboard: ToolPermission = .ask
+    public var focusTimer: ToolPermission = .allow
 
     public init() {}
 
@@ -60,6 +74,7 @@ public struct ToolSettings: Equatable, Codable, Sendable {
             // "allow" never stands for a write, even edited into the file by hand (F4).
             case .remindersCreate: remindersCreate == .allow ? .ask : remindersCreate
             case .clipboard: clipboard
+            case .focusTimer: focusTimer
             }
         }
         set {
@@ -69,6 +84,7 @@ public struct ToolSettings: Equatable, Codable, Sendable {
             case .remindersRead: remindersRead = value
             case .remindersCreate: remindersCreate = value
             case .clipboard: clipboard = value
+            case .focusTimer: focusTimer = value
             }
         }
     }
@@ -85,5 +101,6 @@ public struct ToolSettings: Equatable, Codable, Sendable {
         let create = value(.remindersCreate, defaults.remindersCreate)
         remindersCreate = create == .allow ? .ask : create
         clipboard = value(.clipboard, defaults.clipboard)
+        focusTimer = value(.focusTimer, defaults.focusTimer)
     }
 }

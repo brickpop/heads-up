@@ -19,6 +19,11 @@ enum ToolGate {
         if permission == .off { return .disabled }
         // A write always asks, whatever the settings say, and never offers Always (F4).
         if tool.effect == .write { return .ask([.deny, .allowOnce]) }
+        // Rule 2a: a local control (the focus timer) is not a write. Allow runs it with no card;
+        // Ask offers Always, as for a read.
+        if tool.effect == .localControl {
+            return permission == .allow ? .run : .ask([.deny, .allowOnce, .alwaysAllow])
+        }
         if permission == .allow { return .run }
         // The clipboard card has no Always: that would let any later injection read it (F3).
         if tool == .clipboard { return .ask([.deny, .allowOnce]) }

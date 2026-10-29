@@ -20,14 +20,25 @@ public enum Matcher {
     ///   - ask: who the Ask row asks.
     ///   - inConversation: the Chat tab shows a conversation with messages. Free text then
     ///     shows rows only when actions match, so typing a reply isn't hidden behind them.
+    ///   - typed: the input parsed as `/start 35` or `/break 5` (`QuickTimer.parse`), and the row
+    ///     that starts it when it is valid. Nil when the input isn't one.
     public static func match(
-        input: String, actions: [Action], ask: AskTarget, inConversation: Bool
+        input: String, actions: [Action], ask: AskTarget, inConversation: Bool,
+        typed: (timer: QuickTimer, action: Action?)? = nil
     ) -> [SuggestionRow] {
         let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty { return [] }
 
         if query.hasPrefix("/") {
             let found = filter(actions, by: String(query.dropFirst()))
+            if let action = typed?.action { return [.action(action)] }
+            switch typed?.timer {
+            // Words that still filter the catalogue ("/start foc") keep doing so.
+            case .invalid(.notANumber) where !found.isEmpty, .focus, .break, nil:
+                break
+            case .invalid(let problem):
+                return [.noMatch(problem.text), askRow(query, ask)]
+            }
             if found.isEmpty {
                 // A typo like "/fcous" must not be sent to the model by Enter: nothing is selected.
                 return [.noMatch(Strings.Suggestions.noMatch), askRow(query, ask)]

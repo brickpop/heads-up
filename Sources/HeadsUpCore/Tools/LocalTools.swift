@@ -23,12 +23,14 @@ struct PreparedCall: Sendable {
         case createReminder(title: String, due: Date?, list: ReminderList?)
         /// The clipboard as it was when the card was made: what was shown is what is sent.
         case clipboard(ClipboardContents)
+        /// A focus or a break to start. `GatedTools` starts it on the main actor, only from idle.
+        case focusTimer(TimerRequest)
     }
 
     let tool: ToolID
     let work: Work
     /// For the row: "Oct 25 – Oct 31", "Groceries", "1,284 characters".
-    let summary: String
+    let summary: String?
     /// For a card: the mono line, e.g. "calendar.events(Oct 25 – Oct 31)", or the masked clipboard.
     let preview: String?
     /// For the write card: Reminder, Due and List (F4).
@@ -38,6 +40,14 @@ struct PreparedCall: Sendable {
     /// Set, the reminder can't be added as asked (a list that doesn't exist): no card shows, the
     /// row says this, and the model learns only that it was denied.
     var notAdded: String? = nil
+    /// The row's mono call with its arguments, "focus.timer(focus, 35)", in place of the name.
+    var call: String? = nil
+}
+
+/// A focus or a break of `minutes`, as the focus.timer tool asked for it.
+public struct TimerRequest: Equatable, Sendable {
+    public let kind: QuickTimer.Kind
+    public let minutes: Int
 }
 
 /// What a tool returned: the JSON the model reads (inside the F2 c envelope), and what the
@@ -86,6 +96,8 @@ enum LocalTools {
         case .remindersCreate:
             "Add a reminder to the user's Reminders. The user approves each one. Use the default list unless the user named one."
         case .clipboard: "Read what is on the user's clipboard. The user may need to approve it."
+        case .focusTimer:
+            "Start a focus session or a break on the user's Mac timer at once, in whole minutes. It starts only when no focus or break is running, paused or waiting for the user; otherwise nothing starts. Say in your reply what you started, or that it didn't start."
         }
     }
 
@@ -107,6 +119,12 @@ enum LocalTools {
             "list":{"type":"string","description":"A list's name; omit for the default list"}},"required":["title"]}
             """
         case .clipboard: #"{"type":"object","properties":{}}"#
+        case .focusTimer:
+            """
+            {"type":"object","properties":{"kind":{"type":"string","enum":["focus","break"]},\
+            "minutes":{"type":"integer","minimum":1,"maximum":180,\
+            "description":"Whole minutes: 1 to 180 for a focus, 1 to 60 for a break"}},"required":["kind","minutes"]}
+            """
         }
     }
 
@@ -190,7 +208,39 @@ enum LocalTools {
             return PreparedCall(
                 tool: tool, work: .clipboard(contents), summary: Strings.Tools.clipboardSummary(contents),
                 preview: Strings.Tools.clipboardPreview(contents), fields: [], isShared: false)
+        case .focusTimer:
+            let request = try timerRequest(arguments)
+            let call = "\(tool.displayName)(\(request.kind == .focus ? "focus" : "break"), \(request.minutes))"
+            var prepared = PreparedCall(
+                tool: tool, work: .focusTimer(request), summary: nil, preview: call, fields: [], isShared: false)
+            prepared.call = call
+            return prepared
         }
+    }
+
+    /// The focus.timer arguments, strictly (Scan C3): `kind` is "focus" or "break", and
+    /// `minutes` a JSON number with no fractional part (35.0 is 35) within the kind's bounds.
+    /// A string, a boolean, null, a fraction or anything out of bounds runs nothing.
+    static func timerRequest(_ arguments: Data) throws(ToolFailure) -> TimerRequest {
+        struct KindField: Decodable {
+            enum Kind: String, Decodable {
+                case focus, `break`
+            }
+            let kind: Kind
+        }
+        // A Double, so 35.0 decodes; the decoder refuses strings, booleans and null.
+        struct MinutesField: Decodable {
+            let minutes: Double
+        }
+        guard let field = try? JSONDecoder().decode(KindField.self, from: arguments) else {
+            throw .invalidArguments(Strings.Tools.timerKindProblem)
+        }
+        let kind: QuickTimer.Kind = field.kind == .focus ? .focus : .break
+        let bounds = Double(kind.range.lowerBound)...Double(kind.range.upperBound)
+        guard let minutes = (try? JSONDecoder().decode(MinutesField.self, from: arguments))?.minutes,
+            minutes.rounded() == minutes, bounds.contains(minutes)
+        else { throw .invalidArguments(Strings.Tools.timerLengthProblem(kind)) }
+        return TimerRequest(kind: kind, minutes: Int(minutes))
     }
 
     // MARK: Running
@@ -235,6 +285,9 @@ enum LocalTools {
                 var objects = names.prefix(maxFileNames).map { ["name": clean($0, max: 255)] as [String: Any] }
                 return ToolResult(content: capped(key: "files", &objects, extra: ["count": names.count]), events: nil)
             }
+        case .focusTimer:
+            // Started by `GatedTools` on the main actor, never here.
+            throw .failed(Strings.Tools.notRunHere)
         }
     }
 
@@ -294,7 +347,7 @@ enum LocalTools {
         ISO8601DateFormatter().string(from: date)
     }
 
-    private static func json(_ object: [String: Any]) -> String {
+    static func json(_ object: [String: Any]) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)
     }

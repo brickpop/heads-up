@@ -364,7 +364,7 @@ public final class ChatStore: HUDChat {
         var messages = [
             LLMMessage.text(
                 .system,
-                SystemPrompt.v1(
+                SystemPrompt.v2(
                     now: clock.now, timeZone: .current, locale: .current, tools: offeredToolIDs(endpoint),
                     suggests: offersSuggestions(endpoint)))
         ]

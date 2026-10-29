@@ -8,6 +8,10 @@ public struct FocusSettings: Equatable, Codable, Sendable {
     /// Break and option lengths, in minutes, in the order a click cycles them.
     public static let breakLengths = [2, 5, 10, 20, 50]
     public static let snoozeLengths = [2, 5, 10]
+    /// Any length typed (`/start 35`, `/break 7`) or asked for by the focus.timer tool, in whole
+    /// minutes. The presets above stay the ones offered and suggested.
+    public static let anyFocusRange = 1...180
+    public static let anyBreakRange = 1...60
     /// The length the Add field starts with in Settings → Focus.
     public static let newOptionLength = 5
 

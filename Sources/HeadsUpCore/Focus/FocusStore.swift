@@ -102,13 +102,20 @@ public final class FocusStore {
 
     // MARK: The user's moves
 
-    /// Start focus, with `minutes` or the selected length. Toasts, and asks for notification
-    /// permission the first time (UX part 2: "when the first focus starts, not at launch").
-    public func start(minutes: Int? = nil) {
-        let length = minutes ?? focusLength
+    /// Start focus, with the selected length.
+    public func start() {
+        start(minutes: focusLength)
+    }
+
+    /// Start focus with `minutes`, from any phase. Toasts, and asks for notification permission
+    /// the first time (UX part 2: "when the first focus starts, not at launch"). Returns when it
+    /// ends.
+    @discardableResult
+    public func start(minutes: Int) -> Date {
         notifier.requestAuthorization()
-        change { $0.start(minutes: length, now: clock.now) }
-        toaster?.toast(Strings.Focus.focusStarted(length))
+        change { $0.start(minutes: minutes, now: clock.now) }
+        toaster?.toast(Strings.Focus.focusStarted(minutes))
+        return endDate
     }
 
     public func pause() { change { $0.pause(now: clock.now) } }
@@ -117,6 +124,26 @@ public final class FocusStore {
     public func endBreak() { change { $0.endBreak() } }
     public func doneForNow() { change { $0.doneForNow() } }
     public func showNow() { change { $0.showNow() } }
+
+    /// A break of `minutes` at once, with the selected activity, from any phase: typed
+    /// `/break 7`, or the focus.timer tool. Toasts like Start break. Returns when it ends.
+    @discardableResult
+    public func takeBreak(minutes: Int) -> Date {
+        notifier.requestAuthorization()
+        promptMinutes = nil
+        let activity = activity.id
+        change { $0.takeBreak(minutes: minutes, activity: activity, now: clock.now) }
+        toaster?.toast(Strings.Focus.breakStarted(minutes))
+        return endDate
+    }
+
+    /// When the running focus or break ends; now when nothing runs.
+    private var endDate: Date {
+        switch machine.phase {
+        case .focus(let run), .rest(let run, _): run.endsAt ?? clock.now
+        default: clock.now
+        }
+    }
 
     public func takeBreakNow() {
         promptMinutes = nil
@@ -347,3 +374,5 @@ public final class FocusStore {
         }
     }
 }
+
+extension FocusStore: FocusControlling {}
