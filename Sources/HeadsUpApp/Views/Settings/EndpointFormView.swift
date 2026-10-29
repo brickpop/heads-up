@@ -18,9 +18,8 @@ struct EndpointFormView: View {
                     FormField(label: Strings.EndpointForm.name, problem: nil) {
                         TextField(Strings.EndpointForm.name, text: draft(form.name) { $0.name = $1 })
                     }
-                    FormField(label: Strings.EndpointForm.modelID, problem: nil) {
-                        TextField(Strings.EndpointForm.modelID, text: draft(form.modelID) { $0.modelID = $1 })
-                            .font(.system(size: HUDStyle.Settings.labelSize).monospaced())
+                    FormField(label: Strings.EndpointForm.modelID, help: form.modelIDHelp, problem: nil) {
+                        ModelIDField(model: model, form: form)
                     }
                 }
                 GridRow(alignment: .top) {
@@ -155,8 +154,53 @@ struct EndpointFormView: View {
     }
 }
 
+/// Model id: a pop-up menu of the server's models, disabled with a spinner while they load, or
+/// the text field. Why there is no menu shows as the field's help.
+private struct ModelIDField: View {
+    let model: AppModel
+    let form: EndpointFormScreen
+
+    var body: some View {
+        switch form.modelField {
+        case .text:
+            TextField(
+                Strings.EndpointForm.modelID,
+                text: Binding(
+                    get: { form.modelID },
+                    set: { id in model.endpoints.updateDraft { $0.modelID = id } })
+            )
+            .font(.system(size: HUDStyle.Settings.labelSize).monospaced())
+        case .menu(let choices, let selected, let prompt, let isLoading):
+            HStack(spacing: HUDStyle.Footer.keyGap) {
+                Picker(
+                    Strings.EndpointForm.modelID,
+                    selection: Binding(
+                        get: { selected },
+                        set: { id in if let id { model.endpoints.pickModel(id) } })
+                ) {
+                    if selected == nil {
+                        Text(prompt).tag(String?.none)
+                    }
+                    ForEach(choices, id: \.id) { choice in
+                        Text(choice.title).tag(String?.some(choice.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .font(.system(size: HUDStyle.Settings.labelSize).monospaced())
+                .disabled(isLoading)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(Strings.EndpointForm.loadingModels)
+                }
+            }
+        }
+    }
+}
+
 /// Test connection's result under the form: a spinner while it runs, then a green check, an
-/// orange triangle with the server's models to pick from, or a red × with Start and Details.
+/// orange triangle, or a red × with Start and Details.
 private struct TestResultView: View {
     let model: AppModel
     let result: TestResultScreen
@@ -194,16 +238,6 @@ private struct TestResultView: View {
                 }
             }
             .accessibilityElement(children: .combine)
-            // A menu of the server's models: picking one fills Model id. Nothing shows as chosen
-            // before the user picks.
-            if let models = result.models, !models.isEmpty, let prompt = result.modelPrompt {
-                Menu(prompt) {
-                    ForEach(models, id: \.self) { id in
-                        Button(id) { model.endpoints.pickModel(id) }
-                    }
-                }
-                .fixedSize()
-            }
             if let details = result.details {
                 DisclosureGroup(Strings.EndpointForm.details) {
                     Text(details)

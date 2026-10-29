@@ -63,6 +63,20 @@ public enum TestResult: Equatable, Sendable {
     case keychainDenied
 }
 
+/// The server's models for the Model id menu, from `GET <base>/models`.
+public enum ModelList: Equatable, Sendable {
+    /// The Base URL isn't one HeadsUp can use: the text field.
+    case none
+    /// Waiting for the Base URL to stop changing, or for the server.
+    case loading
+    /// The server's model ids, sorted; never empty.
+    case listed([String])
+    /// The server lists no models.
+    case notListed
+    /// The fetch failed, as Test connection would have said it.
+    case failed(TestResult)
+}
+
 /// The question in the form's bottom bar: "Send your saved token to <host>?" (F7).
 public struct TokenHostQuestion: Equatable, Sendable {
     public let host: String
@@ -84,6 +98,8 @@ public struct EndpointForm: Equatable, Sendable {
     public internal(set) var tokenHostQuestion: TokenHostQuestion?
     /// Under the API token field: the keychain wouldn't save or remove the token.
     public internal(set) var tokenProblem: String?
+    /// The Model id menu's list, fetched after the Base URL stops changing.
+    public internal(set) var models: ModelList = .none
     /// The answer given for the draft's current origin. It holds for the rest of this edit, and
     /// goes when the URL changes.
     var tokenHostAnswer: (origin: Origin, keep: Bool)?
@@ -96,6 +112,7 @@ public struct EndpointForm: Equatable, Sendable {
     public static func == (lhs: EndpointForm, rhs: EndpointForm) -> Bool {
         lhs.editing == rhs.editing && lhs.draft == rhs.draft && lhs.result == rhs.result
             && lhs.tokenHostQuestion == rhs.tokenHostQuestion && lhs.tokenProblem == rhs.tokenProblem
+            && lhs.models == rhs.models
             && lhs.tokenHostAnswer?.origin == rhs.tokenHostAnswer?.origin
             && lhs.tokenHostAnswer?.keep == rhs.tokenHostAnswer?.keep
     }
@@ -129,19 +146,29 @@ public final class EndpointService {
     @ObservationIgnored private let clock: Clock
     @ObservationIgnored private let scheduler: Scheduler
     @ObservationIgnored private weak var toaster: Toaster?
+    /// Holds the HUD open while the keychain may prompt for the saved token.
+    @ObservationIgnored private weak var modal: ModalPresenting?
     @ObservationIgnored private var testTask: Task<Void, Never>?
     /// The checks while a started service comes up; cancelled when the form changes.
     @ObservationIgnored private var startWait: ScheduledWork?
+    /// The wait before the Model id list is fetched, and the fetch.
+    @ObservationIgnored private var modelsWait: ScheduledWork?
+    @ObservationIgnored private(set) var modelsTask: Task<Void, Never>?
+    /// Counts the list fetches started, so only the latest one's answer is kept.
+    @ObservationIgnored private var modelsFetch = 0
 
     /// Test connection waits this long for the server, apart from chat's 60 s.
     static let testTimeout: TimeInterval = 10
     /// After Start, the port is tried this often, for this long.
     static let startCheckInterval: TimeInterval = 1
     static let startTimeout: TimeInterval = 30
+    /// The Model id list is fetched once the Base URL hasn't changed for this long.
+    static let modelListDelay: TimeInterval = 0.5
 
     public init(
         settings: SettingsStore, secrets: SecretStore, transport: HTTPTransport, ports: PortProbe,
-        services: ServiceStore, clock: Clock, scheduler: Scheduler, toaster: Toaster
+        services: ServiceStore, clock: Clock, scheduler: Scheduler, toaster: Toaster,
+        modal: ModalPresenting?
     ) {
         self.settings = settings
         self.secrets = secrets
@@ -151,6 +178,7 @@ public final class EndpointService {
         self.clock = clock
         self.scheduler = scheduler
         self.toaster = toaster
+        self.modal = modal
         activeID = settings.settings.defaultEndpointID ?? settings.settings.endpoints.first?.id
     }
 
@@ -243,7 +271,8 @@ public final class EndpointService {
     // MARK: The form
 
     /// Any change to the draft. A new URL clears the result and the token-host answer, and a
-    /// URL on this Mac picks the service on its port.
+    /// URL on this Mac picks the service on its port. A new URL fetches the Model id list
+    /// again.
     public func updateDraft(_ edit: (inout EndpointDraft) -> Void) {
         let before = form.draft
         edit(&form.draft)
@@ -257,6 +286,9 @@ public final class EndpointService {
         if form.draft.token != before.token {
             form.tokenHostQuestion = nil
             form.tokenProblem = nil
+        }
+        if form.draft.baseURL != before.baseURL {
+            scheduleModelList()
         }
     }
 
@@ -280,12 +312,14 @@ public final class EndpointService {
         }
         draft.serviceID = matchingService(draft.baseURL)?.id
         resetForm(EndpointForm(editing: nil, draft: draft))
+        scheduleModelList()
     }
 
     /// A row's click, or Edit…: the form loads that endpoint.
     public func editEndpoint(_ id: Endpoint.ID) {
         guard let endpoint = endpoint(id) else { return }
         resetForm(EndpointForm(editing: id, draft: EndpointDraft(endpoint)))
+        scheduleModelList()
     }
 
     /// Cancel, while editing: nothing is kept, a token marked for removal included, and the form
@@ -337,7 +371,7 @@ public final class EndpointService {
         form.draft.removeToken = false
     }
 
-    /// A model from the list Test connection found: it fills Model id.
+    /// A model from the Model id menu, or from the list Test connection found.
     public func pickModel(_ id: String) {
         form.draft.modelID = id
         form.result = nil
@@ -409,7 +443,59 @@ public final class EndpointService {
     private func resetForm(_ next: EndpointForm = EndpointForm()) {
         testTask?.cancel()
         startWait?.cancel()
+        cancelModelList()
         form = next
+    }
+
+    // MARK: The Model id list
+
+    /// Fetches the list once the Base URL stays the same for 0.5 s, not on every keystroke. A
+    /// URL HeadsUp can't use keeps the text field and sends nothing.
+    private func scheduleModelList() {
+        cancelModelList()
+        guard EndpointURLPolicy.classify(form.draft.baseURL) != .rejected else {
+            form.models = .none
+            return
+        }
+        form.models = .loading
+        let fetch = modelsFetch
+        let at = clock.now.addingTimeInterval(Self.modelListDelay)
+        modelsWait = scheduler.schedule(at: at) { [weak self] in
+            self?.fetchModelList(fetch)
+        }
+    }
+
+    /// The list is fetched without being asked, so it sends less than Test connection: only the
+    /// saved token, and only to the saved endpoint's own origin (Scan M1). A typed token leaves
+    /// only on Test or Save. It never asks the token-host question.
+    private func fetchModelList(_ fetch: Int) {
+        guard fetch == modelsFetch else { return }
+        let draft = form.draft
+        var credential: Credential?
+        if let id = form.editing, let saved = endpoint(id), saved.hasToken, !draft.removeToken,
+            let origin = Origin(draft.baseURL), Origin(saved.baseURL) == origin
+        {
+            credential = .saved(endpointID: id, origin: origin)
+        }
+        modelsTask = Task { @MainActor in
+            // Reading the saved token may show the keychain's prompt: the HUD stays open under
+            // it (Scan I23).
+            if credential != nil { modal?.beginModal() }
+            let answer = await listModels(draft, credential: credential)
+            if credential != nil { modal?.endModal() }
+            // An older URL's answer arriving last is dropped.
+            guard !Task.isCancelled, fetch == modelsFetch else { return }
+            switch answer {
+            case .listed(let ids): form.models = ids.isEmpty ? .notListed : .listed(ids)
+            case .failed(let result): form.models = .failed(result)
+            }
+        }
+    }
+
+    private func cancelModelList() {
+        modelsWait?.cancel()
+        modelsTask?.cancel()
+        modelsFetch += 1
     }
 
     // MARK: Test connection
@@ -429,9 +515,15 @@ public final class EndpointService {
         if let editing { transport.allowKeychainRead(editing) }
         let credential = credential(for: draft)
         let task = Task { @MainActor in
-            let result = await test(draft, credential: credential)
+            let (result, models) = await test(draft, credential: credential)
             guard !Task.isCancelled, form.editing == editing, form.draft.baseURL == draft.baseURL else { return }
             form.result = result
+            // The models it listed, perhaps with the token the automatic fetch didn't send, fill
+            // the Model id menu.
+            if let models {
+                cancelModelList()
+                form.models = models.isEmpty ? .notListed : .listed(models)
+            }
         }
         testTask = task
         return task
@@ -479,38 +571,58 @@ public final class EndpointService {
         }
     }
 
-    private func test(_ draft: EndpointDraft, credential: Credential?) async -> TestResult {
+    /// The result, and the models the server listed; nil when listing them failed.
+    private func test(_ draft: EndpointDraft, credential: Credential?) async -> (TestResult, [String]?) {
+        let models: [String]
+        switch await listModels(draft, credential: credential) {
+        case .listed(let ids): models = ids
+        case .failed(let result): return (result, nil)
+        }
+        guard let base = URL(string: draft.baseURL) else {
+            return (.unreachable(hostPort: draft.baseURL, service: nil), models)
+        }
+        let typed = [draft.token].filter { !$0.isEmpty }
+        let model = draft.modelID.trimmingCharacters(in: .whitespaces)
+        if model.isEmpty || (!models.isEmpty && !models.contains(model)) {
+            let result: TestResult =
+                models.isEmpty
+                ? .modelNotOnServer(model.isEmpty ? Endpoint.defaultModel : model) : .chooseModel(models)
+            return (result, models)
+        }
+        return (await testCompletion(draft, model: model, credential: credential, base: base, typed: typed), models)
+    }
+
+    private enum ModelsAnswer {
+        /// Empty when the server doesn't list its models.
+        case listed([String])
+        case failed(TestResult)
+    }
+
+    /// `GET <base>/models`, for Test connection and the Model id menu.
+    private func listModels(_ draft: EndpointDraft, credential: Credential?) async -> ModelsAnswer {
         let probe = Endpoint(name: draft.name, baseURL: draft.baseURL, model: draft.modelID)
         guard let modelsURL = probe.url("models"), let base = URL(string: draft.baseURL) else {
-            return .unreachable(hostPort: draft.baseURL, service: nil)
+            return .failed(.unreachable(hostPort: draft.baseURL, service: nil))
         }
         let hasToken = credential != nil
         let typed = [draft.token].filter { !$0.isEmpty }
-        let models: [String]
         do {
             let response = try await transport.send(
                 HTTPRequest(url: modelsURL, credential: credential, timeout: Self.testTimeout))
             let body = try await response.collect(limit: 1 << 20)
             switch response.status {
-            case 200: models = Self.modelIDs(body)
-            case 401, 403: return hasToken ? .badToken(status: response.status) : .needsToken
-            case 404: models = []  // The server doesn't list its models.
+            case 200: return .listed(Self.modelIDs(body))
+            case 401, 403: return .failed(hasToken ? .badToken(status: response.status) : .needsToken)
+            case 404: return .listed([])  // The server doesn't list its models.
             default:
                 let message = redactSecrets(response.redact(ChatErrorMapping.message(body)), known: typed)
-                return .server(status: response.status, details: message)
+                return .failed(.server(status: response.status, details: message))
             }
         } catch let error as HTTPError {
-            return result(error, base: base, draft: draft, withToken: hasToken)
+            return .failed(result(error, base: base, draft: draft, withToken: hasToken))
         } catch {
-            return .server(status: 0, details: redactSecrets("\(error)", known: typed))
+            return .failed(.server(status: 0, details: redactSecrets("\(error)", known: typed)))
         }
-
-        let model = draft.modelID.trimmingCharacters(in: .whitespaces)
-        if model.isEmpty || (!models.isEmpty && !models.contains(model)) {
-            return models.isEmpty
-                ? .modelNotOnServer(model.isEmpty ? Endpoint.defaultModel : model) : .chooseModel(models)
-        }
-        return await testCompletion(draft, model: model, credential: credential, base: base, typed: typed)
     }
 
     /// A one-token message, timed.

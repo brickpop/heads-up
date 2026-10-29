@@ -905,7 +905,7 @@ public enum Strings {
         public static func ok(model: String, seconds: Double) -> String {
             "Connected · \(model) answered in \(String(format: "%.1f", seconds)) s"
         }
-        public static let chooseModel = "Connected. Choose a model:"
+        public static let chooseModel = "Connected. Choose a model above."
         public static func modelNotOnServer(_ model: String) -> String {
             "Connected, but “\(model)” isn't on this server."
         }
@@ -929,6 +929,11 @@ public enum Strings {
         public static let tryAgain = "Try Again"
         /// The first, empty choice of the model popup.
         public static let chooseModelPrompt = "Choose a model"
+        public static let modelsNotListed = "This server doesn't list its models. Type the model id."
+        public static let modelsNeedToken =
+            "This server needs your token to list its models. Use Test connection to send it."
+        public static func notOnServer(_ model: String) -> String { "\(model) — not on this server" }
+        public static let loadingModels = "Loading models"
         public static func serverError(status: Int) -> String { "The server answered with an error (\(status))." }
         /// Under the API token field, when the keychain wouldn't save the token.
         public static let keychainFailed =

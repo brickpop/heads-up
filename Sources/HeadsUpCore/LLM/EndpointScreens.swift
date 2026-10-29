@@ -71,6 +71,9 @@ public struct EndpointFormScreen: Equatable, Sendable {
     public let label: String
     public let name: String
     public let modelID: String
+    public let modelField: ModelField
+    /// Under Model id, in --ink-2: why it is a text field and not the menu.
+    public let modelIDHelp: String?
     public let baseURL: String
     /// Under Base URL: --warn for a private address over http, --danger for a URL that can't
     /// be used (F9).
@@ -107,6 +110,21 @@ public struct EndpointFormScreen: Equatable, Sendable {
     public let cancel: String?
     public let bar: EndpointFormBar
 
+    /// Model id: the server's models in a pop-up menu (mono), or the text field.
+    public enum ModelField: Equatable, Sendable {
+        case text
+        /// The menu: the server's models, after a model id the list doesn't hold. `selected` is
+        /// the draft's model id; with none, the menu shows `prompt`. Picking one is
+        /// `endpoints.pickModel(id)`. While loading, it is disabled with a small spinner.
+        case menu(choices: [ModelChoice], selected: String?, prompt: String, isLoading: Bool)
+    }
+
+    /// A model in the menu. `title` is the id, or "llama2:7b — not on this server".
+    public struct ModelChoice: Equatable, Sendable {
+        public let id: String
+        public let title: String
+    }
+
     public struct Note: Equatable, Sendable {
         public let text: String
         public let style: Style
@@ -142,10 +160,6 @@ public enum EndpointFormBar: Equatable, Sendable {
 public struct TestResultScreen: Equatable, Sendable {
     public let style: Style
     public let text: String
-    /// The server's models: picking one is `endpoints.pickModel(id)`.
-    public let models: [String]?
-    /// The popup's first, empty choice: "Choose a model".
-    public let modelPrompt: String?
     /// "Start Ollama": `AppModel.startTestService()`.
     public let start: String?
     /// "Open Services", after a service didn't start: `AppModel.openTestServiceLogs()`.
@@ -266,7 +280,8 @@ extension EndpointService {
             savedMask.map(Strings.EndpointForm.tokenSavedPlaceholder) ?? Strings.EndpointForm.tokenPlaceholder
         return EndpointFormScreen(
             label: editing.map { Strings.EndpointForm.editLabel($0.name) } ?? Strings.EndpointForm.addLabel,
-            name: draft.name, modelID: draft.modelID, baseURL: draft.baseURL, baseURLNote: note,
+            name: draft.name, modelID: draft.modelID, modelField: modelField, modelIDHelp: modelIDHelp,
+            baseURL: draft.baseURL, baseURLNote: note,
             tokenEnabled: tokenEnabled, tokenPlaceholder: placeholder,
             tokenHelp: tokenEnabled ? Strings.EndpointForm.tokenHelp : Strings.EndpointForm.tokenNeedsHTTPS,
             tokenProblem: form.tokenProblem,
@@ -286,6 +301,40 @@ extension EndpointService {
             } ?? .none)
     }
 
+    /// Model id: the menu once the server listed its models or while they load, else the text
+    /// field.
+    private var modelField: EndpointFormScreen.ModelField {
+        let current = form.draft.modelID.trimmingCharacters(in: .whitespaces)
+        func menu(_ models: [String], isLoading: Bool) -> EndpointFormScreen.ModelField {
+            var choices = models.map { EndpointFormScreen.ModelChoice(id: $0, title: $0) }
+            // A model id the server doesn't list (an edited endpoint whose model is gone) stays
+            // the current item. While loading, it isn't known yet whether the server has it.
+            if !current.isEmpty && !models.contains(current) {
+                let title = isLoading ? current : Strings.EndpointForm.notOnServer(current)
+                choices.insert(EndpointFormScreen.ModelChoice(id: current, title: title), at: 0)
+            }
+            return .menu(
+                choices: choices, selected: current.isEmpty ? nil : current,
+                prompt: Strings.EndpointForm.chooseModelPrompt, isLoading: isLoading)
+        }
+        switch form.models {
+        case .none, .notListed, .failed: return .text
+        case .loading: return menu([], isLoading: true)
+        case .listed(let models): return menu(models, isLoading: false)
+        }
+    }
+
+    /// Under the text field, in --ink-2: why there is no menu.
+    private var modelIDHelp: String? {
+        switch form.models {
+        case .none, .loading, .listed: nil
+        case .notListed: Strings.EndpointForm.modelsNotListed
+        // Without a token sent, a server that wants one: Test connection sends the token.
+        case .failed(.needsToken): Strings.EndpointForm.modelsNeedToken
+        case .failed(let result): resultScreen(result).text
+        }
+    }
+
     /// The service popup, only for a URL on this Mac.
     private var servicePicker: EndpointFormScreen.ServicePicker? {
         guard EndpointURLPolicy.classify(form.draft.baseURL) == .loopback else { return nil }
@@ -302,18 +351,17 @@ extension EndpointService {
 
     private func resultScreen(_ result: TestResult) -> TestResultScreen {
         func screen(
-            _ style: TestResultScreen.Style, _ text: String, models: [String]? = nil, start: String? = nil,
+            _ style: TestResultScreen.Style, _ text: String, start: String? = nil,
             openServices: String? = nil, tryAgain: String? = nil, details: String? = nil
         ) -> TestResultScreen {
             TestResultScreen(
-                style: style, text: text, models: models,
-                modelPrompt: models == nil ? nil : Strings.EndpointForm.chooseModelPrompt, start: start,
-                openServices: openServices, tryAgain: tryAgain, details: details)
+                style: style, text: text, start: start, openServices: openServices, tryAgain: tryAgain,
+                details: details)
         }
         switch result {
         case .testing: return screen(.running, Strings.EndpointForm.testing)
         case .ok(let model, let seconds): return screen(.ok, Strings.EndpointForm.ok(model: model, seconds: seconds))
-        case .chooseModel(let models): return screen(.warn, Strings.EndpointForm.chooseModel, models: models)
+        case .chooseModel: return screen(.warn, Strings.EndpointForm.chooseModel)
         case .modelNotOnServer(let model): return screen(.warn, Strings.EndpointForm.modelNotOnServer(model))
         case .needsToken: return screen(.error, Strings.EndpointForm.needsToken)
         case .badToken(let status): return screen(.error, Strings.EndpointForm.badToken(status: status))

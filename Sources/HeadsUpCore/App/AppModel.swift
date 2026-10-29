@@ -202,7 +202,7 @@ public final class AppModel {
         let endpoints = EndpointService(
             settings: settings, secrets: ports.secrets,
             transport: HTTPTransport(client: ports.httpClient, secrets: ports.secrets), ports: ports.portProbe,
-            services: services, clock: ports.clock, scheduler: ports.scheduler, toaster: hud)
+            services: services, clock: ports.clock, scheduler: ports.scheduler, toaster: hud, modal: hud)
         self.endpoints = endpoints
         let pins = PinsStore(
             store: ports.pinnedChats ?? ports.dataFolder.map { SQLitePinnedChats(folder: $0) } ?? MemoryPinnedChats(),

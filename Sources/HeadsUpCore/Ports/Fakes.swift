@@ -429,9 +429,35 @@ import Foundation
 
         public var requests: [URLRequest] { lock.withLock { recorded } }
 
+        /// Set, the next request waits until `release()`: a slow server. It is answered as
+        /// scripted when released, not when sent.
+        public var holds: Bool {
+            get { lock.withLock { holding } }
+            set { lock.withLock { holding = newValue } }
+        }
+        private var holding = false
+        private var waiting: CheckedContinuation<Void, Never>?
+        public var isWaiting: Bool { lock.withLock { waiting != nil } }
+
+        public func release() {
+            let continuation = lock.withLock {
+                let held = waiting
+                waiting = nil
+                return held
+            }
+            continuation?.resume()
+        }
+
         public func send(_ request: URLRequest) async throws -> HTTPResponse {
-            let (failure, answer) = lock.withLock { () -> (HTTPError?, (status: Int, body: String)?) in
+            let held = lock.withLock {
                 recorded.append(request)
+                defer { holding = false }
+                return holding
+            }
+            if held {
+                await withCheckedContinuation { continuation in lock.withLock { waiting = continuation } }
+            }
+            let (failure, answer) = lock.withLock { () -> (HTTPError?, (status: Int, body: String)?) in
                 let path = request.url?.path ?? ""
                 return (failing, scripted.first { path.hasSuffix($0.key) }?.value)
             }

@@ -242,8 +242,8 @@ private final class EndpointsHarness {
         h.endpoints.quickAdd(.ollama)
         await h.endpoints.testConnection().value
         let result = try #require(h.endpoints.settingsScreen.form.result)
-        #expect(result.style == .warn && result.text == "Connected. Choose a model:")
-        #expect(result.models == ["llama3.1:8b", "qwen2.5"])
+        #expect(result.style == .warn && result.text == "Connected. Choose a model above.")
+        #expect(h.endpoints.form.models == .listed(["llama3.1:8b", "qwen2.5"]))
         h.endpoints.pickModel("qwen2.5")
         #expect(h.endpoints.settingsScreen.form.modelID == "qwen2.5")
     }
@@ -662,7 +662,10 @@ private final class EndpointsHarness {
         #expect(h.endpoints.settingsScreen.form.service?.selectedID == service.id)
         h.server.answer("/models", body: #"{"data":[{"id":"a"}]}"#)
         await h.endpoints.testConnection().value
-        #expect(h.endpoints.settingsScreen.form.result?.modelPrompt == "Choose a model")
+        guard case .menu(_, nil, "Choose a model", false) = h.endpoints.settingsScreen.form.modelField else {
+            Issue.record("Model id isn't the menu with its prompt")
+            return
+        }
     }
 
     @Test func startWaitsForThePortThenTestsAgainOrTimesOut() async throws {
@@ -682,7 +685,7 @@ private final class EndpointsHarness {
         h.server.answer("/models", body: #"{"data":[{"id":"llama3.1:8b"}]}"#)
         h.scheduler.advance(by: 1)
         for _ in 0..<10 { await Task.yield() }
-        #expect(h.endpoints.settingsScreen.form.result?.text == "Connected. Choose a model:")
+        #expect(h.endpoints.settingsScreen.form.result?.text == "Connected. Choose a model above.")
 
         // Never answers: after 30 s it says so, with Open Services.
         h.server.fail(with: .refused)
@@ -698,5 +701,273 @@ private final class EndpointsHarness {
             result.text == "Ollama didn't start. Check its log in Services." && result.openServices == "Open Services")
         h.model.openTestServiceLogs()
         #expect(h.model.hud.tab == .services && h.model.services.openLogs == service.id)
+    }
+}
+
+/// The Model id menu (spec: "Model id is picked from the server's list"): the server's models
+/// are fetched 0.5 s after the Base URL stops changing, with the saved token only to its own
+/// origin.
+@MainActor
+@Suite(.serialized) struct ModelPickerTests {
+    /// Runs the pending list fetch, if the wait is over, and waits for its answer.
+    private func fetch(_ h: EndpointsHarness, after seconds: TimeInterval = 0.5) async {
+        h.scheduler.advance(by: seconds)
+        await h.endpoints.modelsTask?.value
+    }
+
+    private func field(_ h: EndpointsHarness) -> EndpointFormScreen.ModelField {
+        h.endpoints.settingsScreen.form.modelField
+    }
+
+    private func help(_ h: EndpointsHarness) -> String? {
+        h.endpoints.settingsScreen.form.modelIDHelp
+    }
+
+    /// The menu, each model titled with its id.
+    private func menu(_ ids: [String], selected: String? = nil, loading: Bool = false) -> EndpointFormScreen.ModelField
+    {
+        .menu(
+            choices: ids.map { EndpointFormScreen.ModelChoice(id: $0, title: $0) }, selected: selected,
+            prompt: "Choose a model", isLoading: loading)
+    }
+
+    @Test func theListIsFetchedHalfASecondAfterTheURLStopsChanging() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/models", body: #"{"data":[{"id":"qwen2.5"},{"id":"llama3.1:8b"}]}"#)
+        #expect(field(h) == .text && help(h) == nil)
+        h.endpoints.updateDraft { $0.baseURL = "http://localhost:11434" }
+        // Loading: the menu is disabled with a spinner, and nothing is sent yet.
+        #expect(field(h) == menu([], loading: true))
+        h.scheduler.advance(by: 0.3)
+        h.endpoints.updateDraft { $0.baseURL = "http://localhost:11434/v1" }
+        h.scheduler.advance(by: 0.3)
+        #expect(h.server.requests.isEmpty)
+        await fetch(h, after: 0.2)
+        #expect(h.server.requests.map(\.url?.absoluteString) == ["http://localhost:11434/v1/models"])
+        #expect(field(h) == menu(["llama3.1:8b", "qwen2.5"]) && help(h) == nil)
+        h.endpoints.pickModel("qwen2.5")
+        #expect(h.endpoints.form.draft.modelID == "qwen2.5")
+        #expect(field(h) == menu(["llama3.1:8b", "qwen2.5"], selected: "qwen2.5"))
+        // Other fields don't fetch it again.
+        h.endpoints.updateDraft { $0.name = "Ollama" }
+        await fetch(h)
+        #expect(h.server.requests.count == 1)
+    }
+
+    @Test func anInvalidURLKeepsTheTextFieldAndSendsNothing() async throws {
+        let h = try EndpointsHarness()
+        for url in ["http", "api.example.com/v1", "http://example.com/v1"] {
+            h.endpoints.updateDraft { $0.baseURL = url }
+            #expect(field(h) == .text && help(h) == nil)
+        }
+        await fetch(h)
+        #expect(h.server.requests.isEmpty && h.scheduler.pendingCount == 0)
+    }
+
+    @Test func anOlderURLsAnswerArrivingLastIsDropped() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/old/models", body: #"{"data":[{"id":"old-model"}]}"#)
+        h.server.answer("/new/models", body: #"{"data":[{"id":"new-model"}]}"#)
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/old" }
+        h.server.holds = true
+        h.scheduler.advance(by: 0.5)
+        let old = try #require(h.endpoints.modelsTask)
+        for _ in 0..<50 where !h.server.isWaiting { await Task.yield() }
+        #expect(h.server.isWaiting)
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/new" }
+        await fetch(h)
+        #expect(field(h) == menu(["new-model"]))
+        h.server.release()
+        await old.value
+        #expect(field(h) == menu(["new-model"]))
+
+        // The same URL typed again doesn't take the answer of its earlier fetch either.
+        h.server.holds = true
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/old" }
+        h.scheduler.advance(by: 0.5)
+        let first = try #require(h.endpoints.modelsTask)
+        for _ in 0..<50 where !h.server.isWaiting { await Task.yield() }
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/ol" }
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/old" }
+        h.server.answer("/old/models", body: #"{"data":[{"id":"second"}]}"#)
+        await fetch(h)
+        h.server.answer("/old/models", body: #"{"data":[{"id":"first"}]}"#)
+        h.server.release()
+        await first.value
+        #expect(field(h) == menu(["second"]))
+    }
+
+    @Test func anEditOnTheSavedOriginListsWithTheSavedToken() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/models", body: #"{"data":[{"id":"gpt-4o-mini"}]}"#)
+        let id = h.add("GPT", url: "https://api.openai.com/v1", model: "gpt-4o-mini", token: "sk-proj-abcdefgha91f")
+        h.endpoints.editEndpoint(id)
+        // Another path on the same origin still gets it.
+        h.endpoints.updateDraft { $0.baseURL = "https://api.openai.com/v2" }
+        await fetch(h)
+        #expect(h.server.requests.count == 1)
+        #expect(h.lastRequest()?.url?.absoluteString == "https://api.openai.com/v2/models")
+        #expect(h.lastRequest()?.value(forHTTPHeaderField: "Authorization") == "Bearer sk-proj-abcdefgha91f")
+        #expect(field(h) == menu(["gpt-4o-mini"], selected: "gpt-4o-mini"))
+    }
+
+    // Scan M1: the automatic fetch never sends a typed token, to any host. It leaves only on Test
+    // or Save.
+    @Test func theAutomaticFetchNeverSendsATypedToken() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/models", status: 401)
+        h.endpoints.updateDraft {
+            $0.token = "sk-typed-abcdefgh"
+            $0.baseURL = "https://attacker.example/v1"
+        }
+        await fetch(h)
+        #expect(h.server.requests.count == 1)
+        #expect(h.lastRequest()?.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(field(h) == .text)
+        #expect(help(h) == "This server needs your token to list its models. Use Test connection to send it.")
+        // Typing the token doesn't fetch again either.
+        h.endpoints.updateDraft { $0.token = "sk-typed-abcdefghi" }
+        await fetch(h)
+        #expect(h.server.requests.count == 1)
+
+        // Editing a saved endpoint, a typed token isn't sent even to the saved origin.
+        let id = h.add("GPT", url: "https://api.openai.com/v1", token: "sk-proj-abcdefgha91f")
+        h.endpoints.editEndpoint(id)
+        h.endpoints.updateDraft { $0.token = "sk-typed-abcdefgh" }
+        h.endpoints.updateDraft { $0.baseURL = "https://new-host.example/v1" }
+        await fetch(h)
+        #expect(h.lastRequest()?.url?.host == "new-host.example")
+        #expect(h.lastRequest()?.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func aChangedHostGetsNoTokenAndNoQuestion() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/models", body: #"{"data":[{"id":"gpt-4o-mini"}]}"#)
+        let id = h.add("GPT", url: "https://api.openai.com/v1", model: "gpt-4o-mini", token: "sk-proj-abcdefgha91f")
+        h.endpoints.editEndpoint(id)
+        h.endpoints.updateDraft { $0.baseURL = "https://new-host.example/v1" }
+        await fetch(h)
+        #expect(h.lastRequest()?.url?.host == "new-host.example")
+        #expect(h.lastRequest()?.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(h.endpoints.form.tokenHostQuestion == nil && h.endpoints.settingsScreen.form.bar == .none)
+    }
+
+    @Test func testConnectionFillsTheMenuWithWhatItListed() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/models", status: 401)
+        h.endpoints.updateDraft {
+            $0.name = "GPT"
+            $0.baseURL = "https://api.openai.com/v1"
+            $0.token = "sk-typed-abcdefgh"
+        }
+        await fetch(h)
+        #expect(field(h) == .text)
+        h.server.answer("/models", body: #"{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4o"}]}"#)
+        await h.endpoints.testConnection().value
+        #expect(h.lastRequest()?.value(forHTTPHeaderField: "Authorization") == "Bearer sk-typed-abcdefgh")
+        #expect(h.endpoints.settingsScreen.form.result?.text == "Connected. Choose a model above.")
+        #expect(field(h) == menu(["gpt-4o", "gpt-4o-mini"]) && help(h) == nil)
+    }
+
+    @Test func aRemovedTokenIsNotSent() async throws {
+        let h = try EndpointsHarness()
+        let id = h.add("GPT", url: "https://api.openai.com/v1", token: "sk-proj-abcdefgha91f")
+        h.endpoints.editEndpoint(id)
+        h.endpoints.removeToken()
+        await fetch(h)
+        #expect(h.lastRequest()?.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    // Scan I23: a keychain prompt for the saved token can't close the HUD.
+    @Test func theHUDStaysOpenWhileTheSavedTokenIsRead() async throws {
+        let h = try EndpointsHarness()
+        let id = h.add("GPT", url: "https://api.openai.com/v1", token: "sk-proj-abcdefgha91f")
+        h.endpoints.editEndpoint(id)
+        h.server.holds = true
+        h.scheduler.advance(by: 0.5)
+        let task = try #require(h.endpoints.modelsTask)
+        for _ in 0..<50 where !h.server.isWaiting { await Task.yield() }
+        #expect(h.model.hud.modalDepth == 1)
+        h.server.release()
+        await task.value
+        #expect(h.model.hud.modalDepth == 0)
+        // Without a token to read, it isn't held.
+        h.endpoints.quickAdd(.ollama)
+        h.server.holds = true
+        h.scheduler.advance(by: 0.5)
+        let open = try #require(h.endpoints.modelsTask)
+        for _ in 0..<50 where !h.server.isWaiting { await Task.yield() }
+        #expect(h.model.hud.modalDepth == 0)
+        h.server.release()
+        await open.value
+    }
+
+    @Test func withNoListTheTextFieldComesBackWithTheReason() async throws {
+        let h = try EndpointsHarness()
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/v1" }
+        let notListed = "This server doesn't list its models. Type the model id."
+
+        h.server.answer("/models", body: #"{"data":[]}"#)
+        await fetch(h)
+        #expect(field(h) == .text && help(h) == notListed)
+
+        h.server.answer("/models", status: 404)
+        h.endpoints.updateDraft { $0.baseURL = "https://b.example/v1" }
+        await fetch(h)
+        #expect(field(h) == .text && help(h) == notListed)
+
+        h.server.answer("/models", status: 200, body: "not json")
+        h.endpoints.updateDraft { $0.baseURL = "https://d.example/v1" }
+        await fetch(h)
+        #expect(field(h) == .text && help(h) == notListed)
+
+        h.server.answer("/models", status: 403)
+        h.endpoints.updateDraft { $0.baseURL = "https://c.example/v1" }
+        await fetch(h)
+        #expect(help(h) == "This server needs your token to list its models. Use Test connection to send it.")
+
+        // Other failures say what Test connection would.
+        h.server.answer("/models", status: 401)
+        let id = h.add("GPT", url: "https://e.example/v1", token: "sk-proj-abcdefgha91f")
+        h.endpoints.editEndpoint(id)
+        await fetch(h)
+        #expect(field(h) == .text && help(h) == "The server rejected the token (401).")
+
+        h.server.fail(with: .refused)
+        h.endpoints.updateDraft { $0.baseURL = "http://localhost:11434/v1" }
+        await fetch(h)
+        #expect(field(h) == .text && help(h) == "Can't reach localhost:11434.")
+    }
+
+    @Test func aModelTheListDoesntHoldStaysTheCurrentItem() async throws {
+        let h = try EndpointsHarness()
+        let id = h.add("Llama", url: "http://localhost:11434/v1", model: "llama2:7b")
+        h.server.answer("/models", body: #"{"data":[{"id":"qwen2.5"},{"id":"llama3.1:8b"}]}"#)
+        h.endpoints.editEndpoint(id)
+        // While it loads, the saved model shows.
+        #expect(field(h) == menu(["llama2:7b"], selected: "llama2:7b", loading: true))
+        await fetch(h)
+        #expect(
+            field(h)
+                == .menu(
+                    choices: [
+                        EndpointFormScreen.ModelChoice(id: "llama2:7b", title: "llama2:7b — not on this server"),
+                        EndpointFormScreen.ModelChoice(id: "llama3.1:8b", title: "llama3.1:8b"),
+                        EndpointFormScreen.ModelChoice(id: "qwen2.5", title: "qwen2.5"),
+                    ], selected: "llama2:7b", prompt: "Choose a model", isLoading: false))
+    }
+
+    @Test func savingOrCancellingStopsAPendingFetch() async throws {
+        let h = try EndpointsHarness()
+        h.server.answer("/models", body: #"{"data":[{"id":"a"}]}"#)
+        h.endpoints.updateDraft {
+            $0.name = "A"
+            $0.baseURL = "https://a.example/v1"
+        }
+        h.endpoints.saveForm()
+        h.endpoints.quickAdd(.openAI)
+        h.endpoints.cancelForm()
+        await fetch(h)
+        #expect(h.server.requests.isEmpty && field(h) == .text)
     }
 }
