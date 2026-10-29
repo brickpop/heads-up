@@ -724,5 +724,44 @@ else
 fi
 
 echo
+echo "release-adhoc"
+# A public release never ships with the placeholder bundle id (Nick). The check runs before the
+# macOS one, so it holds on Linux too.
+status=0
+"$tools/make-app.sh" adhoc-release dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 || status=$?
+if [ "$status" -ne 0 ] && grep -q "^make-app: bundle_id is still the placeholder dev.headsup.app" "$work/out"; then
+    pass "release-adhoc refuses the placeholder bundle id"
+else
+    fail "release-adhoc refuses the placeholder bundle id" "status $status: $(cat "$work/out")"
+fi
+
+echo
+echo "render-cask"
+good_sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+if "$tools/render-cask.sh" 1.2.3 "$good_sha" brickpop/heads-up dev.headsup.app >"$work/cask.rb" 2>&1 &&
+    grep -q '^  version "1.2.3"$' "$work/cask.rb" && grep -q "^  sha256 \"$good_sha\"$" "$work/cask.rb" &&
+    grep -q 'github.com/brickpop/heads-up/releases/download/v#{version}/HeadsUp-#{version}.dmg' "$work/cask.rb" &&
+    grep -q 'Preferences/dev.headsup.app.plist' "$work/cask.rb" && ! grep -q '@[A-Z_]*@' "$work/cask.rb"; then
+    pass "render-cask fills in every value"
+else
+    fail "render-cask fills in every value" "$(cat "$work/cask.rb")"
+fi
+render_refuses() { # name, then the four arguments
+    local name=$1
+    shift
+    if "$tools/render-cask.sh" "$@" >"$work/out" 2>&1; then
+        fail "render-cask refuses $name" "it wrote: $(head -3 "$work/out")"
+    elif grep -q '^render-cask: ' "$work/out"; then
+        pass "render-cask refuses $name"
+    else
+        fail "render-cask refuses $name" "$(cat "$work/out")"
+    fi
+}
+render_refuses "a version with a quote" '1.2"; system("x")' "$good_sha" brickpop/heads-up dev.headsup.app
+render_refuses "a short sha256" 1.2.3 abc123 brickpop/heads-up dev.headsup.app
+render_refuses "a repo with a slash too many" 1.2.3 "$good_sha" brickpop/heads-up/x dev.headsup.app
+render_refuses "a bundle id with a pipe" 1.2.3 "$good_sha" brickpop/heads-up 'dev.headsup|x'
+
+echo
 echo "tools: $passed passed, $failed failed"
 [ "$failed" -eq 0 ]

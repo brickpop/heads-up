@@ -1,0 +1,58 @@
+# Checks every push to main and every pull request: the lint and the tests on Linux, where the
+# team works, and the app build and the tests on macOS, the platform HeadsUp ships for.
+#
+# Actions are pinned by commit, with their tag in a comment. Linux's just comes from apt,
+# unpinned (docs/RELEASE.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Lint and test (Linux)
+    # tools/swift-linux.lock pins Linux aarch64 builds of Swift.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install just
+        run: sudo apt-get update && sudo apt-get install -y just
+      - name: Cache the Swift toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/headsup
+          key: swift-linux-arm64-${{ hashFiles('tools/swift-linux.lock') }}
+      - run: just setup-swift
+      - run: just lint
+      - run: just test
+
+  macos:
+    name: Build and test (macOS)
+    # Pull requests always run on GitHub's own runner: code from a fork must never reach a
+    # self-hosted machine. Pushes to main may use another runner through the MACOS_RUNNER
+    # variable. The build needs Swift 6.4 or newer: tools/swift.sh stops with a clear message on
+    # an older one.
+    runs-on: ${{ github.event_name == 'pull_request' && 'macos-latest' || vars.MACOS_RUNNER || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the build number is the number of commits
+          persist-credentials: false
+      - name: Use the newest Xcode toolchain on the runner
+        run: .github/scripts/select-newest-xcode.sh
+      - name: Install just (pinned, checksum verified)
+        run: .github/scripts/install-just.sh
+      - run: swift --version
+      - run: just test
+      - run: just app

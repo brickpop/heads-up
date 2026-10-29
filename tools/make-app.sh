@@ -2,9 +2,12 @@
 # Builds build/HeadsUp.app on macOS (ADR-001 §10), for Apple silicon (arm64) only,
 # signed with the hardened runtime and the entitlements in Resources/.
 #
-# Usage: tools/make-app.sh <adhoc|identity|quick> <bundle id> <version> <build number>
+# Usage: tools/make-app.sh <adhoc|adhoc-release|identity|quick> <bundle id> <version> <build number>
 #   adhoc     signs with no identity (`just app`). macOS forgets the app's permissions
 #             and Keychain access after each ad-hoc build.
+#   adhoc-release  the public release while there is no signing identity (`just release-adhoc`,
+#             run by CI): the checks of `identity` except the signer, the core tests on this
+#             Mac's Swift, and build/HeadsUp.dmg, an unsigned image holding the ad-hoc app.
 #   identity  signs with $HEADSUP_SIGN_ID, a code-signing identity in your keychain,
 #             and then makes build/HeadsUp.dmg (`just build`).
 #   quick     a debug build for this Mac only, signed ad-hoc, where one timer minute lasts
@@ -19,8 +22,14 @@ die() {
     exit 1
 }
 
-[ $# -eq 4 ] || die "usage: tools/make-app.sh <adhoc|identity|quick> <bundle id> <version> <build number>"
+[ $# -eq 4 ] || die "usage: tools/make-app.sh <adhoc|adhoc-release|identity|quick> <bundle id> <version> <build number>"
 mode=$1 bundle_id=$2 version=$3 build_number=$4
+
+# A public release fixes the bundle id for good: tokens saved under one id aren't found under
+# another. So it never ships with the justfile's placeholder (Nick). Checked first, on any OS.
+if [ "$mode" = adhoc-release ] && [ "$bundle_id" = dev.headsup.app ]; then
+    die "bundle_id is still the placeholder dev.headsup.app. Set the real one in the justfile before a public release: tokens saved under one id aren't found under another."
+fi
 
 [ "$(uname -s)" = Darwin ] || die "building HeadsUp.app needs macOS, with the Command Line Tools (Xcode isn't needed)."
 # Apple silicon only: the macOS 27 Command Line Tools ship Swift's support libraries for arm64
@@ -40,7 +49,7 @@ if [ "$mode" = quick ]; then
 fi
 
 case "$mode" in
-adhoc | quick) sign_id=- ;;
+adhoc | adhoc-release | quick) sign_id=- ;;
 identity)
     sign_id=${HEADSUP_SIGN_ID:-}
     # One whole identity, checked before the build, so a typo doesn't cost a full build first.
@@ -48,7 +57,7 @@ identity)
     identity_problem=$("$(dirname "${BASH_SOURCE[0]}")/check-sign-identity.sh" "$sign_id" 2>&1) ||
         die "$identity_problem"
     ;;
-*) die "mode must be adhoc, identity or quick, not '$mode'" ;;
+*) die "mode must be adhoc, adhoc-release, identity or quick, not '$mode'" ;;
 esac
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -101,7 +110,7 @@ wait_jobs() {
     job_names=()
 }
 
-# The build, and in identity mode the core tests, run at the same time, each in its own build
+# The build, and in the release modes the core tests, run at the same time, each in its own build
 # folder (two SwiftPM runs can't share one). The app is arm64 only (see the check at the top);
 # the list of architectures has that one entry.
 # Only the versions in Package.resolved, and no resolution at build time (F15).
@@ -131,7 +140,7 @@ for arch in "${architectures[@]}"; do
 done
 # The release is built by this Mac's Swift, so the core's tests run on it too, alongside the
 # builds. Nothing is signed or packaged unless they pass.
-if [ "$mode" = identity ]; then
+if [ "$mode" = identity ] || [ "$mode" = adhoc-release ]; then
     echo "make-app: running the core tests on this Mac's Swift, while it builds"
     start_job tests tools/swift.sh test --scratch-path .build/make-app-tests "${resolved[@]}"
 fi
@@ -225,16 +234,27 @@ if [ "$mode" = identity ]; then
     fi
     authority=$(grep -m1 '^Authority=' <<<"$info" || true)
     echo "make-app: signed by ${authority:-$sign_id}"
+fi
 
+if [ "$mode" = identity ] || [ "$mode" = adhoc-release ]; then
     dmg=build/HeadsUp.dmg
     rm -f "$dmg"
     hdiutil create -volname HeadsUp -srcfolder "$app" -ov -format UDZO "$dmg" >/dev/null
-    codesign --force --timestamp=none -s "$sign_id" "$dmg"
-    # The image's checksums, its signature, and the app inside it, as the CEO will open it.
+    # Only an identity signs the image: an ad-hoc signature on it would prove nothing.
+    if [ "$mode" = identity ]; then
+        codesign --force --timestamp=none -s "$sign_id" "$dmg"
+    fi
+    # The image's checksums, its signature, and the app inside it, as the user will open it.
     hdiutil verify "$dmg" >/dev/null 2>&1 || die "$dmg doesn't verify (hdiutil verify)"
-    codesign --verify --strict "$dmg" || die "$dmg's signature doesn't verify"
+    if [ "$mode" = identity ]; then
+        codesign --verify --strict "$dmg" || die "$dmg's signature doesn't verify"
+    fi
     mount=$(mktemp -d)
     hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null || die "can't open $dmg"
     codesign --verify --strict --deep "$mount/$name.app" || die "the app inside $dmg doesn't verify"
-    echo "make-app: built $dmg (signed, verified, and the app inside it verifies)"
+    if [ "$mode" = identity ]; then
+        echo "make-app: built $dmg (signed, verified, and the app inside it verifies)"
+    else
+        echo "make-app: built $dmg (unsigned image, verified; the ad-hoc app inside it verifies)"
+    fi
 fi

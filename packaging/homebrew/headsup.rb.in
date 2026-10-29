@@ -1,0 +1,29 @@
+# The HeadsUp cask, written by tools/render-cask.sh for each release (.github/workflows/release.yml).
+# Edit this template in the HeadsUp repository, not the copy in the tap: the next release
+# overwrites the tap's copy.
+cask "headsup" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/@REPO@/releases/download/v#{version}/HeadsUp-#{version}.dmg"
+  name "HeadsUp"
+  desc "Menu bar HUD for quick AI prompts, focus timers, commands and services"
+  homepage "https://github.com/@REPO@"
+
+  depends_on arch: :arm64
+  depends_on macos: ">= :sonoma"
+
+  app "HeadsUp.app"
+
+  zap trash: [
+    "~/Library/Application Support/HeadsUp",
+    "~/Library/Preferences/@BUNDLE_ID@.plist",
+  ]
+
+  caveats <<~EOS
+    HeadsUp isn't notarized by Apple yet, so macOS blocks its first launch.
+    Open HeadsUp once, then System Settings › Privacy & Security › Open Anyway.
+    Each update is a new ad-hoc build: macOS asks again for the permissions you gave it,
+    and for your login password the first time it reads a saved API token.
+  EOS
+end

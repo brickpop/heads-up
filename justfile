@@ -60,3 +60,21 @@ build:
 [linux]
 build:
     @echo "just build needs macOS. On Linux, use just test and just lint." >&2; exit 1
+
+# The public release while it has no signing identity, as CI makes it: the checks of `build`
+# except the signer, then build/HeadsUp.dmg, an unsigned image holding the ad-hoc app.
+[macos]
+release-adhoc:
+    tools/make-app.sh adhoc-release "{{ bundle_id }}" "{{ version }}" "{{ build_number }}"
+
+[linux]
+release-adhoc:
+    @echo "just release-adhoc needs macOS. On Linux, use just test and just lint." >&2; exit 1
+
+# Prints the version, for the release workflow to check against its tag.
+print-version:
+    @echo "{{ version }}"
+
+# Prints the bundle identifier, for the release workflow's Homebrew cask.
+print-bundle-id:
+    @echo "{{ bundle_id }}"
