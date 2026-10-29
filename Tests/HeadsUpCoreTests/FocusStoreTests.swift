@@ -852,6 +852,24 @@ private struct FocusHarness {
         #expect(!h.hud.isOpen)
     }
 
+    // Card focus-end-auto-open: the CEO's run. A start from the HUD hides it; at the end it opens
+    // by itself on the break prompt, without the keyboard, along with the notification.
+    @Test func aStartThatHidTheHUDStillOpensItOnTheBreakPrompt() {
+        let h = FocusHarness()
+        h.hud.open(tab: .chat)
+        h.hud.setInput("/start 1")
+        h.hud.submit()
+        h.scheduler.advance(by: delay)
+        #expect(!h.hud.isOpen && !h.window.isVisible)
+        let shown = h.window.showCount
+
+        h.minutes(1)
+        #expect(h.focus.phase == .prompt(.breakPrompt(manual: false)))
+        #expect(h.delivered?.category == .focusEnd)
+        #expect(h.hud.isOpen && h.hud.tab == .focus)
+        #expect(h.window.isVisible && h.window.showCount == shown + 1 && !h.window.isKey)
+    }
+
     @Test func aTypedStartHidesTheHUDToo() {
         let h = FocusHarness()
         h.hud.open(tab: .chat)
