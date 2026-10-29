@@ -826,15 +826,17 @@ private struct FocusHarness {
     }
 }
 
-/// After a start from the open HUD, it hides 3 s later (CEO, 2026-10-29).
+/// After a start from the open HUD, it hides after `FocusStore.startHideDelay` (CEO, 2026-10-29).
 @MainActor
 @Suite(.serialized) struct FocusHideAfterStartTests {
-    @Test func startingFromTheHUDHidesItThreeSecondsLater() {
+    private let delay = FocusStore.startHideDelay
+
+    @Test func startingFromTheHUDHidesItAfterTheDelay() {
         let h = FocusHarness()
         h.hud.open(tab: .focus)
         h.focus.start()
         #expect(h.hud.footerLeft == .toast("Focus started · 25 min"))
-        h.scheduler.advance(by: 2.9)
+        h.scheduler.advance(by: delay - 0.1)
         #expect(h.hud.isOpen)
         h.scheduler.advance(by: 0.1)
         #expect(!h.hud.isOpen)
@@ -846,7 +848,7 @@ private struct FocusHarness {
             Issue.record("expected the break")
             return
         }
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(!h.hud.isOpen)
     }
 
@@ -861,7 +863,7 @@ private struct FocusHarness {
         }
         #expect(run.minutes == 30)
         #expect(h.hud.isOpen && h.hud.tab == .focus)
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(!h.hud.isOpen)
     }
 
@@ -870,14 +872,14 @@ private struct FocusHarness {
         h.hud.open(tab: .focus)
         h.focus.start()
         h.hud.setInput("n")  // typing
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
 
         h.hud.setInput("")
         h.focus.stop()
         h.focus.start()
         h.hud.selectTab(.chat)  // a tab switch
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
     }
 
@@ -886,7 +888,7 @@ private struct FocusHarness {
         h.hud.open(tab: .chat)
         let tool: FocusControlling = h.focus
         _ = tool.start(minutes: 25)  // the chat's focus.timer tool
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
 
         h.minutes(25)
@@ -896,7 +898,7 @@ private struct FocusHarness {
             Issue.record("expected the break")
             return
         }
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
 
         h.minutes(5)  // the break ends: the back prompt
@@ -906,7 +908,7 @@ private struct FocusHarness {
             Issue.record("expected a focus")
             return
         }
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
     }
 
@@ -915,7 +917,7 @@ private struct FocusHarness {
         h.focus.isVoiceOverOn = { true }
         h.hud.open(tab: .focus)
         h.focus.start()
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
     }
 
@@ -924,27 +926,28 @@ private struct FocusHarness {
         h.focus.start()
         h.minutes(25)
         h.hud.open(tab: .focus)
-        h.focus.snooze()  // would hide at 0.6 s
-        h.scheduler.advance(by: 0.59)
-        h.focus.start()  // typed /start: hides 3 s from now
+        let snoozeHide = FocusStore.hideAfterSnooze
+        h.focus.snooze()  // would hide at snoozeHide
+        h.scheduler.advance(by: snoozeHide - 0.01)
+        h.focus.start()  // typed /start: hides `delay` from now
         h.scheduler.advance(by: 0.01)
-        #expect(h.hud.isOpen)  // 0.6 s
-        h.scheduler.advance(by: 2.97)
-        #expect(h.hud.isOpen)  // 3.58 s
+        #expect(h.hud.isOpen)  // snoozeHide
+        h.scheduler.advance(by: delay - 0.03)
+        #expect(h.hud.isOpen)  // snoozeHide - 0.01 + delay - 0.02
         h.scheduler.advance(by: 0.02)
-        #expect(!h.hud.isOpen)  // 3.6 s
+        #expect(!h.hud.isOpen)  // snoozeHide - 0.01 + delay
     }
 
     @Test func doneDoesntHideAndAClosedHUDIsntHiddenLater() {
         let h = FocusHarness()
         h.focus.start()  // the HUD is closed: nothing to hide
         h.hud.open(tab: .focus)
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen)
 
         h.minutes(25)
         h.focus.doneForNow()
-        h.scheduler.advance(by: 3)
+        h.scheduler.advance(by: delay)
         #expect(h.hud.isOpen && h.focus.phase == .idle)
     }
 }

@@ -14,7 +14,7 @@ public final class FocusStore {
     /// How long the HUD stays after Snooze, so the user sees the toast.
     static let hideAfterSnooze: TimeInterval = 0.6
     /// How long the HUD stays after a focus or a break starts from it (CEO, 2026-10-29).
-    static let startHideDelay: TimeInterval = 3
+    static let startHideDelay: TimeInterval = 1.5
 
     public private(set) var machine: FocusMachine
     /// The break activity picked in the break prompt.
@@ -110,7 +110,7 @@ public final class FocusStore {
 
     // MARK: The user's moves
 
-    /// Start focus, with the selected length, from the HUD: it hides 3 s later.
+    /// Start focus, with the selected length, from the HUD: it hides after `startHideDelay`.
     public func start() {
         start(minutes: focusLength)
         hideAfterStart()
@@ -160,7 +160,7 @@ public final class FocusStore {
         change { $0.takeBreakNow() }
     }
 
-    /// Start break, from the HUD's break prompt: the HUD hides 3 s later.
+    /// Start break, from the HUD's break prompt: the HUD hides after `startHideDelay`.
     public func startBreak() {
         guard beginBreak() else { return }
         hideAfterStart()
@@ -196,7 +196,7 @@ public final class FocusStore {
         }
     }
 
-    /// A focus or a break started from the HUD: it hides 3 s later, except with VoiceOver on.
+    /// A focus or a break started from the HUD: it hides after `startHideDelay`, except with VoiceOver on.
     func hideAfterStart() {
         if isVoiceOverOn() {
             cancelHideSoon()

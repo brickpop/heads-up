@@ -397,12 +397,18 @@ private final class ServicesHarness {
         #expect(h.model.quitQuestion == nil)  // Caffeine alone doesn't ask
         let postgres = h.add("Postgres")
         h.services.start(postgres)
-        #expect(h.model.quitQuestion?.message == "Postgres is running. Quitting stops it.")
+        #expect(h.model.quitQuestion?.title == "1 service is running")
+        #expect(h.model.quitQuestion?.message == "If you quit HeadsUp, Postgres will be terminated.")
         #expect(h.model.quitQuestion?.detail == "Your focus timer and Caffeine also stop.")
         let ollama = h.add("Ollama")
         h.services.start(ollama)
-        #expect(h.model.quitQuestion?.message == "2 services are running: Postgres and Ollama. Quitting stops them.")
-        #expect(h.model.quitQuestion?.quit == "Quit and Stop")
+        #expect(h.model.quitQuestion?.title == "2 services are running")
+        #expect(h.model.quitQuestion?.message == "If you quit HeadsUp, Postgres and Ollama will be terminated.")
+        #expect(h.model.quitQuestion?.quit == "Quit and Terminate")
+        #expect(h.model.quitQuestion?.cancel == "Cancel")
+        #expect(
+            Strings.Services.quitMessage(["a", "b", "c"]) == "If you quit HeadsUp, a, b and c will be terminated.")
+        #expect(Strings.Services.quitTitle(3) == "3 services are running")
     }
 
     @Test func showLogsFromTheNotificationOpensServicesWithThatLog() throws {

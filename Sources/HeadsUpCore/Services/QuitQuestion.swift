@@ -4,7 +4,7 @@ public struct QuitQuestion: Equatable, Sendable {
     public let message: String
     /// "Your focus timer and Caffeine also stop.", when either is on.
     public let detail: String?
-    /// The default button: Quit and Stop.
+    /// The default button: Quit and Terminate.
     public let quit: String
     public let cancel: String
 }

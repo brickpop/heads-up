@@ -160,8 +160,8 @@ public final class AppModel {
         guard !live.isEmpty else { return nil }
         let alsoStops = focus.phase != .idle || caffeine.isOn
         return QuitQuestion(
-            title: Strings.Services.quitTitle, message: Strings.Services.quitMessage(live.map(\.name)),
-            detail: alsoStops ? Strings.Services.quitAlsoStops : nil, quit: Strings.Services.quitAndStop,
+            title: Strings.Services.quitTitle(live.count), message: Strings.Services.quitMessage(live.map(\.name)),
+            detail: alsoStops ? Strings.Services.quitAlsoStops : nil, quit: Strings.Services.quitAndTerminate,
             cancel: Strings.Services.cancel)
     }
 

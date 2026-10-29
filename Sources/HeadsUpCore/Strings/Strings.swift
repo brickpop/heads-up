@@ -669,14 +669,19 @@ public enum Strings {
         public static func actionSubtitle(command: String, cwd: String) -> String { "\(command) · \(cwd)" }
 
         // The quit question (UX part 1, §10)
-        public static let quitTitle = "Quit HeadsUp?"
+        /// "1 service is running" or "3 services are running"
+        public static func quitTitle(_ count: Int) -> String {
+            count == 1 ? "1 service is running" : "\(count) services are running"
+        }
+        /// "If you quit HeadsUp, web-app will be terminated." or "…, a, b and c will be terminated."
         public static func quitMessage(_ names: [String]) -> String {
-            if names.count == 1 { return "\(names[0]) is running. Quitting stops it." }
-            let list = names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
-            return "\(names.count) services are running: \(list). Quitting stops them."
+            let list =
+                names.count == 1
+                ? names[0] : names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+            return "If you quit HeadsUp, \(list) will be terminated."
         }
         public static let quitAlsoStops = "Your focus timer and Caffeine also stop."
-        public static let quitAndStop = "Quit and Stop"
+        public static let quitAndTerminate = "Quit and Terminate"
         public static let cancel = "Cancel"
 
         public static func failedTitle(_ name: String) -> String { "\(name) stopped" }
