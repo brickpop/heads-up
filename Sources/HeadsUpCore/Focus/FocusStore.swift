@@ -25,6 +25,8 @@ public final class FocusStore {
     /// The length of the focus that brought the break prompt, for its notification's title;
     /// nil after Take a break now.
     private(set) var promptMinutes: Int?
+    /// The length picked on the back prompt, while it shows or is snoozed; nil before a pick.
+    private var backPromptPick: Int?
     /// Counts the card moves made with ⌥← ⌥→ from the prompt field. The view announces the
     /// newly selected card each time it changes, as it does for the arrow keys in the cards.
     public private(set) var cardMoves = 0
@@ -69,6 +71,21 @@ public final class FocusStore {
     /// The focus length, the same value as Settings → Focus → Focus length.
     public var focusLength: Int { settings.settings.focus.focusLength }
 
+    /// The focus the back prompt starts: the one picked there, else the last focus's length,
+    /// else Settings' focus length. Picking it doesn't change Settings.
+    public var nextFocusLength: Int { backPromptPick ?? machine.nextFocusMinutes(standard: focusLength) }
+
+    /// The back prompt's length cards: the presets, and the last focus's length in its place
+    /// among them if it was typed (`/start 35`).
+    public var backPromptLengths: [Int] {
+        var lengths = FocusSettings.focusLengths
+        if let last = machine.lastFocusMinutes, !lengths.contains(last) {
+            lengths.append(last)
+            lengths.sort()
+        }
+        return lengths
+    }
+
     /// Today's completed sessions; zero again after local midnight.
     public var today: FocusDay {
         let day = FocusDayFormat.string(clock.now)
@@ -111,8 +128,9 @@ public final class FocusStore {
     // MARK: The user's moves
 
     /// Start focus, with the selected length, from the HUD: it hides after `startHideDelay`.
+    /// Idle selects Settings' focus length, the back prompt its own.
     public func start() {
-        start(minutes: focusLength)
+        start(minutes: phase == .prompt(.backPrompt) ? nextFocusLength : focusLength)
         hideAfterStart()
     }
 
@@ -175,10 +193,12 @@ public final class FocusStore {
         return true
     }
 
-    /// Snooze from the HUD: toasts, then hides the HUD after 600 ms.
-    public func snooze() {
+    /// Snooze from the HUD, for `minutes` (2, 5 or 10) or Settings' snooze length: toasts, then
+    /// hides the HUD after 600 ms.
+    public func snooze(minutes: Int? = nil) {
         guard case .prompt = machine.phase else { return }
-        let minutes = settings.settings.focus.snoozeMinutes
+        let minutes = minutes ?? settings.settings.focus.snoozeMinutes
+        guard FocusSettings.snoozeLengths.contains(minutes) else { return }
         change { $0.snooze(minutes: minutes, now: clock.now) }
         toaster?.toast(Strings.Focus.snoozed(minutes))
         hideSoon(after: Self.hideAfterSnooze)
@@ -226,11 +246,24 @@ public final class FocusStore {
         breakLength = minutes
     }
 
+    /// Picks the focus length on the back prompt, one of `backPromptLengths`.
+    public func setNextFocusLength(_ minutes: Int) {
+        guard phase == .prompt(.backPrompt), backPromptLengths.contains(minutes) else { return }
+        cancelHideSoon()
+        backPromptPick = minutes
+    }
+
+    /// Whether the Focus tab shows a prompt, where esc snoozes.
+    public var showsPrompt: Bool {
+        if case .prompt = machine.phase { return true }
+        return false
+    }
+
     // MARK: Keys
 
-    /// ⌥← (-1) or ⌥→ (+1): the previous or next card, stopping at the ends. Idle moves among the
-    /// focus lengths, the break prompt among the break options. Returns false where there are no
-    /// cards, so the key goes on to the prompt field.
+    /// ⌥← (-1) or ⌥→ (+1): the previous or next card, stopping at the ends. Idle and the back
+    /// prompt move among the focus lengths, the break prompt among the break options. Returns
+    /// false where there are no cards, so the key goes on to the prompt field.
     public func moveCardSelection(by delta: Int) -> Bool {
         switch machine.phase {
         case .idle:
@@ -239,6 +272,11 @@ public final class FocusStore {
                 return true
             }
             setFocusLength(lengths[next])
+        case .prompt(.backPrompt):
+            let lengths = backPromptLengths
+            guard let next = Self.step(lengths.firstIndex(of: nextFocusLength), by: delta, count: lengths.count)
+            else { return true }
+            setNextFocusLength(lengths[next])
         case .prompt(.breakPrompt):
             let options = settings.settings.focus.breakOptions
             let current = options.firstIndex { $0.id == activity.id }
@@ -260,10 +298,10 @@ public final class FocusStore {
     }
 
     /// Whether the Focus tab shows a group of cards that ⌥← ⌥→ move through: the focus lengths
-    /// when idle, the break options in the break prompt.
+    /// when idle and in the back prompt, the break options in the break prompt.
     public var showsCards: Bool {
         switch machine.phase {
-        case .idle, .prompt(.breakPrompt): true
+        case .idle, .prompt: true
         default: false
         }
     }
@@ -338,7 +376,9 @@ public final class FocusStore {
     /// Moves the machine on if a deadline has passed, and acts on what happened.
     func advance() {
         let before = machine.phase
-        let autoStart = settings.settings.focus.autoStartNextFocus ? focusLength : nil
+        // The same length the back prompt would start: the last focus's.
+        let autoStart =
+            settings.settings.focus.autoStartNextFocus ? machine.nextFocusMinutes(standard: focusLength) : nil
         guard let event = machine.advance(now: clock.now, autoStartMinutes: autoStart) else {
             armWakeUp()
             return
@@ -377,6 +417,12 @@ public final class FocusStore {
     }
 
     private func phaseChanged(from before: FocusPhase) {
+        // A pick on the back prompt lasts while it shows or is snoozed; the next one starts from
+        // the last focus again.
+        switch machine.phase {
+        case .prompt(.backPrompt), .snoozed(_, .backPrompt): break
+        default: backPromptPick = nil
+        }
         armWakeUp()
         updateNotification()
         // A prompt's notification stays in Notification Center until the prompt is answered
@@ -407,7 +453,8 @@ public final class FocusStore {
             if settings.settings.focus.autoStartNextFocus {
                 schedule(
                     .breakAutostart, title: Strings.Notifications.breakOverTitle,
-                    body: Strings.Notifications.focusStartedBody(focusLength), at: endsAt)
+                    body: Strings.Notifications.focusStartedBody(machine.nextFocusMinutes(standard: focusLength)),
+                    at: endsAt)
             } else {
                 schedule(.breakEnd, title: Strings.Notifications.breakOverTitle, at: endsAt)
             }
@@ -448,7 +495,7 @@ public final class FocusStore {
         case (.startBreak, .prompt(.breakPrompt)):
             _ = beginBreak()
         case (.startFocus, .prompt(.backPrompt)):
-            start(minutes: focusLength)
+            start(minutes: nextFocusLength)
         case (.done, .prompt):
             doneForNow()
         case (.snooze, .prompt):

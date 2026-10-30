@@ -71,7 +71,7 @@ struct BreakPromptView: View {
             HStack {
                 DoneButton(title: screen.done, focus: focus)
                 Spacer()
-                SnoozeButton(title: screen.snooze, focus: focus)
+                SnoozeGroupView(group: screen.snooze) { focus.snooze(minutes: $0) }
                 Button(action: focus.startBreak) {
                     FocusPrimaryLabel(title: screen.startBreak)
                 }
@@ -83,7 +83,8 @@ struct BreakPromptView: View {
     }
 }
 
-/// "Ready to get back to it?": today's stats, and Done, Snooze and Start focus.
+/// "Ready to get back to it?": today's stats, the focus length cards with the last focus's
+/// length selected, and Done, Snooze and Start focus of the selected length.
 struct BackPromptView: View {
     let focus: FocusStore
     let screen: FocusScreen.BackPrompt
@@ -97,10 +98,11 @@ struct BackPromptView: View {
                     .font(.system(size: HUDStyle.Focus.statsSize))
                     .foregroundStyle(.secondary)
             }
+            FocusLengthCards(lengths: screen.lengths, cardMoves: focus.cardMoves, select: focus.setNextFocusLength)
             HStack {
                 DoneButton(title: screen.done, focus: focus)
                 Spacer()
-                SnoozeButton(title: screen.snooze, focus: focus)
+                SnoozeGroupView(group: screen.snooze) { focus.snooze(minutes: $0) }
                 Button {
                     focus.start()
                 } label: {
@@ -144,18 +146,5 @@ private struct DoneButton: View {
         Button(title, action: focus.doneForNow)
             .buttonStyle(.bordered)
             .help(Strings.Focus.doneHelp)
-    }
-}
-
-/// Snooze N min, with the bell.
-private struct SnoozeButton: View {
-    let title: String
-    let focus: FocusStore
-
-    var body: some View {
-        Button(action: focus.snooze) {
-            Label(title, systemImage: Symbols.snooze)
-        }
-        .buttonStyle(.bordered)
     }
 }

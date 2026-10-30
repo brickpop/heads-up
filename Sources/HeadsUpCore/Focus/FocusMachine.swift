@@ -71,6 +71,8 @@ public enum FocusEvent: Equatable, Sendable {
 /// It never reads the clock; each change takes `now`.
 public struct FocusMachine: Equatable, Sendable {
     public private(set) var phase: FocusPhase = .idle
+    /// The length of the last focus started, by hand or by auto-start; nil before the first.
+    public private(set) var lastFocusMinutes: Int?
     /// How long a timer minute lasts: 60 s, or 5 s in a debug build made with `just app-quick`.
     public let secondsPerMinute: TimeInterval
 
@@ -88,10 +90,17 @@ public struct FocusMachine: Equatable, Sendable {
         }
     }
 
+    /// The length the next focus starts with after a break, on the back prompt and by
+    /// auto-start: the last focus's, or `standard` (Settings' focus length) before any.
+    public func nextFocusMinutes(standard: Int) -> Int {
+        lastFocusMinutes ?? standard
+    }
+
     // MARK: The user's moves
 
     /// Start focus: from anywhere, it starts a new session of `minutes`.
     public mutating func start(minutes: Int, now: Date) {
+        lastFocusMinutes = minutes
         phase = .focus(.running(minutes: minutes, from: now, secondsPerMinute: secondsPerMinute))
     }
 
@@ -170,8 +179,8 @@ public struct FocusMachine: Equatable, Sendable {
     // MARK: Time
 
     /// Moves on if an end date has passed: at a scheduled wake-up, or after the Mac slept.
-    /// - Parameter autoStartMinutes: the focus length to start when a break ends, if
-    ///   "Start the next focus after a break" is on; nil otherwise.
+    /// - Parameter autoStartMinutes: the focus length to start when a break ends (the store passes
+    ///   `nextFocusMinutes`), if "Start the next focus after a break" is on; nil otherwise.
     /// - Returns: what happened, or nil when nothing was due.
     public mutating func advance(now: Date, autoStartMinutes: Int?) -> FocusEvent? {
         switch phase {

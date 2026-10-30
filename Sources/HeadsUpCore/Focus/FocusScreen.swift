@@ -53,8 +53,25 @@ public enum FocusScreen: Equatable, Sendable {
         public let selectedLength: Int
         /// "Done": ends the loop, back to idle.
         public let done: String
-        public let snooze: String
+        public let snooze: SnoozeGroup
         public let startBreak: String
+    }
+
+    /// "Snooze 2m | 5m | 10m", on both prompts. A segment snoozes for its length.
+    public struct SnoozeGroup: Equatable, Sendable {
+        /// "Snooze": the group's label, not a button.
+        public let label: String
+        public let choices: [SnoozeChoice]
+    }
+
+    /// One snooze length. `isDefault` marks Settings › Focus › Snooze length, which esc uses.
+    public struct SnoozeChoice: Equatable, Sendable {
+        public let minutes: Int
+        /// "5m"
+        public let title: String
+        public let isDefault: Bool
+        /// "Snooze, 5 minutes"
+        public let accessibilityLabel: String
     }
 
     /// A break activity in the break prompt.
@@ -80,9 +97,13 @@ public enum FocusScreen: Equatable, Sendable {
         public let label: String
         public let title: String
         public let today: String
+        /// The focus lengths to start: 25, 40 and 50, and the last focus's length if it was
+        /// typed and isn't one of these. The selected one is the last focus's at first.
+        public let lengths: [LengthCard]
         /// "Done": ends the loop, back to idle.
         public let done: String
-        public let snooze: String
+        public let snooze: SnoozeGroup
+        /// "Start 40 min focus", for the selected length.
         public let start: String
     }
 
@@ -137,12 +158,18 @@ extension FocusStore {
         case .prompt(.breakPrompt(let manual)):
             return .breakPrompt(breakPromptScreen(manual: manual))
         case .prompt(.backPrompt):
-            let snooze = settings.settings.focus.snoozeMinutes
+            let next = nextFocusLength
             return .backPrompt(
                 FocusScreen.BackPrompt(
                     label: Strings.Focus.breakFinished, title: Strings.Focus.readyToGetBack,
-                    today: Strings.Focus.todayStats(today), done: Strings.Focus.done,
-                    snooze: Strings.Focus.snooze(snooze), start: Strings.Focus.startFocusOf(focusLength)))
+                    today: Strings.Focus.todayStats(today),
+                    lengths: backPromptLengths.map { minutes in
+                        let hint =
+                            FocusSettings.focusLengths.contains(minutes)
+                            ? Strings.Focus.lengthHint(minutes) : Strings.Focus.lastFocusHint
+                        return lengthCard(minutes, hint: hint, selected: minutes == next)
+                    },
+                    done: Strings.Focus.done, snooze: snoozeGroup, start: Strings.Focus.startFocusOf(next)))
         case .snoozed(let until, _):
             return .snoozed(
                 FocusScreen.Snoozed(
@@ -202,12 +229,7 @@ extension FocusStore {
             label: Strings.Focus.idleLabel, timer: Format.clock(Double(focusLength) * 60),
             today: Strings.Focus.todayStats(today),
             lengths: FocusSettings.focusLengths.map { minutes in
-                FocusScreen.LengthCard(
-                    minutes: minutes, title: Strings.Focus.minutes(minutes), hint: Strings.Focus.lengthHint(minutes),
-                    isSelected: minutes == focusLength,
-                    accessibilityLabel: Strings.Focus.cardAccessibility(
-                        title: Strings.Focus.minutes(minutes), hint: Strings.Focus.lengthHint(minutes),
-                        selected: minutes == focusLength))
+                lengthCard(minutes, hint: Strings.Focus.lengthHint(minutes), selected: minutes == focusLength)
             },
             breaksOffer: Strings.Focus.breaksOffer(settings.settings.focus.breakOptions),
             start: Strings.Focus.startFocus)
@@ -252,8 +274,26 @@ extension FocusStore {
             },
             selectedLength: breakLength,
             done: Strings.Focus.done,
-            snooze: Strings.Focus.snooze(settings.settings.focus.snoozeMinutes),
+            snooze: snoozeGroup,
             startBreak: Strings.Focus.startBreak(breakLength))
+    }
+
+    private func lengthCard(_ minutes: Int, hint: String, selected: Bool) -> FocusScreen.LengthCard {
+        let title = Strings.Focus.minutes(minutes)
+        return FocusScreen.LengthCard(
+            minutes: minutes, title: title, hint: hint, isSelected: selected,
+            accessibilityLabel: Strings.Focus.cardAccessibility(title: title, hint: hint, selected: selected))
+    }
+
+    private var snoozeGroup: FocusScreen.SnoozeGroup {
+        let standard = settings.settings.focus.snoozeMinutes
+        return FocusScreen.SnoozeGroup(
+            label: Strings.Focus.snooze,
+            choices: FocusSettings.snoozeLengths.map { minutes in
+                FocusScreen.SnoozeChoice(
+                    minutes: minutes, title: Strings.Focus.snoozeChoice(minutes), isDefault: minutes == standard,
+                    accessibilityLabel: Strings.Focus.snoozeAccessibility(minutes))
+            })
     }
 
     /// A time of day as the user's clock shows it: "3:30 PM", or "15:30" in 24-hour locales.

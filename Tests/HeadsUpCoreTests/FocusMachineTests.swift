@@ -36,6 +36,17 @@ private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60)
         #expect(machine.phase == .focus(FocusRun(minutes: 25, endsAt: at(30), pausedLeft: nil)))
     }
 
+    @Test func theNextFocusIsTheLastOnesLengthByHandOrByAutoStart() {
+        var machine = FocusMachine()
+        #expect(machine.nextFocusMinutes(standard: 25) == 25)  // no focus yet
+        machine.start(minutes: 35, now: t0)
+        #expect(machine.nextFocusMinutes(standard: 25) == 35)
+        machine.takeBreak(minutes: 5, activity: "water", now: at(35))
+        _ = machine.advance(now: at(40), autoStartMinutes: 50)
+        #expect(machine.lastFocusMinutes == 50)
+        #expect(machine.nextFocusMinutes(standard: 25) == 50)
+    }
+
     @Test func endBreakByHandShowsTheBackPromptEvenWithAutoStart() {
         var machine = FocusMachine(phase: .rest(.running(minutes: 5, from: t0), activity: "water"))
         machine.endBreak()

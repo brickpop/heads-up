@@ -732,6 +732,7 @@ extension AppModel {
     public var footerLeft: FooterLeft {
         let left = hud.footerLeft
         guard case .hints = left, hud.input.isEmpty else { return left }
+        if body == .focus && focus.showsPrompt { return .hints(Strings.Hints.focusPrompt) }
         if body == .focus && focus.showsCards { return .hints(Strings.Hints.focusCards) }
         if body == .caffeine { return .hints(caffeine.isOn ? Strings.Hints.caffeineOn : Strings.Hints.caffeineOff) }
         if body == .commands && commands.selection != nil { return .hints(Strings.Hints.commandsList) }
@@ -787,10 +788,13 @@ extension AppModel {
 
     // MARK: Forms
 
-    /// Esc. While Settings → Services or Commands shows its form, it is the form's Cancel;
-    /// otherwise the HUD's Esc.
+    /// Esc. While Settings → Services or Commands shows its form, it is the form's Cancel; on a
+    /// Focus prompt with the prompt field empty, it snoozes for the default length; otherwise
+    /// the HUD's Esc.
     public func escape() {
-        if body == .settings && hud.settingsSection == .services && services.form != nil {
+        if body == .focus && hud.input.isEmpty && focus.showsPrompt {
+            focus.snooze()
+        } else if body == .settings && hud.settingsSection == .services && services.form != nil {
             services.cancelForm()
         } else if body == .settings && hud.settingsSection == .commands && commands.form != nil {
             commands.cancelForm()

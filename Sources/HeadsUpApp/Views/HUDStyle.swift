@@ -232,6 +232,27 @@ enum HUDStyle {
         static let progressHeight: CGFloat = 6
     }
 
+    /// The snooze group on the Focus prompts (Yuki, ux-card-buttons › Snooze group).
+    enum Snooze {
+        /// The container: the card button's height and radius.
+        static let height: CGFloat = 28
+        static let cornerRadius: CGFloat = 8
+        /// "Snooze" and its bell.
+        static let labelPadding: CGFloat = 10
+        static let iconSize: CGFloat = 12
+        static let iconGap: CGFloat = 6
+        static let fontSize: CGFloat = 13
+        /// The hairline between "Snooze" and the first segment.
+        static let dividerHeight: CGFloat = 16
+        /// A segment sits 2 pt inside the container.
+        static let inset: CGFloat = 2
+        static let segmentHeight: CGFloat = 24
+        static let segmentPadding: CGFloat = 10
+        static let segmentCornerRadius: CGFloat = 6
+        /// The default length's accent border: the selected card's, at button size.
+        static let defaultBorder: CGFloat = 1.5
+    }
+
     enum Caffeine {
         static let chipSize: CGFloat = 56
         static let chipCornerRadius: CGFloat = 14

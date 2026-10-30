@@ -127,11 +127,17 @@ public enum Strings {
             Hint(keys: ["⌘↩"], label: "stop"),
             Hint(keys: ["esc"], label: "close"),
         ]
-        /// The Focus tab while it shows cards (idle, break prompt) and the prompt field is empty.
+        /// The Focus tab while idle, with the prompt field empty.
         public static let focusCards = [
             Hint(keys: ["⌥←→"], label: "choose"),
             Hint(keys: ["⌘↩"], label: "start"),
             Hint(keys: ["esc"], label: "close"),
+        ]
+        /// The Focus tab's two prompts, with the prompt field empty: esc snoozes for the default.
+        public static let focusPrompt = [
+            Hint(keys: ["⌥←→"], label: "choose"),
+            Hint(keys: ["⌘↩"], label: "start"),
+            Hint(keys: ["esc"], label: "snooze"),
         ]
     }
 
@@ -449,13 +455,22 @@ public enum Strings {
         }
         public static let timeForABreak = "Time for a break"
         public static let length = "Length"
-        public static func snooze(_ minutes: Int) -> String { "Snooze \(minutes) min" }
+        /// The snooze group on both prompts: "Snooze", then a segment for each length.
+        public static let snooze = "Snooze"
+        /// A snooze segment: "5m".
+        public static func snoozeChoice(_ minutes: Int) -> String { "\(minutes)m" }
+        /// What VoiceOver says for a snooze segment: "Snooze, 5 minutes".
+        public static func snoozeAccessibility(_ minutes: Int) -> String { "Snooze, \(minutes) minutes" }
+        /// VoiceOver's value on the default snooze segment.
+        public static let snoozeDefault = "default"
         public static func startBreak(_ minutes: Int) -> String { "Start \(minutes) min break" }
 
         // Back prompt
         public static let breakFinished = "Break finished"
         public static let readyToGetBack = "Ready to get back to it?"
         public static func startFocusOf(_ minutes: Int) -> String { "Start \(minutes) min focus" }
+        /// The hint on the back prompt's extra card: the last focus's typed length, not a preset.
+        public static let lastFocusHint = "Last focus"
 
         // Snoozed
         public static let snoozedLabel = "Snoozed"
