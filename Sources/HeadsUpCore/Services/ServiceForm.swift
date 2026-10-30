@@ -10,7 +10,7 @@ public struct ServiceDraft: Equatable, Sendable {
     /// As typed: empty for none.
     public var port = ""
     public var autostart = false
-    public var keepAwake = false
+    public var keepAwake = ServiceKeepAwake.off
     public var restartOnExit = false
 
     public init() {}
@@ -113,8 +113,8 @@ public struct ServiceFormScreen: Equatable, Sendable {
     public let env: [EnvironmentVariable]
     public let port: String
     public let autostart: Bool
-    /// "Keep the Mac awake while it runs", under Start with HeadsUp.
-    public let keepAwake: Bool
+    /// Keep awake: Off · 30m · 2h · 5h · Unlimited, under Start with HeadsUp.
+    public let keepAwake: ServiceKeepAwake
     /// "Restart if it stops", under Keep awake.
     public let restartOnExit: Bool
     /// Under each field, in --danger.

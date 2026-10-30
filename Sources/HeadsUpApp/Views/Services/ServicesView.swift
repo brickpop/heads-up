@@ -129,7 +129,7 @@ private struct ServiceRowView: View {
                                     .font(.system(size: HUDStyle.Services.metaSize).monospacedDigit())
                                     .foregroundStyle(metaColor)
                             }
-                            ServiceFlags(keepsAwake: row.keepsAwake, awake: row.awake, restarts: row.restarts)
+                            ServiceFlags(row: row)
                         }
                         .lineLimit(1)
                         Text(row.commandLine)
@@ -227,23 +227,19 @@ private struct OpensInBrowser: ViewModifier {
 }
 
 /// The flags' glyphs after the meta, 11 pt and secondary, each shown while its flag is on, with
-/// a tooltip. The cup's tooltip follows its hold, and it turns --warn when macOS refused it.
-/// VoiceOver reads them through the row's label instead.
+/// a tooltip. The cup's tooltip follows its hold; it turns --warn when macOS refused it, and
+/// tertiary once its limit ended. VoiceOver reads them through the row's label instead.
 private struct ServiceFlags: View {
-    let keepsAwake: Bool
-    let awake: AwakeState?
-    let restarts: Bool
+    let row: ServicesScreen.Row
 
     var body: some View {
         HStack(spacing: HUDStyle.Services.flagGap) {
-            if keepsAwake {
+            if row.keepsAwake {
                 Image(systemName: Symbols.keepsAwake)
-                    .foregroundStyle(
-                        awake == .refused ? AnyShapeStyle(HUDStyle.Colors.warn) : AnyShapeStyle(.secondary)
-                    )
-                    .help(Strings.Services.keepAwakeTooltip(awake))
+                    .foregroundStyle(cupStyle)
+                    .help(row.keepAwakeHelp)
             }
-            if restarts {
+            if row.restarts {
                 Image(systemName: Symbols.restarts)
                     .help(Strings.Services.restartsHelp)
             }
@@ -251,6 +247,11 @@ private struct ServiceFlags: View {
         .font(.system(size: HUDStyle.Services.flagSize))
         .foregroundStyle(.secondary)
         .accessibilityHidden(true)
+    }
+
+    private var cupStyle: AnyShapeStyle {
+        if row.awake == .refused { return AnyShapeStyle(HUDStyle.Colors.warn) }
+        return row.keepAwakeEnded ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary)
     }
 }
 

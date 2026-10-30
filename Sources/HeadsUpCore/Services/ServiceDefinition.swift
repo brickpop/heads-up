@@ -16,16 +16,17 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
     public var port: Int?
     /// Start with HeadsUp.
     public var autostart: Bool
-    /// Keep the Mac from going to sleep on its own while it runs (slice B holds it).
-    public var keepAwake: Bool
+    /// Keep the Mac from going to sleep on its own while it runs, and for how long (slice B holds
+    /// it; keep-awake limit addendum).
+    public var keepAwake: ServiceKeepAwake
     /// Start it again when it stops without being asked to, up to `ServiceStore.maxRestarts`
     /// times in a row.
     public var restartOnExit: Bool
 
     public init(
         id: ID = UUID().uuidString, name: String, command: String, cwd: String = "~",
-        env: [EnvironmentVariable] = [], port: Int? = nil, autostart: Bool = false, keepAwake: Bool = false,
-        restartOnExit: Bool = false
+        env: [EnvironmentVariable] = [], port: Int? = nil, autostart: Bool = false,
+        keepAwake: ServiceKeepAwake = .off, restartOnExit: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -49,8 +50,43 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
         port = try container.decodeIfPresent(Int.self, forKey: .port)
         autostart = try container.decodeIfPresent(Bool.self, forKey: .autostart) ?? false
         // Added later: a file without them has both off.
-        keepAwake = try container.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? false
+        keepAwake = Self.decodeKeepAwake(container)
         restartOnExit = try container.decodeIfPresent(Bool.self, forKey: .restartOnExit) ?? false
+    }
+
+    /// Writes `keepAwakeFor` and never the old `keepAwake`: an older HeadsUp ignores the new key
+    /// and reads Off, which holds less, not more.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(command, forKey: .command)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encode(env, forKey: .env)
+        try container.encodeIfPresent(port, forKey: .port)
+        try container.encode(autostart, forKey: .autostart)
+        try container.encode(keepAwake, forKey: .keepAwake)
+        try container.encode(restartOnExit, forKey: .restartOnExit)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, command, cwd, env, port, autostart, restartOnExit
+        case keepAwake = "keepAwakeFor"
+        /// The Bool of files from before the limit: read, never written.
+        case legacyKeepAwake = "keepAwake"
+    }
+
+    /// `keepAwakeFor` when present, where a value this build doesn't know is Off, so a bad value
+    /// never holds longer than asked. Otherwise the old Bool: true is Unlimited, false is Off.
+    /// Otherwise Off.
+    private static func decodeKeepAwake(_ container: KeyedDecodingContainer<CodingKeys>) -> ServiceKeepAwake {
+        if container.contains(.keepAwake) {
+            return (try? container.decode(ServiceKeepAwake.self, forKey: .keepAwake)) ?? .off
+        }
+        if let legacy = try? container.decodeIfPresent(Bool.self, forKey: .legacyKeepAwake) {
+            return legacy ? .unlimited : .off
+        }
+        return .off
     }
 
     /// The problems that keep this definition from being saved or started, by field; empty
@@ -82,6 +118,22 @@ public struct ServiceDefinition: Equatable, Codable, Sendable, Identifiable {
     /// The first problem, in the form's order, for the row of a service that can't start.
     var firstProblem: String? {
         ServiceField.formOrder.lazy.compactMap { problems[$0] }.first
+    }
+}
+
+/// How long a service keeps the Mac awake, counted from when the user starts it (keep-awake
+/// limit addendum §1). The cases are in the order the form's segmented control shows them.
+public enum ServiceKeepAwake: String, Codable, CaseIterable, Sendable {
+    case off, thirtyMinutes, twoHours, fiveHours, unlimited
+
+    /// Its limit in minutes; nil for Off and for Unlimited.
+    public var minutes: Int? {
+        switch self {
+        case .thirtyMinutes: 30
+        case .twoHours: 120
+        case .fiveHours: 300
+        case .off, .unlimited: nil
+        }
     }
 }
 

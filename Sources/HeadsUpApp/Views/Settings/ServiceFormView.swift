@@ -53,9 +53,22 @@ struct ServiceFormView: View {
             FormCheckbox(
                 title: Strings.ServiceForm.autostart, help: Strings.ServiceForm.autostartHelp, isOn: form.autostart
             ) { on in services.updateDraft { $0.autostart = on } }
-            FormCheckbox(
-                title: Strings.ServiceForm.keepAwake, help: Strings.ServiceForm.keepAwakeHelp, isOn: form.keepAwake
-            ) { on in services.updateDraft { $0.keepAwake = on } }
+            FormField(label: Strings.ServiceForm.keepAwake, help: Strings.ServiceForm.keepAwakeHelp, problem: nil) {
+                Picker(
+                    Strings.ServiceForm.keepAwake,
+                    selection: Binding(
+                        get: { form.keepAwake }, set: { choice in services.updateDraft { $0.keepAwake = choice } })
+                ) {
+                    ForEach(ServiceKeepAwake.allCases, id: \.self) { choice in
+                        Text(Strings.ServiceForm.keepAwakeChoice(choice))
+                            .accessibilityLabel(Strings.ServiceForm.keepAwakeChoiceSpoken(choice))
+                            .tag(choice)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
             FormCheckbox(
                 title: Strings.ServiceForm.restartOnExit, help: Strings.ServiceForm.restartOnExitHelp,
                 isOn: form.restartOnExit

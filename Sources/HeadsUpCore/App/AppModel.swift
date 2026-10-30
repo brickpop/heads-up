@@ -140,6 +140,7 @@ public final class AppModel {
     public func clockJumped() {
         focus.clockJumped()
         caffeine.clockJumped()
+        services.clockJumped()
     }
 
     /// An answer from Notification Center, by the category and action identifiers the shell

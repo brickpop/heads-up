@@ -82,7 +82,7 @@ private final class ServicesHarness {
     @discardableResult
     func add(
         _ name: String = "Web dev server", command: String = "npm run dev", port: Int? = nil,
-        env: [EnvironmentVariable] = [], autostart: Bool = false, keepAwake: Bool = false,
+        env: [EnvironmentVariable] = [], autostart: Bool = false, keepAwake: ServiceKeepAwake = .off,
         restartOnExit: Bool = false
     ) -> ServiceDefinition.ID {
         let definition = ServiceDefinition(
@@ -1469,10 +1469,13 @@ private final class ServicesHarness {
 /// The copy of slice A of the service flags (UX: service flags §1, §2).
 @Suite struct ServiceFlagsCopyTests {
     @Test func theFormsCheckboxesTooltipsAndNote() {
-        #expect(Strings.ServiceForm.keepAwake == "Keep the Mac awake while it runs")
+        #expect(Strings.ServiceForm.keepAwake == "Keep your Mac awake")
         #expect(Strings.ServiceForm.restartOnExit == "Restart if it stops")
         #expect(Strings.ServiceForm.restartOnExitHelp.contains("gives up after 5 restarts"))
-        #expect(Strings.ServiceForm.keepAwakeHelp.hasSuffix("Follows Caffeine's “Only on power adapter”."))
+        #expect(
+            Strings.ServiceForm.keepAwakeHelp
+                == "Your Mac doesn't go to sleep on its own while this runs, up to the time you choose. The time starts when you start the service. Automatic restarts don't reset it. The display can still sleep, and closing the lid still sleeps. Follows Caffeine's “Only on power adapter”."
+        )
         #expect(
             Strings.ServiceForm.runningNote
                 == "Changes to the command, folder or environment apply the next time it starts.")
@@ -1788,7 +1791,7 @@ private final class ServicesHarness {
     @Test func theRowShowsTheFlagsTheWaitAndTheGiveUp() async throws {
         let h = try ServicesHarness()
         let plain = h.add("Plain")
-        let id = h.add(keepAwake: true, restartOnExit: true)
+        let id = h.add(keepAwake: .unlimited, restartOnExit: true)
         var rows = h.services.screen(at: h.clock.now).rows
         #expect(rows.map(\.keepsAwake) == [false, true] && rows.map(\.restarts) == [false, true])
         #expect(rows[0].accessibilityLabel == "Plain, stopped")
@@ -1855,15 +1858,16 @@ private final class ServicesHarness {
     @Test func anOldFileLoadsWithBothFlagsOffAndTheyAreSaved() throws {
         let old = #"[{"id":"a","name":"Web","command":"npm run dev","cwd":"~","autostart":true}]"#
         let decoded = try JSONDecoder().decode([ServiceDefinition].self, from: Data(old.utf8))
-        #expect(decoded.first?.keepAwake == false && decoded.first?.restartOnExit == false)
+        #expect(decoded.first?.keepAwake == .off && decoded.first?.restartOnExit == false)
 
         let h = try ServicesHarness()
-        let id = h.add(keepAwake: true, restartOnExit: true)
+        let id = h.add(keepAwake: .unlimited, restartOnExit: true)
         let text = try String(contentsOf: h.file, encoding: .utf8)
-        #expect(text.contains("\"keepAwake\" : true") && text.contains("\"restartOnExit\" : true"))
+        #expect(text.contains("\"keepAwakeFor\" : \"unlimited\"") && text.contains("\"restartOnExit\" : true"))
+        #expect(!text.contains("\"keepAwake\" :"))
         let next = try ServicesHarness(file: text)
         let loaded = try #require(next.services.definitions.first { $0.id == id })
-        #expect(loaded.keepAwake && loaded.restartOnExit)
+        #expect(loaded.keepAwake == .unlimited && loaded.restartOnExit)
     }
 
     @Test func theFormEditsBothFlags() throws {
@@ -1871,12 +1875,12 @@ private final class ServicesHarness {
         let id = h.add()
         h.services.editService(id)
         h.services.updateDraft {
-            $0.keepAwake = true
+            $0.keepAwake = .twoHours
             $0.restartOnExit = true
         }
         let screen = try #require(h.services.settingsScreen.form)
-        #expect(screen.keepAwake && screen.restartOnExit)
-        #expect(Strings.ServiceForm.keepAwake == "Keep the Mac awake while it runs")
+        #expect(screen.keepAwake == .twoHours && screen.restartOnExit)
+        #expect(Strings.ServiceForm.keepAwake == "Keep your Mac awake")
         #expect(Strings.ServiceForm.restartOnExit == "Restart if it stops")
     }
 }

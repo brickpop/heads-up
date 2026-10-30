@@ -52,7 +52,7 @@ private final class HoldsHarness {
     }
 
     @discardableResult
-    func add(_ name: String = "Web dev server", keepAwake: Bool = true, restartOnExit: Bool = false)
+    func add(_ name: String = "Web dev server", keepAwake: ServiceKeepAwake = .unlimited, restartOnExit: Bool = false)
         -> ServiceDefinition.ID
     {
         let definition = ServiceDefinition(
@@ -139,7 +139,7 @@ private final class HoldsHarness {
 
     @Test func withoutTheFlagNothingIsHeld() throws {
         let h = try HoldsHarness()
-        let id = h.add(keepAwake: false)
+        let id = h.add(keepAwake: .off)
         h.services.start(id)
         #expect(h.assertions.holds.isEmpty && h.row(id)?.awake == nil)
         #expect(!h.log(id).contains("keeping the Mac awake"))
@@ -170,13 +170,13 @@ private final class HoldsHarness {
 
     @Test func switchingKeepAwakeOnOrOffTakesOrReleasesItOnSave() throws {
         let h = try HoldsHarness()
-        let id = h.add(keepAwake: false)
+        let id = h.add(keepAwake: .off)
         h.services.start(id)
         var definition = try #require(h.services.definitions.first)
-        definition.keepAwake = true
+        definition.keepAwake = .unlimited
         #expect(h.services.save(definition).isEmpty)
         #expect(h.held(id) == [.systemSleep] && h.log(id).last == "keeping the Mac awake")
-        definition.keepAwake = false
+        definition.keepAwake = .off
         #expect(h.services.save(definition).isEmpty)
         #expect(h.held(id).isEmpty && h.log(id).last == "no longer keeping the Mac awake")
         #expect(h.services.state(id).isLive)
@@ -420,5 +420,275 @@ private final class HoldsHarness {
         #expect(Strings.Services.keepAwakeTooltip(.pausedOnBattery) == "Keeping awake is paused on battery")
         #expect(Strings.Services.keepAwakeTooltip(.refused) == "macOS didn't let HeadsUp keep your Mac awake")
         #expect(Strings.Services.keepAwakeTooltip(nil) == "Keeps your Mac awake while it runs")
+    }
+}
+
+/// Keep awake for 30m, 2h, 5h or without a limit (keep-awake limit addendum §5): the stored
+/// shape, and when the limit counts, runs out and starts over.
+@MainActor
+@Suite(.serialized) struct ServiceKeepAwakeLimitTests {
+    private static let minute: TimeInterval = 60
+
+    private func decode(_ json: String) throws -> ServiceKeepAwake {
+        try JSONDecoder().decode(ServiceDefinition.self, from: Data(json.utf8)).keepAwake
+    }
+
+    private func ended(_ h: HoldsHarness, _ id: ServiceDefinition.ID) -> [LogLine] {
+        h.services.logLines(id).filter { $0.text.hasSuffix("limit reached") }
+    }
+
+    /// Moves the clock to `start` plus `minutes`, running what is due on the way.
+    private func advance(_ h: HoldsHarness, to minutes: Double, from start: Date) {
+        h.scheduler.advance(by: start.addingTimeInterval(minutes * Self.minute).timeIntervalSince(h.clock.now))
+    }
+
+    @Test func theOldBoolReadsAsUnlimitedOrOffAndOnlyTheNewKeyIsWritten() throws {
+        let base = #""id":"a","name":"Web","command":"npm run dev""#
+        #expect(try decode("{\(base),\"keepAwake\":true}") == .unlimited)
+        #expect(try decode("{\(base),\"keepAwake\":false}") == .off)
+        #expect(try decode("{\(base)}") == .off)
+        #expect(try decode("{\(base),\"keepAwake\":true,\"keepAwakeFor\":\"thirtyMinutes\"}") == .thirtyMinutes)
+        // A hand-edited value this build doesn't know never holds longer than asked.
+        #expect(try decode("{\(base),\"keepAwake\":true,\"keepAwakeFor\":\"45m\"}") == .off)
+        #expect(try decode("{\(base),\"keepAwakeFor\":7}") == .off)
+
+        let definition = ServiceDefinition(id: "a", name: "Web", command: "npm run dev", keepAwake: .fiveHours)
+        let text = try #require(String(data: JSONEncoder().encode(definition), encoding: .utf8))
+        #expect(text.contains(#""keepAwakeFor":"fiveHours""#) && !text.contains(#""keepAwake":"#))
+        #expect(try decode(text) == .fiveHours)
+        #expect(ServiceKeepAwake.allCases.map(\.minutes) == [nil, 30, 120, 300, nil])
+        #expect(
+            ServiceKeepAwake.allCases.map(Strings.ServiceForm.keepAwakeChoice) == [
+                "Off", "30m", "2h", "5h", "Unlimited",
+            ])
+    }
+
+    @Test func aDefinitionWithEveryFieldSetComesBackTheSame() throws {
+        // Every field differs from its default, so a field the encoder drops or the decoder
+        // misreads shows as a difference.
+        let definition = ServiceDefinition(
+            id: "web-1", name: "Web", command: "npm run dev -- --port 5173", cwd: "~/code/web",
+            env: [
+                EnvironmentVariable(key: "NODE_ENV", value: "development"), EnvironmentVariable(key: "A", value: ""),
+            ],
+            port: 5173, autostart: true, keepAwake: .twoHours, restartOnExit: true)
+        let decoded = try JSONDecoder().decode(ServiceDefinition.self, from: JSONEncoder().encode(definition))
+        #expect(decoded == definition)
+    }
+
+    @Test func thirtyMinutesReleasesTheHoldAndTheServiceKeepsRunning() async throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .thirtyMinutes)
+        let start = h.clock.now
+        h.services.start(id)
+        advance(h, to: 30 - 1.0 / 60, from: start)
+        #expect(h.held(id) == [.systemSleep] && h.row(id)?.awake == .holding)
+        #expect(h.row(id)?.keepsAwake == true)
+
+        advance(h, to: 30, from: start)
+        #expect(h.held(id).isEmpty && h.row(id)?.awake == nil && h.services.serviceHolds.isEmpty)
+        guard case .running = h.services.state(id) else {
+            Issue.record("expected it still running, got \(h.services.state(id))")
+            return
+        }
+        #expect(ended(h, id).map(\.text) == ["no longer keeping the Mac awake: 30m limit reached"])
+        #expect(!h.log(id).contains("no longer keeping the Mac awake"))
+        // Stop later says nothing more about the hold.
+        h.services.stop(id)
+        await h.exits(id, .signal(SIGTERM))
+        #expect(ended(h, id).count == 1 && !h.log(id).contains("no longer keeping the Mac awake"))
+    }
+
+    @Test func anAutomaticRestartDoesntResetTheCount() async throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .thirtyMinutes, restartOnExit: true)
+        let start = h.clock.now
+        h.services.start(id)
+        advance(h, to: 20, from: start)
+        await h.exits(id)
+        guard case .waitingToRestart(_, let at, _) = h.services.state(id) else {
+            Issue.record("expected a wait, got \(h.services.state(id))")
+            return
+        }
+        h.scheduler.advance(by: at.timeIntervalSince(h.clock.now) + ServiceStore.startWindow)
+        #expect(h.services.state(id).pid != nil && h.held(id) == [.systemSleep])
+
+        advance(h, to: 30, from: start)
+        #expect(h.held(id).isEmpty && h.services.state(id).isLive)
+        #expect(ended(h, id).count == 1)
+    }
+
+    @Test func aManualRestartResetsTheCount() async throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .thirtyMinutes)
+        let start = h.clock.now
+        h.services.start(id)
+        advance(h, to: 20, from: start)
+        h.services.restart(id)
+        await h.exits(id, .signal(SIGTERM))
+        #expect(h.services.state(id).isLive && h.held(id) == [.systemSleep])
+
+        advance(h, to: 50 - 1.0 / 60, from: start)
+        #expect(h.held(id) == [.systemSleep] && ended(h, id).isEmpty)
+        advance(h, to: 50, from: start)
+        #expect(h.held(id).isEmpty && h.services.state(id).isLive)
+        #expect(ended(h, id).count == 1)
+
+        // A Start after a Stop counts from the start again, after an expiry too.
+        h.services.stop(id)
+        await h.exits(id, .signal(SIGTERM))
+        let again = h.clock.now
+        h.services.start(id)
+        #expect(h.held(id) == [.systemSleep])
+        advance(h, to: 30, from: again)
+        #expect(h.held(id).isEmpty && ended(h, id).count == 2)
+    }
+
+    @Test func aNewLimitOnALiveServiceCountsFromTheSave() throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .thirtyMinutes)
+        let start = h.clock.now
+        h.services.start(id)
+        advance(h, to: 20, from: start)
+        var definition = try #require(h.services.definitions.first { $0.id == id })
+        definition.keepAwake = .twoHours
+        #expect(h.services.save(definition).isEmpty)
+
+        advance(h, to: 140 - 1.0 / 60, from: start)
+        #expect(h.held(id) == [.systemSleep] && ended(h, id).isEmpty)
+        advance(h, to: 140, from: start)
+        #expect(h.held(id).isEmpty && h.services.state(id).isLive)
+        #expect(ended(h, id).map(\.text) == ["no longer keeping the Mac awake: 2h limit reached"])
+
+        // Saving something else doesn't start the count again.
+        definition.name = "Web"
+        #expect(h.services.save(definition).isEmpty)
+        #expect(h.held(id).isEmpty && h.row(id)?.awake == nil)
+    }
+
+    @Test func theLimitKeepsCountingWhilePausedOnBattery() throws {
+        let h = try HoldsHarness(onlyOnAC: true)
+        let id = h.add(keepAwake: .thirtyMinutes)
+        let start = h.clock.now
+        h.services.start(id)
+        advance(h, to: 10, from: start)
+        h.power.set(onBattery: true)
+        #expect(h.row(id)?.awake == .pausedOnBattery)
+
+        advance(h, to: 30, from: start)
+        #expect(h.row(id)?.awake == nil)
+        #expect(ended(h, id).map(\.time) == [start.addingTimeInterval(30 * Self.minute)])
+
+        advance(h, to: 40, from: start)
+        h.power.set(onBattery: false)
+        #expect(h.held(id).isEmpty && h.row(id)?.awake == nil && h.services.state(id).isLive)
+        #expect(!h.log(id).contains("keeping awake resumed: on power"))
+        #expect(ended(h, id).count == 1)
+    }
+
+    @Test func aClockJumpPastTheEndReleasesTheHoldAtOnce() throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .thirtyMinutes)
+        h.services.start(id)
+        // The Mac slept: the clock moved, and no timer has fired yet.
+        h.clock.advance(by: 45 * Self.minute)
+        #expect(h.held(id) == [.systemSleep])
+        h.model.clockJumped()
+        #expect(h.held(id).isEmpty && h.services.state(id).isLive)
+        #expect(ended(h, id).count == 1)
+        // The late timer doesn't log it twice.
+        h.scheduler.advance(by: 0)
+        #expect(ended(h, id).count == 1)
+    }
+
+    @Test func unlimitedNeverSchedulesAnEnd() throws {
+        let h = try HoldsHarness()
+        let unlimited = h.add("Ollama", keepAwake: .unlimited)
+        let limited = h.add("Web", keepAwake: .thirtyMinutes)
+        var pending = h.scheduler.pendingCount
+        h.services.start(unlimited)
+        let unlimitedJobs = h.scheduler.pendingCount - pending
+        pending = h.scheduler.pendingCount
+        h.services.start(limited)
+        #expect(h.scheduler.pendingCount - pending == unlimitedJobs + 1)
+
+        h.scheduler.advance(by: 24 * 60 * Self.minute)
+        #expect(h.held(unlimited) == [.systemSleep] && h.row(unlimited)?.awake == .holding)
+        #expect(ended(h, unlimited).isEmpty)
+    }
+
+    // Yuki BLOCKING 1 and NIT 6: the row says the limit, then that it ended, until a start.
+    @Test func theRowSaysTheLimitThenThatItEndedUntilTheNextStart() async throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .twoHours)
+        var row = try #require(h.row(id))
+        #expect(row.keepAwakeHelp == "Keeps your Mac awake for 2h after it starts" && !row.keepAwakeEnded)
+        #expect(row.accessibilityLabel == "Web dev server, stopped, keeps your Mac awake while it runs")
+
+        let start = h.clock.now
+        h.services.start(id)
+        #expect(h.row(id)?.keepAwakeHelp == "Keeping your Mac awake")
+        advance(h, to: 120, from: start)
+        row = try #require(h.row(id))
+        #expect(row.status == .running && row.awake == nil && row.keepAwakeEnded)
+        #expect(row.keepAwakeHelp == "Stopped keeping your Mac awake after 2h")
+        #expect(row.accessibilityLabel == "Web dev server, running, stopped keeping your Mac awake after 2 hours")
+        // It isn't a hold: Caffeine and the menu bar don't list it.
+        #expect(h.services.serviceHolds.isEmpty)
+
+        // A manual Restart starts the count again, and the row holds again.
+        h.services.restart(id)
+        await h.exits(id, .signal(SIGTERM))
+        row = try #require(h.row(id))
+        #expect(!row.keepAwakeEnded && row.awake == .holding && row.keepAwakeHelp == "Keeping your Mac awake")
+
+        // Stopped after it ended, the row is back to the limit.
+        advance(h, to: 240 + 1, from: start)
+        #expect(h.row(id)?.keepAwakeEnded == true)
+        h.services.stop(id)
+        await h.exits(id, .signal(SIGTERM))
+        row = try #require(h.row(id))
+        #expect(!row.keepAwakeEnded && row.keepAwakeHelp == "Keeps your Mac awake for 2h after it starts")
+    }
+
+    // Yuki NIT 5: the log line names the limit; NIT 3 and BLOCKING 2: the form's label and the
+    // choices VoiceOver reads.
+    @Test func theLogLineAndTheFormCopy() throws {
+        #expect(Strings.Services.keepAwakeEnded(.fiveHours) == "no longer keeping the Mac awake: 5h limit reached")
+        #expect(Strings.ServiceForm.keepAwake == "Keep your Mac awake")
+        #expect(
+            ServiceKeepAwake.allCases.map(Strings.ServiceForm.keepAwakeChoiceSpoken) == [
+                "Off", "30 minutes", "2 hours", "5 hours", "Unlimited",
+            ])
+        #expect(Strings.Services.keepAwakeTooltip(nil, limit: .unlimited) == "Keeps your Mac awake while it runs")
+        #expect(Strings.Services.keepAwakeTooltip(nil) == "Keeps your Mac awake while it runs")
+        // The duration follows the limit: short in the tooltip, spoken by VoiceOver (Yuki 1, 6).
+        #expect(
+            Strings.Services.keepAwakeTooltip(nil, limit: .thirtyMinutes, ended: true)
+                == "Stopped keeping your Mac awake after 30m")
+        #expect(
+            Strings.Services.rowAccessibility(
+                name: "Web", status: .running, keepsAwake: true, ended: .fiveHours, restarts: false)
+                == "Web, running, stopped keeping your Mac awake after 5 hours")
+    }
+
+    // Nick NIT 1: with Keep awake off, nothing counts, and turning it on counts from the save.
+    @Test func offCountsNothingAndTurningItOnCountsFromTheSave() throws {
+        let h = try HoldsHarness()
+        let id = h.add(keepAwake: .off)
+        let start = h.clock.now
+        h.services.start(id)
+        advance(h, to: 45, from: start)
+        h.model.clockJumped()
+        #expect(h.held(id).isEmpty && ended(h, id).isEmpty)
+
+        var definition = try #require(h.services.definitions.first { $0.id == id })
+        definition.keepAwake = .thirtyMinutes
+        #expect(h.services.save(definition).isEmpty)
+        #expect(h.held(id) == [.systemSleep])
+        advance(h, to: 75 - 1.0 / 60, from: start)
+        #expect(h.held(id) == [.systemSleep])
+        advance(h, to: 75, from: start)
+        #expect(h.held(id).isEmpty && ended(h, id).count == 1)
     }
 }
