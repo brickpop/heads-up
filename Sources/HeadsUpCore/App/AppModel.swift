@@ -312,6 +312,7 @@ public final class AppModel {
             if tab == .services { services.sawServices() }
             // A terminal may have been installed or removed meanwhile; Settings → General has the picker too.
             if tab == .commands || tab == .settings { commands.refreshTerminals() }
+            if tab == .commands { commands.resetSelection() }
             if tab != .chat { endWelcome() }
             // The user may have changed Open at Login in System Settings meanwhile.
             if tab == .settings { refreshOpenAtLogin() }
@@ -634,6 +635,25 @@ extension AppModel {
 
     // MARK: Commands
 
+    /// A click on a command's row, or ⌘↩ on the selected one: it becomes the selection, then
+    /// runs, or opens its form when it breaks a rule and can't run.
+    public func activateCommand(_ id: CommandDefinition.ID) {
+        commands.select(id)
+        if commands.definitions.first(where: { $0.id == id })?.problems.isEmpty == false {
+            editCommand(id)
+        } else {
+            runCommand(id)
+        }
+    }
+
+    /// ↑ (-1) or ↓ (+1) on the Commands tab, while the prompt field is empty: the previous or next
+    /// command. Returns false where it doesn't apply, so the key goes on to the prompt.
+    public func moveCommandSelection(by delta: Int) -> Bool {
+        guard body == .commands, hud.input.isEmpty, commands.selection != nil else { return false }
+        commands.moveSelection(by: delta)
+        return true
+    }
+
     /// A row's click, or the Run action: opens the command in the chosen terminal.
     ///
     /// The Automation prompt and the terminal coming forward both take the keyboard from the
@@ -701,14 +721,15 @@ extension AppModel {
         let left = hud.footerLeft
         guard case .hints = left, hud.input.isEmpty else { return left }
         if body == .focus && focus.showsCards { return .hints(Strings.Hints.focusCards) }
-        if body == .caffeine { return .hints(Strings.Hints.caffeineCards) }
+        if body == .caffeine { return .hints(caffeine.isOn ? Strings.Hints.caffeineOn : Strings.Hints.caffeineOff) }
+        if body == .commands && commands.selection != nil { return .hints(Strings.Hints.commandsList) }
         return left
     }
 
-    /// A key with modifiers, while the HUD is key. The Focus and Caffeine tabs' own keys come
-    /// first, while their view shows: ⌥← ⌥→ pick a card while the prompt field is empty (with
-    /// text, they move by word), and on Focus ⌘↩ runs the primary button. Then the HUD's ⌘
-    /// shortcuts, ⌘← ⌘→ for the tabs among them.
+    /// A key with modifiers, while the HUD is key. The Focus, Caffeine and Commands tabs' own keys
+    /// come first, while their view shows: ⌥← ⌥→ pick a card while the prompt field is empty
+    /// (with text, they move by word); ⌘↩ runs Focus's primary button, or the selected command.
+    /// Then the HUD's ⌘ shortcuts, ⌘← ⌘→ for the tabs among them.
     public func handleShortcut(_ shortcut: Shortcut) -> Bool {
         if body == .focus {
             switch (shortcut.modifiers, shortcut.keyCode) {
@@ -721,6 +742,21 @@ extension AppModel {
             default:
                 break
             }
+        }
+        // ⌘↩ on Commands runs the selected row, as a click does.
+        if body == .commands, shortcut.modifiers == .command,
+            shortcut.keyCode == KeyCode.returnKey || shortcut.keyCode == KeyCode.keypadEnter,
+            let id = commands.selection
+        {
+            activateCommand(id)
+            return true
+        }
+        // ⌘↩ on Caffeine is the header switch: on with the selected duration, or off.
+        if body == .caffeine, shortcut.modifiers == .command, hud.input.isEmpty,
+            shortcut.keyCode == KeyCode.returnKey || shortcut.keyCode == KeyCode.keypadEnter
+        {
+            caffeine.toggle()
+            return true
         }
         if body == .caffeine, shortcut.modifiers == .option, hud.input.isEmpty {
             switch shortcut.keyCode {

@@ -19,6 +19,11 @@ public final class CommandStore {
     public private(set) var runProblem: [CommandDefinition.ID: TerminalRunResult] = [:]
     /// The editor in Settings → Commands, while open (see CommandForm.swift).
     public internal(set) var form: CommandForm?
+    /// The row picked with ↑ ↓ or a click; nil means the first. Opening the tab resets it.
+    private var selectedID: CommandDefinition.ID?
+    /// Counts the moves made with ↑ ↓. The view announces the newly selected row each time it
+    /// changes.
+    public private(set) var keyboardMoves = 0
 
     @ObservationIgnored private let file: JSONListFile<CommandDefinition>
     @ObservationIgnored private let launcher: TerminalLauncher
@@ -41,6 +46,35 @@ public final class CommandStore {
         self.home = home
         load()
         refreshTerminals()
+    }
+
+    // MARK: Selection
+
+    /// The selected command: the one picked, or the first while none is (or it was removed).
+    public var selection: CommandDefinition.ID? {
+        if let selectedID, definitions.contains(where: { $0.id == selectedID }) { return selectedID }
+        return definitions.first?.id
+    }
+
+    /// ↑ (-1) or ↓ (+1): the previous or next command, stopping at the ends.
+    public func moveSelection(by delta: Int) {
+        guard let current = selection, let index = definitions.firstIndex(where: { $0.id == current }) else { return }
+        let next = min(max(index + delta, 0), definitions.count - 1)
+        guard next != index else { return }
+        selectedID = definitions[next].id
+        // After the selection has changed: the view announces the row selected when this
+        // changes, so counting first would read out the old one.
+        keyboardMoves += 1
+    }
+
+    /// A click on a row: the selection follows it.
+    public func select(_ id: CommandDefinition.ID) {
+        selectedID = id
+    }
+
+    /// The tab opened: the first row is selected again.
+    func resetSelection() {
+        selectedID = nil
     }
 
     // MARK: Terminals

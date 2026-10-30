@@ -137,8 +137,8 @@ sha256() {
     if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d" " -f1; else shasum -a 256 "$1" | cut -d" " -f1; fi
 }
 for script in \
-    "Terminal.applescript com.apple.Terminal 2a6425952799aea5c962538e4803d802d76186b8088effd14a4248e6fff68ec1" \
-    "iTerm.applescript com.googlecode.iterm2 b7a4abe155ee58f61a31169ff2b081bba8dd812a9ad57f21a6a38dd691485519"; do
+    "Terminal.applescript com.apple.Terminal a89566ecac053596c8fae3939d5c79601f940abc72aed23dbc4aaa814b4a5257" \
+    "iTerm.applescript com.googlecode.iterm2 8a8838f679674447f4a76692698dbfd8de3e8fa660fefef84bf3602126eaa6a1"; do
     read -r name app hash <<<"$script"
     file=$root/Resources/$name
     if [ ! -f "$file" ]; then

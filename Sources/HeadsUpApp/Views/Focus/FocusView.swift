@@ -117,7 +117,7 @@ struct FocusCard<Content: View>: View {
     }
 }
 
-/// A card's keyboard focus.
+/// A card's keyboard focus, or a Commands row's.
 ///
 /// In a group (`focus` set), the Tab-stop card is focusable whatever the system's Keyboard
 /// navigation setting, as a radio group is: a plain Button is a Tab stop only with that setting
@@ -126,7 +126,7 @@ struct FocusCard<Content: View>: View {
 /// follow the selection.
 ///
 /// Outside a group, a card keeps the system's rule, unless `isTabStop` takes it out.
-private struct CardFocus: ViewModifier {
+struct CardFocus: ViewModifier {
     let isTabStop: Bool
     let focus: FocusState<Int?>.Binding?
     let index: Int

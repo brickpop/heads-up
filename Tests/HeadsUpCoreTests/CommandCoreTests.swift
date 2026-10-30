@@ -15,8 +15,9 @@ import Testing
             loginShell: shell, home: home)
     }
 
-    /// The shell part of the argv: the command, then the login shell keeps the window open.
-    private func run(_ command: String = "ssh deploy@staging", shell: String = "/bin/zsh", login: String = "/bin/zsh")
+    /// The shell part of the argv: the command, after its one leading space, then the login
+    /// shell keeps the window open.
+    private func run(_ command: String = " ssh deploy@staging", shell: String = "/bin/zsh", login: String = "/bin/zsh")
         -> [String]
     {
         [shell, "-l", "-c", #"eval "$1"; exec "$2" -l"#, shell, command, login]
@@ -40,8 +41,42 @@ import Testing
     }
 
     @Test func terminalAndITermCallTheirScriptWithTheValuesAsData() {
-        #expect(plan(.terminal) == .script(.terminal, directory: "/Users/me/code", command: "ssh deploy@staging"))
-        #expect(plan(.iterm2) == .script(.iterm2, directory: "/Users/me/code", command: "ssh deploy@staging"))
+        #expect(plan(.terminal) == .script(.terminal, directory: "/Users/me/code", command: " ssh deploy@staging"))
+        #expect(plan(.iterm2) == .script(.iterm2, directory: "/Users/me/code", command: " ssh deploy@staging"))
+    }
+
+    // CEO: a leading space keeps the command out of history in shells set to ignore such lines
+    // (zsh HIST_IGNORE_SPACE, bash HISTCONTROL=ignorespace).
+    @Test func everyTerminalGetsTheCommandAfterOneSpace() {
+        for terminal in Terminal.allCases {
+            switch plan(terminal) {
+            case .script(_, _, let command): #expect(command == " ssh deploy@staging", "\(terminal)")
+            case .process(_, let arguments): #expect(arguments.suffix(2).first == " ssh deploy@staging", "\(terminal)")
+            case nil: #expect(terminal == .warp)
+            }
+        }
+    }
+
+    @Test func aCommandThatStartsWithASpaceIsntGivenAnother() {
+        #expect(plan(.terminal, command: " ls") == .script(.terminal, directory: "/Users/me/code", command: " ls"))
+        #expect(plan(.iterm2, command: "  ls") == .script(.iterm2, directory: "/Users/me/code", command: "  ls"))
+        guard case .process(_, let arguments) = plan(.ghostty, command: " ls") else {
+            Issue.record("expected a process")
+            return
+        }
+        #expect(Array(arguments.suffix(7)) == run(" ls"))
+    }
+
+    @Test func theSavedCommandIsNeverChanged() throws {
+        let definition = CommandDefinition(name: "Deploy", command: "ssh deploy@staging", cwd: "~/code")
+        for terminal in Terminal.allCases {
+            _ = TerminalPlan.make(
+                definition, in: InstalledTerminal(terminal: terminal, appPath: "/Applications/x.app"),
+                loginShell: "/bin/zsh", home: home)
+        }
+        #expect(definition.command == "ssh deploy@staging")
+        let saved = try JSONDecoder().decode(CommandDefinition.self, from: JSONEncoder().encode(definition))
+        #expect(saved.command == "ssh deploy@staging")
     }
 
     @Test func warpCantRunACommand() {
@@ -51,26 +86,29 @@ import Testing
     // F14: quotes, backslashes and line breaks reach the terminal exactly as typed.
     @Test func aCommandWithQuotesBackslashesAndALineBreakIsPassedAsItIs() {
         let command = "echo \"it's \\\"here\\\"\" \\\nls -la"
-        #expect(plan(.terminal, command: command) == .script(.terminal, directory: "/Users/me/code", command: command))
+        #expect(
+            plan(.terminal, command: command) == .script(.terminal, directory: "/Users/me/code", command: " " + command)
+        )
         guard case .process(_, let arguments) = plan(.kitty, command: command) else {
             Issue.record("expected a process")
             return
         }
-        #expect(Array(arguments.suffix(7)) == run(command))
+        #expect(Array(arguments.suffix(7)) == run(" " + command))
     }
 
     // F13: the folder is never part of a shell line, and never read as an option.
     @Test func aFolderWithAQuoteOrStartingWithADash() {
         #expect(
             plan(.terminal, cwd: "/tmp/it's here")
-                == .script(.terminal, directory: "/tmp/it's here", command: "ssh deploy@staging"))
+                == .script(.terminal, directory: "/tmp/it's here", command: " ssh deploy@staging"))
         guard case .process(_, let arguments) = plan(.ghostty, cwd: "/tmp/it's here") else {
             Issue.record("expected a process")
             return
         }
         #expect(arguments.contains("--working-directory=/tmp/it's here"))
         #expect(
-            plan(.terminal, cwd: "-rf") == .script(.terminal, directory: "/Users/me/-rf", command: "ssh deploy@staging")
+            plan(.terminal, cwd: "-rf")
+                == .script(.terminal, directory: "/Users/me/-rf", command: " ssh deploy@staging")
         )
         guard case .process(_, let dashed) = plan(.alacritty, cwd: "-rf") else {
             Issue.record("expected a process")
@@ -114,6 +152,8 @@ import Testing
             #expect(text.contains("on \(TerminalScript.handler)(theDir, theCommand)"))
             #expect(text.contains("tell application id \"\(bundleID)\""))
             #expect(text.contains("quoted form of theDir"))
+            // The typed line starts with a space, so the shell can keep it out of history.
+            #expect(text.contains(#"" cd " & quoted form of theDir"#))
             // No other app is named, and nothing is left to fill in.
             #expect(text.components(separatedBy: "tell application").count == 2)
             #expect(!text.contains("%@") && !text.contains("{{") && !text.contains("$("))

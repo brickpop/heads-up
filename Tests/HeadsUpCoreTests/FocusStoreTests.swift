@@ -1059,10 +1059,10 @@ private struct FocusHarness {
                 Hint(keys: ["esc"], label: "close"),
             ])
         h.hud.selectTab(.caffeine)
-        #expect(h.model.footerLeft == .hints(Strings.Hints.caffeineCards))
+        #expect(h.model.footerLeft == .hints(Strings.Hints.caffeineOff))
         #expect(
-            Strings.Hints.caffeineCards == [
-                Hint(keys: ["⌥←→"], label: "choose"), Hint(keys: ["⌘←→"], label: "tabs"),
+            Strings.Hints.caffeineOff == [
+                Hint(keys: ["⌥←→"], label: "choose"), Hint(keys: ["⌘↩"], label: "start"),
                 Hint(keys: ["esc"], label: "close"),
             ])
         h.hud.selectTab(.focus)
@@ -1074,5 +1074,43 @@ private struct FocusHarness {
     @Test func commandArrowsCantBeTheWakeShortcut() {
         #expect(key(KeyCode.leftArrow, .command).keysProblem == .usedByHeadsUp)
         #expect(key(KeyCode.rightArrow, .command).keysProblem == .usedByHeadsUp)
+    }
+}
+
+/// ⌘↩ on Caffeine is the header switch (CEO, 2026-10-29).
+@MainActor
+@Suite(.serialized) struct CaffeineCommandReturnTests {
+    private let commandReturn = Shortcut(keyCode: KeyCode.returnKey, modifiers: .command, key: "↩")
+    private let optionRight = Shortcut(keyCode: KeyCode.rightArrow, modifiers: .option, key: "→")
+
+    @Test func commandReturnStartsWithTheSelectedDurationThenStops() {
+        let h = FocusHarness()
+        let caffeine = h.model.caffeine
+        h.hud.open(tab: .caffeine)
+        #expect(!caffeine.isOn)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.caffeineOff))
+        #expect(h.model.handleShortcut(optionRight))
+        let picked = caffeine.lastDuration
+        #expect(h.model.handleShortcut(commandReturn))
+        #expect(caffeine.isOn && caffeine.lastDuration == picked)
+        #expect(caffeine.endsAt == picked.minutes.map { h.clock.now.addingTimeInterval(Double($0) * 60) })
+        #expect(h.hud.footerLeft == .toast(Strings.Caffeine.onBySwitch))  // the switch's toast
+        h.scheduler.advance(by: 3)  // the toast goes
+        #expect(h.model.footerLeft == .hints(Strings.Hints.caffeineOn))
+        #expect(
+            Strings.Hints.caffeineOn == [
+                Hint(keys: ["⌥←→"], label: "choose"), Hint(keys: ["⌘↩"], label: "stop"),
+                Hint(keys: ["esc"], label: "close"),
+            ])
+        #expect(h.model.handleShortcut(commandReturn))
+        #expect(!caffeine.isOn)
+    }
+
+    @Test func withTextTheKeyStaysThePrompts() {
+        let h = FocusHarness()
+        h.hud.open(tab: .caffeine)
+        h.hud.setInput("x")
+        #expect(!h.model.handleShortcut(commandReturn))
+        #expect(!h.model.caffeine.isOn)
     }
 }

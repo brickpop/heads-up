@@ -243,6 +243,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.moveSelection(-1)
         case Key.downArrow where hud.arrowKeysMoveSelection:
             hud.moveSelection(1)
+        // On Commands, with the prompt empty, ↑ ↓ pick a command; elsewhere they stay the field's.
+        case Key.upArrow:
+            return model.moveCommandSelection(by: -1)
+        case Key.downArrow:
+            return model.moveCommandSelection(by: 1)
         case Key.escape:
             model.escape()
         // Backspace in an empty prompt removes the last image, if there is one.

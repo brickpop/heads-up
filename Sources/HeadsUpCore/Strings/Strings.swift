@@ -109,10 +109,22 @@ public enum Strings {
             Hint(keys: ["/"], label: "actions"),
             Hint(keys: ["esc"], label: "close"),
         ]
-        /// The Caffeine tab with the prompt empty: ⌥← ⌥→ pick a duration.
-        public static let caffeineCards = [
+        /// The Commands tab with the prompt empty: ↑ ↓ pick a command, ⌘↩ runs it.
+        public static let commandsList = [
+            Hint(keys: ["↑↓"], label: "choose"),
+            Hint(keys: ["⌘↩"], label: "run"),
+            Hint(keys: ["esc"], label: "close"),
+        ]
+        /// The Caffeine tab with the prompt empty, while off: ⌥← ⌥→ pick a duration, ⌘↩ starts.
+        public static let caffeineOff = [
             Hint(keys: ["⌥←→"], label: "choose"),
-            Hint(keys: ["⌘←→"], label: "tabs"),
+            Hint(keys: ["⌘↩"], label: "start"),
+            Hint(keys: ["esc"], label: "close"),
+        ]
+        /// The Caffeine tab with the prompt empty, while on: ⌘↩ stops.
+        public static let caffeineOn = [
+            Hint(keys: ["⌥←→"], label: "choose"),
+            Hint(keys: ["⌘↩"], label: "stop"),
             Hint(keys: ["esc"], label: "close"),
         ]
         /// The Focus tab while it shows cards (idle, break prompt) and the prompt field is empty.
@@ -868,6 +880,8 @@ public enum Strings {
     /// UX part 1, §1, §3, §4; Yuki's Commands copy).
     public enum Commands {
         public static let tabLabel = "Command shortcuts"
+        /// The keycap on the selected row: ⌘↩ runs it.
+        public static let runKey = "⌘↩"
         public static let opensIn = "Opens in"
         /// The row in Settings → General.
         public static let terminalApp = "Terminal app"

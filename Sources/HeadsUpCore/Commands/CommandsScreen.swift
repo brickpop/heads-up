@@ -35,6 +35,8 @@ public struct CommandsScreen: Equatable, Sendable {
         public let meta: String?
         /// What a click on the row does.
         public let action: RowAction
+        /// The row ↑ ↓ moved to, or the last clicked: the gray --sel fill, and the one ⌘↩ runs.
+        public let isSelected: Bool
         /// VoiceOver: the name, then "ssh deploy@staging.example.dev, in home folder", then
         /// "Opens in iTerm2".
         public let accessibilityLabel: String
@@ -109,7 +111,7 @@ extension CommandStore {
                     title: Strings.Commands.emptyTitle, text: Strings.Commands.emptyText,
                     add: Strings.Commands.addCommand)
                 : nil,
-            rows: definitions.map(row))
+            rows: definitions.map { row($0, isSelected: $0.id == selection) })
     }
 
     /// The Terminal app row in Settings → General; nil with one terminal or none.
@@ -130,7 +132,7 @@ extension CommandStore {
             }, selectedID: selected.bundleID, style: offered.count <= Self.segmentedLimit ? .segmented : .menu)
     }
 
-    private func row(_ definition: CommandDefinition) -> CommandsScreen.Row {
+    private func row(_ definition: CommandDefinition, isSelected: Bool) -> CommandsScreen.Row {
         let terminalName = terminal?.terminal.name ?? ""
         // A command read from commands.json that breaks a rule can't run until it is fixed.
         let rule = [CommandField.name, .command, .cwd].lazy.compactMap { definition.problems[$0] }.first
@@ -142,7 +144,8 @@ extension CommandStore {
         return CommandsScreen.Row(
             id: definition.id, name: definition.name, command: definition.command, cwd: definition.cwd,
             terminal: terminalName, meta: rule.map(Strings.Commands.cantRun),
-            action: rule == nil ? .run : .edit(title: Strings.Commands.edit), accessibilityLabel: definition.name,
+            action: rule == nil ? .run : .edit(title: Strings.Commands.edit), isSelected: isSelected,
+            accessibilityLabel: definition.name,
             accessibilityValue: Strings.Commands.accessibilityValue(command: definition.command, cwd: definition.cwd),
             accessibilityHint: Strings.Commands.accessibilityHint(terminal: terminalName), problem: problem)
     }

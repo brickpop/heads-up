@@ -198,7 +198,8 @@ private final class CommandsHarness {
         h.model.hud.selectTab(.commands)
         let toasts = h.model.hud.toastID
         await h.model.runCommand(id).value
-        #expect(h.terminals.ran == [.script(.terminal, directory: h.work.path, command: #"echo "a\b" $HOME; ls"#)])
+        // One leading space keeps it out of history in shells set to ignore such lines.
+        #expect(h.terminals.ran == [.script(.terminal, directory: h.work.path, command: #" echo "a\b" $HOME; ls"#)])
         // No toast: the HUD closes at once, so nothing would show it.
         #expect(h.model.hud.toastID == toasts)
     }
@@ -438,5 +439,109 @@ private final class CommandsHarness {
         #expect(
             try CommandsHarness().commands.settingsScreen.intro
                 == "Commands you type often. HeadsUp opens each one in your terminal, in its folder.")
+    }
+}
+
+/// ↑ ↓ pick a command and ⌘↩ runs it, with the prompt empty on Commands (CEO, 2026-10-29).
+@MainActor
+@Suite(.serialized) struct CommandsKeysTests {
+    private let commandReturn = Shortcut(keyCode: KeyCode.returnKey, modifiers: .command, key: "↩")
+
+    private func selected(_ h: CommandsHarness) -> [String] {
+        h.commands.screen.rows.filter(\.isSelected).map(\.name)
+    }
+
+    /// The run is a task the key doesn't hand back: wait for the fake terminal to see it.
+    private func waitForRun(_ h: CommandsHarness, count: Int = 1) async {
+        for _ in 0..<100 where h.terminals.ran.count < count { await Task.yield() }
+    }
+
+    @Test func theFirstRowIsSelectedAndArrowsStopAtTheEnds() throws {
+        let h = try CommandsHarness()
+        h.add("One", command: "echo 1")
+        h.add("Two", command: "echo 2")
+        h.add("Three", command: "echo 3")
+        h.model.hud.selectTab(.commands)
+        #expect(selected(h) == ["One"])
+        #expect(h.model.moveCommandSelection(by: -1))  // at the start: handled, no move
+        #expect(h.commands.keyboardMoves == 0)
+        #expect(h.model.moveCommandSelection(by: 1) && h.model.moveCommandSelection(by: 1))
+        #expect(selected(h) == ["Three"])
+        #expect(h.commands.keyboardMoves == 2)
+        #expect(h.model.moveCommandSelection(by: 1))
+        #expect(selected(h) == ["Three"] && h.commands.keyboardMoves == 2)
+        #expect(h.model.moveCommandSelection(by: -1))
+        #expect(selected(h) == ["Two"])
+    }
+
+    @Test func downDownThenCommandReturnRunsTheThirdAndClosesTheHUD() async throws {
+        let h = try CommandsHarness()
+        h.add("One", command: "echo 1")
+        h.add("Two", command: "echo 2")
+        h.add("Three", command: "echo 3")
+        h.model.hud.selectTab(.commands)
+        _ = h.model.moveCommandSelection(by: 1)
+        _ = h.model.moveCommandSelection(by: 1)
+        #expect(h.model.handleShortcut(commandReturn))
+        await waitForRun(h)
+        #expect(h.terminals.ran == [.script(.terminal, directory: h.work.path, command: " echo 3")])
+        for _ in 0..<100 where h.model.hud.isOpen { await Task.yield() }
+        #expect(!h.model.hud.isOpen)  // as a click: the terminal opens, the HUD closes
+    }
+
+    @Test func textAnotherTabOrNoCommandsLeaveTheKeysToThePrompt() throws {
+        let h = try CommandsHarness()
+        h.model.hud.selectTab(.commands)
+        #expect(!h.model.moveCommandSelection(by: 1))  // no commands
+        #expect(!h.model.handleShortcut(commandReturn))
+        h.add("One", command: "echo 1")
+        h.add("Two", command: "echo 2")
+        h.model.hud.setInput("x")  // text: autocomplete owns ↑ ↓
+        #expect(!h.model.moveCommandSelection(by: 1))
+        h.model.hud.setInput("")
+        h.model.hud.selectTab(.services)
+        #expect(!h.model.moveCommandSelection(by: 1))
+        #expect(h.terminals.ran.isEmpty)
+    }
+
+    @Test func aClickMovesTheSelectionAndOpeningTheTabResetsIt() async throws {
+        let h = try CommandsHarness()
+        h.add("One", command: "echo 1")
+        let two = h.add("Two", command: "echo 2")
+        h.model.hud.selectTab(.commands)
+        h.model.activateCommand(two)
+        #expect(selected(h) == ["Two"])
+        await waitForRun(h)
+        #expect(h.terminals.ran == [.script(.terminal, directory: h.work.path, command: " echo 2")])
+        h.model.hud.selectTab(.commands)  // the HUD closed after the run; opening the tab again
+        #expect(selected(h) == ["One"])
+    }
+
+    @Test func commandReturnOnACommandThatCantRunOpensItsForm() throws {
+        let h = try CommandsHarness(file: #"{ "commands": [ { "id": "a", "name": "Bad", "command": " " } ] }"#)
+        h.model.hud.selectTab(.commands)
+        #expect(selected(h) == ["Bad"])
+        #expect(h.model.handleShortcut(commandReturn))
+        #expect(h.model.hud.tab == .settings && h.model.hud.settingsSection == .commands)
+        #expect(h.commands.settingsScreen.form != nil)
+        #expect(h.terminals.ran.isEmpty)
+    }
+
+    @Test func theFooterNamesTheKeysWhileThereAreCommands() throws {
+        let empty = try CommandsHarness()
+        empty.model.hud.selectTab(.commands)
+        #expect(empty.model.footerLeft == .hints(Strings.Hints.otherTabEmpty))  // no commands
+        // Read from the file, so no "Added …" toast takes the footer.
+        let h = try CommandsHarness(
+            file: #"{ "commands": [ { "id": "a", "name": "Logs", "command": "tail -f log", "cwd": "~" } ] }"#)
+        h.model.hud.selectTab(.commands)
+        #expect(h.model.footerLeft == .hints(Strings.Hints.commandsList))
+        #expect(
+            Strings.Hints.commandsList == [
+                Hint(keys: ["↑↓"], label: "choose"), Hint(keys: ["⌘↩"], label: "run"),
+                Hint(keys: ["esc"], label: "close"),
+            ])
+        h.model.hud.setInput("ss")
+        #expect(h.model.footerLeft != .hints(Strings.Hints.commandsList))
     }
 }
