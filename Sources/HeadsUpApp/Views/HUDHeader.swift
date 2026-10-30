@@ -3,6 +3,10 @@ import SwiftUI
 
 /// The header: the six tabs in a row. The active tab expands to fill the row and holds the
 /// prompt; the others are 44 × 44 icons, with a dot while their feature is active.
+///
+/// On a tab switch only the tabs' widths animate (each `TabCell` scopes its animation to them),
+/// so the icons slide sideways and nothing in the row moves up or down. The new tab's prompt and
+/// buttons fade in where they belong.
 struct HUDHeader: View {
     let hud: HUDStore
     let activity: [Tab: TabActivity]
@@ -15,7 +19,6 @@ struct HUDHeader: View {
     var buttons: ChatButtons?
     var attach: @MainActor () -> Void = {}
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Where each tab sits in the row, for the VoiceOver tab group.
     private let tabFrames = State<[Tab: CGRect]>(initialValue: [:])
 
@@ -51,7 +54,6 @@ struct HUDHeader: View {
                 .accessibilitySortPriority(1)
         }
         .padding(HUDStyle.Header.padding)
-        .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: hud.tab)
     }
 
     private var accessibilityItems: [TabGroupAccessibility.Item] {
@@ -77,6 +79,7 @@ private struct TabCell<Expanded: View>: View {
     @ViewBuilder var expanded: Expanded
 
     private let isHovered = State(initialValue: false)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
 
@@ -87,7 +90,10 @@ private struct TabCell<Expanded: View>: View {
                     .font(.system(size: HUDStyle.Tabs.iconSize))
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                     // An inactive tab is all icon button, so a click anywhere on it selects it.
-                    .frame(width: isSelected ? HUDStyle.Tabs.iconSize : HUDStyle.Tabs.size, height: HUDStyle.Tabs.size)
+                    .animation(widthAnimation) {
+                        $0.frame(
+                            width: isSelected ? HUDStyle.Tabs.iconSize : HUDStyle.Tabs.size, height: HUDStyle.Tabs.size)
+                    }
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -96,20 +102,28 @@ private struct TabCell<Expanded: View>: View {
             .accessibilityHidden(true)
 
             if isSelected {
+                // A fade only: the prompt, chip and buttons appear in place, never moving in.
                 expanded
+                    .transition(.opacity.animation(widthAnimation))
             }
         }
-        .padding(.horizontal, isSelected ? HUDStyle.Tabs.padding : 0)
-        .frame(maxWidth: isSelected ? .infinity : HUDStyle.Tabs.size, alignment: .leading)
-        .frame(height: HUDStyle.Tabs.size)
-        .background(isSelected || isHovered.wrappedValue ? HUDStyle.Colors.raise : Color.clear, in: shape)
-        .overlay {
-            if isSelected {
-                shape.strokeBorder(
-                    HUDStyle.Colors.line,
-                    lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale))
-            }
+        // Only the width, and the selected tab's fill and outline, animate: the icons slide
+        // sideways as the active tab widens, and nothing in the cell is animated up or down.
+        .animation(widthAnimation) {
+            $0.padding(.horizontal, isSelected ? HUDStyle.Tabs.padding : 0)
+                .frame(maxWidth: isSelected ? .infinity : HUDStyle.Tabs.size, alignment: .leading)
+                .frame(height: HUDStyle.Tabs.size)
+                .background(isSelected ? HUDStyle.Colors.raise : Color.clear, in: shape)
+                .overlay {
+                    shape.strokeBorder(
+                        HUDStyle.Colors.line,
+                        lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale)
+                    )
+                    .opacity(isSelected ? 1 : 0)
+                }
         }
+        // The hover fill shows at once, as before.
+        .background(!isSelected && isHovered.wrappedValue ? HUDStyle.Colors.raise : Color.clear, in: shape)
         .overlay(alignment: .topTrailing) { dot }
         .onHover { isHovered.wrappedValue = $0 }
         .onGeometryChange(for: CGRect.self) { [rowSpace] in
@@ -121,6 +135,11 @@ private struct TabCell<Expanded: View>: View {
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: HUDStyle.Tabs.cornerRadius)
+    }
+
+    /// 200 ms ease-out, or none with Reduce Motion.
+    private var widthAnimation: Animation? {
+        reduceMotion ? nil : HUDStyle.Motion.standard
     }
 
     /// The activity dot, on inactive tabs only: accent while active, red after a failure.
