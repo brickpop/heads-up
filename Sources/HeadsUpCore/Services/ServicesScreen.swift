@@ -80,8 +80,21 @@ public struct ServicesScreen: Equatable, Sendable {
         public let accessibilityLabel: String
         /// "restarting in 5 seconds" while a restart waits; nil otherwise.
         public let accessibilityValue: String?
+        /// Running with a known port: a click on the row outside its buttons, or on the `:port`,
+        /// is `AppModel.openServiceInBrowser(id)`. Nil otherwise: the row isn't clickable.
+        public let link: Link?
         /// The drawer, while open.
         public let log: Log?
+    }
+
+    /// How a running service with a port opens in the browser.
+    public struct Link: Equatable, Sendable {
+        /// ":3000", underlined in the meta while the pointer is over the row.
+        public let portLabel: String
+        /// The tooltip: "Open localhost:3000".
+        public let help: String
+        /// The row's VoiceOver action: "Open in browser".
+        public let accessibilityAction: String
     }
 
     /// A row's button.
@@ -208,6 +221,11 @@ extension ServiceStore {
                 name: definition.name, status: status, keepsAwake: definition.keepAwake, awake: awake[definition.id],
                 restarts: definition.restartOnExit),
             accessibilityValue: spoken,
+            link: localURL(definition.id).flatMap(\.port).map {
+                ServicesScreen.Link(
+                    portLabel: Strings.Services.portLabel($0), help: Strings.Services.openLocalhost($0),
+                    accessibilityAction: Strings.Services.openInBrowser)
+            },
             log: logsOpen
                 ? ServicesScreen.Log(
                     lines: lines, emptyText: lines.isEmpty ? Strings.Services.noOutput : nil,

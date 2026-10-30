@@ -1,3 +1,4 @@
+import AppKit
 import HeadsUpCore
 import SwiftUI
 
@@ -99,39 +100,55 @@ private struct ServicesEmptyView: View {
 }
 
 /// One service: chip with status dot, name and meta, the mono command line, Logs, and
-/// Start or Stop; its log drawer under it while open.
+/// Start or Stop; its log drawer under it while open. A running service with a port opens in the
+/// browser from a click on the row outside its buttons, `:port` included. While the pointer is
+/// over it, the row takes the --raise fill, as a Commands row does; only the `:port` takes the
+/// pointing hand and the underline.
 private struct ServiceRowView: View {
     let model: AppModel
     let row: ServicesScreen.Row
+
+    /// The pointer is over the clickable part, while it opens in the browser.
+    private let rowHovered = State<Bool>(initialValue: false)
+    /// The pointer is over the `:port`, with the pointing hand pushed.
+    private let portHovered = State<Bool>(initialValue: false)
 
     var body: some View {
         let services = model.services
         VStack(alignment: .leading, spacing: HUDStyle.Services.padding) {
             HStack(spacing: HUDStyle.Services.rowGap) {
-                ServiceChip(status: row.status)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: HUDStyle.Footer.keyGap) {
-                        Text(row.name)
-                            .font(.system(size: HUDStyle.Suggestions.titleSize, weight: .semibold))
-                        if let meta = row.meta {
-                            Text(meta)
-                                .font(.system(size: HUDStyle.Services.metaSize).monospacedDigit())
-                                .foregroundStyle(metaColor)
+                HStack(spacing: HUDStyle.Services.rowGap) {
+                    ServiceChip(status: row.status)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: HUDStyle.Footer.keyGap) {
+                            Text(row.name)
+                                .font(.system(size: HUDStyle.Suggestions.titleSize, weight: .semibold))
+                            if let meta = row.meta {
+                                metaView(meta)
+                                    .font(.system(size: HUDStyle.Services.metaSize).monospacedDigit())
+                                    .foregroundStyle(metaColor)
+                            }
+                            ServiceFlags(keepsAwake: row.keepsAwake, awake: row.awake, restarts: row.restarts)
                         }
-                        ServiceFlags(keepsAwake: row.keepsAwake, awake: row.awake, restarts: row.restarts)
-                    }
-                    .lineLimit(1)
-                    Text(row.commandLine)
-                        .font(.system(size: HUDStyle.Services.metaSize).monospaced())
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .truncationMode(.tail)
+                        Text(row.commandLine)
+                            .font(.system(size: HUDStyle.Services.metaSize).monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(row.accessibilityLabel)
+                    // "restarting in 5 seconds" while it waits: read when focused, never announced.
+                    .accessibilityValue(row.accessibilityValue ?? "")
+                    .accessibilityActions {
+                        if let link = row.link {
+                            Button(link.accessibilityAction, action: openInBrowser)
+                        }
+                    }
+                    Spacer(minLength: HUDStyle.Services.rowGap)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(row.accessibilityLabel)
-                // "restarting in 5 seconds" while it waits: read when focused, never announced.
-                .accessibilityValue(row.accessibilityValue ?? "")
-                Spacer(minLength: HUDStyle.Services.rowGap)
+                .modifier(OpensInBrowser(link: row.link, hovering: rowHovered.projectedValue, open: openInBrowser))
                 LogsToggle(isOpen: row.logsOpen, warning: row.logsWarning) { services.toggleLogs(row.id) }
                 RowActionButton(
                     action: row.action, run: { services.toggleRun(row.id) }, edit: { model.editService(row.id) })
@@ -142,8 +159,44 @@ private struct ServiceRowView: View {
         }
         .padding(HUDStyle.Services.rowPadding)
         .background(
-            row.logsOpen ? HUDStyle.Colors.raise : Color.clear,
-            in: RoundedRectangle(cornerRadius: HUDStyle.Services.rowCornerRadius))
+            row.logsOpen || (rowHovered.wrappedValue && row.link != nil) ? HUDStyle.Colors.raise : Color.clear,
+            in: RoundedRectangle(cornerRadius: HUDStyle.Services.rowCornerRadius)
+        )
+        // A link that goes, or a row that goes, gives the arrow back.
+        .onChange(of: row.link == nil) { _, gone in if gone { setPortHovered(false) } }
+        .onDisappear { setPortHovered(false) }
+        // Any close (Esc, the wake shortcut, a click outside) leaves no mouse-exit behind.
+        .onChange(of: model.hud.isOpen) { _, open in if !open { setPortHovered(false) } }
+    }
+
+    private func openInBrowser() {
+        // The HUD closes under the pointer, and no mouse-exit follows: give the arrow back first,
+        // or the next open would show the hand away from any link.
+        setPortHovered(false)
+        model.openServiceInBrowser(row.id)
+    }
+
+    /// The meta. While the row opens in the browser, its `:port` takes the pointing hand and the
+    /// underline when the pointer is over it.
+    @ViewBuilder private func metaView(_ meta: String) -> some View {
+        if let link = row.link, let range = meta.range(of: link.portLabel) {
+            HStack(spacing: 0) {
+                Text(meta[..<range.lowerBound])
+                Text(link.portLabel)
+                    .underline(portHovered.wrappedValue)
+                    .onHover { setPortHovered($0) }
+                Text(meta[range.upperBound...])
+            }
+        } else {
+            Text(meta)
+        }
+    }
+
+    /// Pushes the pointing hand once, and pops it once.
+    private func setPortHovered(_ on: Bool) {
+        guard on != portHovered.wrappedValue else { return }
+        portHovered.wrappedValue = on
+        if on { NSCursor.pointingHand.push() } else { NSCursor.pop() }
     }
 
     private var metaColor: Color {
@@ -152,6 +205,23 @@ private struct ServiceRowView: View {
         case .warn: HUDStyle.Colors.warn
         case .secondary: .secondary
         }
+    }
+}
+
+/// The part of a row that opens a running service in the browser: it takes the click, and says
+/// while the pointer is over it, for the row's fill, with "Open localhost:3000" as its tooltip.
+/// The cursor stays the arrow here. Without a link it does nothing.
+private struct OpensInBrowser: ViewModifier {
+    let link: ServicesScreen.Link?
+    let hovering: Binding<Bool>
+    let open: @MainActor () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onTapGesture { if link != nil { open() } }
+            .onHover { inside in hovering.wrappedValue = inside && link != nil }
+            .help(link?.help ?? "")
     }
 }
 

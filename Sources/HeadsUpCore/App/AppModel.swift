@@ -108,6 +108,8 @@ public final class AppModel {
     /// The pinned chats: the list, its screen, unpinning and loading.
     public let pins: PinsStore
     @ObservationIgnored private let imageProcessor: ImageProcessor
+    /// Opens a running service's page in the default browser.
+    @ObservationIgnored private let linkOpener: LinkOpener
     @ObservationIgnored private let clock: Clock
 
     /// The settings-file problem the notice bar has already shown (or that was dismissed).
@@ -224,6 +226,7 @@ public final class AppModel {
             clock: ports.clock)
         self.pins = pins
         imageProcessor = ports.imageProcessor
+        linkOpener = ports.linkOpener
         let gatedTools = GatedTools(
             settings: settings, ports: ToolPorts(calendar: ports.calendar, reminders: ports.reminders),
             pasteboard: ports.pasteboard, clock: ports.clock, modal: hud, focus: focus)
@@ -611,6 +614,15 @@ extension AppModel {
     public func addService() {
         hud.showSettings(.services)
         if services.form?.isDirty != true { services.editService(nil) }
+    }
+
+    /// A click on a running service's row, outside its buttons, or on its `:port`: its page,
+    /// http://localhost:<port>, opens in the default browser, and the HUD closes, as for a
+    /// command. Nothing happens for a service that isn't running or has no port.
+    public func openServiceInBrowser(_ id: ServiceDefinition.ID) {
+        guard let url = services.localURL(id) else { return }
+        linkOpener.open(url)
+        hud.close()
     }
 
     /// Edit…, on a row that can't start: Settings → Services with that service's form, which

@@ -709,6 +709,12 @@ public enum Strings {
         }
         /// "Running · nothing on :3000 yet", in --warn: alive for 30 s, but its port is silent.
         public static func silentMeta(port: Int) -> String { "Running · nothing on :\(port) yet" }
+        /// A running service's port in its meta, the part that opens it: ":3000".
+        public static func portLabel(_ port: Int) -> String { ":\(port)" }
+        /// The tooltip of a running service with a port: "Open localhost:3000".
+        public static func openLocalhost(_ port: Int) -> String { "Open localhost:\(port)" }
+        /// The row's VoiceOver action, which opens it in the default browser.
+        public static let openInBrowser = "Open in browser"
         /// "Exited with code 1 · 2 min ago"
         public static func failedMeta(code: Int32, ago: String) -> String { "Exited with code \(code) · \(ago)" }
         /// "Restarting in 5 s · stopped by SIGTERM", in --warn, counting down to the restart.

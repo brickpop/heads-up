@@ -176,6 +176,14 @@ public final class ServiceStore {
         waitingForEnvironment.contains { $0.id == id }
     }
 
+    /// The page of a running service with a known port, set or detected: `http://localhost:<port>`,
+    /// built from the number alone. Nil while it is stopped, starting or failed, or has no port.
+    /// A port that is set but silent still opens: the browser says what's wrong.
+    public func localURL(_ id: ServiceDefinition.ID) -> URL? {
+        guard case .running(_, _, let port?) = state(id), (1...65_535).contains(port) else { return nil }
+        return URL(string: "http://localhost:\(port)")
+    }
+
     /// Stopped without being asked to, with a restart waiting.
     func isWaitingToRestart(_ id: ServiceDefinition.ID) -> Bool {
         if case .waitingToRestart = state(id) { return true }

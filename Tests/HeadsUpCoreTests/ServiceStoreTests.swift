@@ -20,6 +20,7 @@ private final class ServicesHarness {
     let picker = FakeOpenPanels()
     let terminals = FakeTerminalLauncher()
     let revealer = FakeFileRevealer()
+    let links = FakeLinkOpener()
     let folder: URL
     let work: URL
     private let ownsRoot: Bool
@@ -58,7 +59,7 @@ private final class ServicesHarness {
                 openPanels: picker, imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(),
                 reminders: FakeRemindersAccess(), terminalLauncher: terminals,
                 secrets: MemorySecretStore(),
-                httpClient: FakeHTTPClient(), linkOpener: FakeLinkOpener(), pasteboard: FakePasteboard(),
+                httpClient: FakeHTTPClient(), linkOpener: links, pasteboard: FakePasteboard(),
                 dataFolder: folder, loginShell: loginShell,
                 home: root.path, environment: environment, readsShellEnvironment: readsShellEnvironment),
             settings: settings)
@@ -1903,5 +1904,102 @@ private final class ServicesHarness {
         let caffeine = model.caffeine.screen(at: model.services.clock.now)
         #expect(caffeine.header.title == "Kept awake by Web dev server")
         #expect(caffeine.header.showsServerBadge && !caffeine.header.isOn)
+    }
+}
+
+/// A running service with a port opens http://localhost:<port> in the browser (card
+/// service-port-link).
+@MainActor
+@Suite(.serialized) struct ServicePortLinkTests {
+    private func row(_ h: ServicesHarness, _ id: ServiceDefinition.ID) -> ServicesScreen.Row? {
+        h.services.screen(at: h.clock.now).rows.first { $0.id == id }
+    }
+
+    @Test func aRunningServiceWithASetPortOpensItsPageAndTheHUDCloses() async throws {
+        let h = try ServicesHarness()
+        let id = h.add(port: 3000)
+        h.model.hud.open(tab: .services)
+        h.services.start(id)
+        // Starting: not clickable yet.
+        #expect(row(h, id)?.link == nil && h.services.localURL(id) == nil)
+        h.probe.answering = [3000]
+        h.scheduler.advance(by: 1)
+        await h.settle()
+        guard case .running = h.services.state(id) else {
+            Issue.record("expected running")
+            return
+        }
+        #expect(
+            row(h, id)?.link
+                == ServicesScreen.Link(
+                    portLabel: ":3000", help: "Open localhost:3000", accessibilityAction: "Open in browser"))
+        #expect(row(h, id)?.meta?.contains(":3000") == true)
+        h.model.openServiceInBrowser(id)
+        #expect(h.links.opened == [URL(string: "http://localhost:3000")!])
+        #expect(!h.model.hud.isOpen)
+    }
+
+    @Test func aDetectedPortOpensToo() async throws {
+        let h = try ServicesHarness()
+        let id = h.add()
+        h.probe.port = 5173
+        h.services.start(id)
+        h.scheduler.advance(by: 2)
+        await h.settle()
+        #expect(h.services.localURL(id)?.absoluteString == "http://localhost:5173")
+        #expect(row(h, id)?.link?.help == "Open localhost:5173")
+    }
+
+    @Test func aSilentSetPortStillOpens() async throws {
+        let h = try ServicesHarness()
+        let id = h.add(port: 3000)
+        h.services.start(id)
+        h.scheduler.advance(by: ServiceStore.portWindow)
+        await h.settle()
+        #expect(row(h, id)?.meta == "Running · nothing on :3000 yet")
+        #expect(row(h, id)?.link?.portLabel == ":3000")
+        h.model.openServiceInBrowser(id)
+        #expect(h.links.opened == [URL(string: "http://localhost:3000")!])
+    }
+
+    @Test func stoppedStartingFailedOrPortlessServicesDontOpen() async throws {
+        let h = try ServicesHarness()
+        let stopped = h.add("Stopped", port: 3000)
+        let portless = h.add("No port")
+        h.services.start(portless)
+        h.scheduler.advance(by: ServiceStore.startWindow)
+        await h.settle()
+        guard case .running(_, _, nil) = h.services.state(portless) else {
+            Issue.record("expected running with no port")
+            return
+        }
+        let failed = h.add("Failed", port: 4000)
+        h.services.start(failed)
+        h.launcher.finish(h.pid(failed), .code(1))
+        await h.settle()
+        h.model.hud.open(tab: .services)
+        for id in [stopped, portless, failed] {
+            #expect(row(h, id)?.link == nil && h.services.localURL(id) == nil)
+            h.model.openServiceInBrowser(id)
+        }
+        #expect(h.links.opened.isEmpty && h.model.hud.isOpen)
+    }
+
+    // Rev 4: a port outside 1…65535 never becomes a URL, even when it was detected.
+    @Test(arguments: [0, -1, 65_536, 99_999])
+    func aPortOutsideTheRangeOpensNothing(port: Int) async throws {
+        let h = try ServicesHarness()
+        let id = h.add()
+        h.probe.port = port
+        h.services.start(id)
+        h.scheduler.advance(by: 2)
+        await h.settle()
+        guard case .running(_, _, port?) = h.services.state(id) else {
+            Issue.record("expected running on the detected port \(port)")
+            return
+        }
+        #expect(h.services.localURL(id) == nil && row(h, id)?.link == nil)
+        h.model.openServiceInBrowser(id)
+        #expect(h.links.opened.isEmpty)
     }
 }
