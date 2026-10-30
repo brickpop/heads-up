@@ -482,7 +482,12 @@ public final class EndpointService {
             // it (Scan I23).
             if credential != nil { modal?.beginModal() }
             let answer = await listModels(draft, credential: credential)
-            if credential != nil { modal?.endModal() }
+            if credential != nil {
+                modal?.endModal()
+                // The prompt may have taken the keyboard: a click elsewhere meanwhile closes the
+                // HUD now, as it would have then (Rev, model-picker).
+                modal?.applyClickOutside()
+            }
             // An older URL's answer arriving last is dropped.
             guard !Task.isCancelled, fetch == modelsFetch else { return }
             switch answer {

@@ -95,13 +95,12 @@ final class EventKitTools: CalendarReader, RemindersAccess, @unchecked Sendable 
         case .fullAccess:
             return
         case .notDetermined:
-            // An error is a refusal too.
             await prompts.begin()
             let granted: Bool?
             if type == .event {
-                granted = try? await store.requestFullAccessToEvents()
+                granted = try? await store.requestFullAccessToEvents()  // an error is a refusal too
             } else {
-                granted = try? await store.requestFullAccessToReminders()
+                granted = try? await store.requestFullAccessToReminders()  // an error is a refusal too
             }
             await prompts.end()
             guard granted == true else { throw .blockedByMacOS(permission: permission) }

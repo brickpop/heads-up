@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.OpenScripting
+import CoreServices
 import HeadsUpCore
 
 /// Finds terminal apps by bundle id and opens commands in them (ADR-001 §7.3).
@@ -8,6 +9,7 @@ import HeadsUpCore
 ///   `iTerm.applescript`) is compiled once, then its `run_in_terminal` handler is called with an
 ///   Apple event whose parameters are the folder and the command (F14). Only the chosen
 ///   terminal's script is ever compiled or run, so macOS asks Automation consent for that one.
+///   That consent is asked before the run, off the main thread (`askAutomationConsent`).
 ///   NSAppleScript isn't thread-safe, so this runs on the main actor.
 /// - The others: `/usr/bin/open` with the plan's argv, off the main actor, never through a shell.
 @MainActor
@@ -30,15 +32,60 @@ final class SystemTerminalLauncher: TerminalLauncher {
     func run(_ plan: TerminalPlan) async -> TerminalRunResult {
         switch plan {
         case .script(let script, let directory, let command):
-            return runScript(script, parameters: [directory, command])
+            let wrap = await askAutomationConsent(for: script)
+            return runScript(script, parameters: [directory, command], wrappedInPrompt: wrap)
         case .process(let executable, let arguments):
             return await Task.detached { Self.runProcess(executable, arguments) }.value
         }
     }
 
+    // MARK: Automation consent
+
+    /// macOS asks the user once, the first time HeadsUp drives a terminal. That question is asked
+    /// here, before the run and off the main thread, so the HUD keeps ticking while the prompt is
+    /// up, and the HUD is lowered (`prompts`) only when macOS will really ask. The script run
+    /// then never prompts. Returns true when that couldn't be settled: the terminal isn't running
+    /// yet (-600), so the run, which launches it, may still ask, and is wrapped as before.
+    /// Two runs close together can both wait here for the same answer. That is harmless: the
+    /// `prompts` holds nest, and macOS shows one prompt.
+    private func askAutomationConsent(for script: TerminalScript) async -> Bool {
+        let bundleID = Self.terminal(for: script).bundleID
+        let status = await Task.detached { Self.automationConsent(bundleID, askingUser: false) }.value
+        switch Int(status) {
+        case errAEEventWouldRequireUserConsent:  // -1744: macOS will ask
+            prompts.begin()
+            _ = await Task.detached { Self.automationConsent(bundleID, askingUser: true) }.value
+            prompts.end()
+            return false
+        case procNotFound:  // -600
+            return true
+        default:  // allowed, or refused before: no prompt either way
+            return false
+        }
+    }
+
+    /// `AEDeterminePermissionToAutomateTarget` for any event to the app with `bundleID`. With
+    /// `askingUser`, it shows the Automation prompt if macOS hasn't asked yet, and waits for it.
+    private nonisolated static func automationConsent(_ bundleID: String, askingUser: Bool) -> OSStatus {
+        let target = NSAppleEventDescriptor(bundleIdentifier: bundleID)
+        // `aeDesc` points into `target`: keep it alive for the whole call.
+        return withExtendedLifetime(target) { () -> OSStatus in
+            guard let desc = target.aeDesc else { return OSStatus(procNotFound) }
+            return AEDeterminePermissionToAutomateTarget(
+                desc, AEEventClass(typeWildCard), AEEventID(typeWildCard), askingUser)
+        }
+    }
+
+    private static func terminal(for script: TerminalScript) -> Terminal {
+        switch script {
+        case .terminal: .terminal
+        case .iterm2: .iterm2
+        }
+    }
+
     // MARK: AppleScript
 
-    private func runScript(_ script: TerminalScript, parameters: [String]) -> TerminalRunResult {
+    private func runScript(_ script: TerminalScript, parameters: [String], wrappedInPrompt: Bool) -> TerminalRunResult {
         let compiled: NSAppleScript
         do {
             compiled = try load(script)
@@ -59,10 +106,10 @@ final class SystemTerminalLauncher: TerminalLauncher {
             forKeyword: AEKeyword(keyASSubroutineName))
         event.setParam(list, forKeyword: AEKeyword(keyDirectObject))
         var error: NSDictionary?
-        // The first run for a terminal may show the Automation prompt, and waits for its answer.
-        prompts.begin()
+        // Only when macOS couldn't tell beforehand whether it would ask (askAutomationConsent).
+        if wrappedInPrompt { prompts.begin() }
         compiled.executeAppleEvent(event, error: &error)
-        prompts.end()
+        if wrappedInPrompt { prompts.end() }
         return error.map(Self.result) ?? .opened
     }
 

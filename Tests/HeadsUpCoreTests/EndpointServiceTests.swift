@@ -902,6 +902,37 @@ private final class EndpointsHarness {
         await open.value
     }
 
+    // Rev (model-picker): the click-outside rule, held off while the token is read, applies once
+    // the read ends.
+    @Test func aClickAwayDuringTheTokenReadClosesTheHUDAfterIt() async throws {
+        let h = try EndpointsHarness()
+        let id = h.add("GPT", url: "https://api.openai.com/v1", token: "sk-proj-abcdefgha91f")
+        h.model.hud.open()
+        h.model.hud.didBecomeKey()
+        h.endpoints.editEndpoint(id)
+        h.server.holds = true
+        h.scheduler.advance(by: 0.5)
+        let task = try #require(h.endpoints.modelsTask)
+        for _ in 0..<50 where !h.server.isWaiting { await Task.yield() }
+        h.model.hud.didResignKey()  // the keychain prompt, or a click elsewhere
+        #expect(h.model.hud.isOpen)  // held open meanwhile
+        h.server.release()
+        await task.value
+        #expect(!h.model.hud.isOpen)
+
+        // Back with the keyboard by the time the read ends: it stays open.
+        h.model.hud.open()
+        h.model.hud.didBecomeKey()
+        h.endpoints.editEndpoint(id)
+        h.server.holds = true
+        h.scheduler.advance(by: 0.5)
+        let again = try #require(h.endpoints.modelsTask)
+        for _ in 0..<50 where !h.server.isWaiting { await Task.yield() }
+        h.server.release()
+        await again.value
+        #expect(h.model.hud.isOpen)
+    }
+
     @Test func withNoListTheTextFieldComesBackWithTheReason() async throws {
         let h = try EndpointsHarness()
         h.endpoints.updateDraft { $0.baseURL = "https://a.example/v1" }

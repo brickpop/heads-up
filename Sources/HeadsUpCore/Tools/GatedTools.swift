@@ -30,6 +30,9 @@ protocol ToolDisplay: AnyObject {
 public protocol ModalPresenting: AnyObject {
     func beginModal()
     func endModal()
+    /// After a modal moment in which another window took the keyboard: the click-outside rule,
+    /// which the moment held off. Closes the HUD if it is open but not key and click-away is on.
+    func applyClickOutside()
 }
 
 /// The Focus timer, as the focus.timer tool reaches it (ADR-001 addendum: any length): its
