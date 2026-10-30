@@ -7,22 +7,30 @@ struct SettingsView: View {
     let model: AppModel
 
     private let contentHeight = State(initialValue: HUDStyle.Settings.minHeight)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
             SettingsNav(hud: model.hud)
             VerticalHairline()
-            ScrollView {
-                SettingsPane(model: model, section: model.hud.settingsSection)
-                    .padding(.top, HUDStyle.Settings.paneTopPadding)
-                    .padding(.horizontal, HUDStyle.Settings.paneSidePadding)
-                    .padding(.bottom, HUDStyle.Settings.paneBottomPadding)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .onGeometryChange(for: CGFloat.self) {
-                        $0.size.height
-                    } action: {
-                        contentHeight.wrappedValue = $0
-                    }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    SettingsPane(model: model, section: model.hud.settingsSection)
+                        .padding(.top, HUDStyle.Settings.paneTopPadding)
+                        .padding(.horizontal, HUDStyle.Settings.paneSidePadding)
+                        .padding(.bottom, HUDStyle.Settings.paneBottomPadding)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .onGeometryChange(for: CGFloat.self) {
+                            $0.size.height
+                        } action: {
+                            contentHeight.wrappedValue = $0
+                        }
+                }
+                // Settings › Models: an endpoint just added comes into view (Yuki).
+                .onChange(of: model.endpoints.addedID) { _, added in
+                    guard let added else { return }
+                    withAnimation(reduceMotion ? nil : HUDStyle.Motion.standard) { proxy.scrollTo(added) }
+                }
             }
         }
         .frame(height: min(max(contentHeight.wrappedValue, HUDStyle.Settings.minHeight), HUDStyle.Settings.maxHeight))

@@ -1,9 +1,12 @@
 import HeadsUpCore
 import SwiftUI
 
-/// Settings → Models: the endpoints, quick add, and the add or edit form below them.
+/// Settings → Models: the endpoints, quick add, New model, and the add or edit form below them
+/// once one of these or a row opens it. When the form closes, the focus goes back to New model.
 struct ModelsSection: View {
     let model: AppModel
+
+    @FocusState private var newModelFocused: Bool
 
     var body: some View {
         let screen = model.endpoints.settingsScreen
@@ -26,7 +29,8 @@ struct ModelsSection: View {
                 SettingsList {
                     ForEach(Array(screen.rows.enumerated()), id: \.element.id) { index, row in
                         if index > 0 { Hairline() }
-                        EndpointRowView(endpoints: endpoints, row: row)
+                        // The id Settings scrolls to after an add.
+                        EndpointRowView(endpoints: endpoints, row: row).id(row.id)
                     }
                 }
             }
@@ -39,7 +43,22 @@ struct ModelsSection: View {
                         .controlSize(.small)
                 }
             }
-            EndpointFormView(model: model, form: screen.form)
+            if let newModel = screen.newModel {
+                Button {
+                    endpoints.newEndpoint()
+                } label: {
+                    Label(newModel, systemImage: Glyph.plus.symbolName)
+                }
+                .buttonStyle(.bordered)
+                .focused($newModelFocused)
+            }
+            if screen.showsForm {
+                EndpointFormView(model: model, form: screen.form)
+            }
+        }
+        // Cancel, esc or an add closed the form: a keyboard user isn't left with nothing focused.
+        .onChange(of: screen.showsForm) { wasShowing, shows in
+            if wasShowing && !shows { newModelFocused = true }
         }
     }
 }

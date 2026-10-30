@@ -281,9 +281,9 @@ public final class AppModel {
         hud.onEvent = { [weak self] event in
             self?.handle(event)
         }
-        registry.add(.model) { [weak self, weak hud] in
-            guard let self, let hud else { return [] }
-            return ShellActions.addModel(hud: hud, chat: self.chat)
+        registry.add(.model) { [weak self] in
+            guard let self else { return [] }
+            return ShellActions.addModel(chat: self.chat) { [weak self] in self?.openAddModel() }
                 + ModelActions.make(endpoints: endpoints) { [weak self] id in self?.selectModel(id) }
         }
         registry.add(.command) { [weak self] in
@@ -357,10 +357,18 @@ public final class AppModel {
         Strings.Welcome.problemLine(hud.hotkey, shortcut: settings.settings.general.shortcut)
     }
 
-    /// The welcome's Set up a model: the welcome is done, and Settings → Models opens.
+    /// The welcome's Set up a model: the welcome is done, and Settings → Models opens on the
+    /// empty add form.
     public func welcomeSetUpModel() {
         endWelcome()
+        openAddModel()
+    }
+
+    /// Add a model: Settings → Models with the add form open and Name focused
+    /// (`EndpointService.openAddForm`).
+    public func openAddModel() {
         hud.showSettings(.models)
+        endpoints.openAddForm()
     }
 
     private func endWelcome() {
@@ -788,9 +796,9 @@ extension AppModel {
 
     // MARK: Forms
 
-    /// Esc. While Settings → Services or Commands shows its form, it is the form's Cancel; on a
-    /// Focus prompt with the prompt field empty, it snoozes for the default length; otherwise
-    /// the HUD's Esc.
+    /// Esc. While Settings → Services, Commands or Models shows its form, it is the form's
+    /// Cancel (on Models, the token-host question closes first); on a Focus prompt with the
+    /// prompt field empty, it snoozes for the default length; otherwise the HUD's Esc.
     public func escape() {
         if body == .focus && hud.input.isEmpty && focus.showsPrompt {
             focus.snooze()
@@ -801,6 +809,8 @@ extension AppModel {
         } else if body == .settings && hud.settingsSection == .models && endpoints.form.tokenHostQuestion != nil {
             // Esc closes the token-host question; nothing is tested or saved.
             endpoints.dismissTokenHostQuestion()
+        } else if body == .settings && hud.settingsSection == .models && endpoints.form.isOpen {
+            endpoints.cancelForm()
         } else {
             hud.escape()
         }

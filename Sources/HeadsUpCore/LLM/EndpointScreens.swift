@@ -9,7 +9,12 @@ public struct ModelsSettingsScreen: Equatable, Sendable {
     public let quickAdd: [QuickAdd]
     public let rows: [Row]
     public let listProblem: ListProblem?
-    /// Always there: adding, or editing a row.
+    /// "New model", under the list: `endpoints.newEndpoint()`. Nil while the add form shows,
+    /// whose Cancel closes it.
+    public let newModel: String?
+    /// Whether `form` shows: after New model or a quick add, or while editing a row.
+    public let showsForm: Bool
+    /// Adding, or editing a row.
     public let form: EndpointFormScreen
 
     /// A quick-add button: `endpoints.quickAdd(kind)`.
@@ -67,6 +72,10 @@ public struct ModelsSettingsScreen: Equatable, Sendable {
 /// The endpoint form. The token's secure field reads `endpoints.draftToken` and writes through
 /// `updateDraft`; the token never appears here.
 public struct EndpointFormScreen: Equatable, Sendable {
+    /// Adding a new endpoint: the Name field takes the focus when the form appears.
+    public let isAdding: Bool
+    /// Changes at each opening of the add form, also while it shows: Name takes the focus again.
+    public let nameFocusRequest: Int
     /// "Add endpoint", or "Edit GPT-4o mini".
     public let label: String
     public let name: String
@@ -106,8 +115,8 @@ public struct EndpointFormScreen: Equatable, Sendable {
     /// "Add endpoint" or "Save": `endpoints.saveForm()`.
     public let primary: String
     public let primaryEnabled: Bool
-    /// "Cancel", while editing: `endpoints.cancelForm()`.
-    public let cancel: String?
+    /// "Cancel", beside Add endpoint or Save: `endpoints.cancelForm()`, which closes the form.
+    public let cancel: String
     public let bar: EndpointFormBar
 
     /// Model id: the server's models in a pop-up menu (mono), or the text field.
@@ -236,7 +245,8 @@ extension EndpointService {
                 ? nil
                 : ModelsSettingsScreen.ListProblem(
                     text: Strings.EndpointForm.removeFailed, tryAgain: Strings.EndpointForm.tryAgain),
-            form: formScreen)
+            newModel: form.isOpen && form.editing == nil ? nil : Strings.Models.newModel,
+            showsForm: form.isOpen, form: formScreen)
     }
 
     private func row(_ endpoint: Endpoint) -> ModelsSettingsScreen.Row {
@@ -279,6 +289,7 @@ extension EndpointService {
         let placeholder =
             savedMask.map(Strings.EndpointForm.tokenSavedPlaceholder) ?? Strings.EndpointForm.tokenPlaceholder
         return EndpointFormScreen(
+            isAdding: form.editing == nil, nameFocusRequest: nameFocusRequests,
             label: editing.map { Strings.EndpointForm.editLabel($0.name) } ?? Strings.EndpointForm.addLabel,
             name: draft.name, modelID: draft.modelID, modelField: modelField, modelIDHelp: modelIDHelp,
             baseURL: draft.baseURL, baseURLNote: note,
@@ -293,7 +304,7 @@ extension EndpointService {
             test: Strings.EndpointForm.test, testEnabled: form.result != .testing && policy != .rejected,
             result: form.result.map(resultScreen),
             primary: editing == nil ? Strings.EndpointForm.add : Strings.EndpointForm.save, primaryEnabled: canSave,
-            cancel: editing == nil ? nil : Strings.EndpointForm.cancel,
+            cancel: Strings.EndpointForm.cancel,
             bar: form.tokenHostQuestion.map {
                 .tokenHost(
                     question: Strings.EndpointForm.tokenHostQuestion($0.host), keep: Strings.EndpointForm.keepToken,

@@ -88,10 +88,13 @@ public struct TokenHostQuestion: Equatable, Sendable {
     }
 }
 
-/// The form in Settings → Models: always there, adding a new endpoint or editing one.
+/// The form in Settings → Models: hidden until New model, a quick add or a row's click opens it,
+/// adding a new endpoint or editing one.
 public struct EndpointForm: Equatable, Sendable {
     /// The endpoint being edited; nil while adding.
     public let editing: Endpoint.ID?
+    /// Whether the form shows. Editing always shows it.
+    public let isOpen: Bool
     public internal(set) var draft: EndpointDraft
     public internal(set) var result: TestResult?
     /// Waiting for the answer to "Send your saved token to <host>?" before Save or Test (F7).
@@ -104,13 +107,15 @@ public struct EndpointForm: Equatable, Sendable {
     /// goes when the URL changes.
     var tokenHostAnswer: (origin: Origin, keep: Bool)?
 
-    init(editing: Endpoint.ID? = nil, draft: EndpointDraft = EndpointDraft()) {
+    /// A closed, empty form; with `isOpen`, the add form New model shows.
+    init(editing: Endpoint.ID? = nil, draft: EndpointDraft = EndpointDraft(), isOpen: Bool = false) {
         self.editing = editing
+        self.isOpen = isOpen || editing != nil
         self.draft = draft
     }
 
     public static func == (lhs: EndpointForm, rhs: EndpointForm) -> Bool {
-        lhs.editing == rhs.editing && lhs.draft == rhs.draft && lhs.result == rhs.result
+        lhs.editing == rhs.editing && lhs.isOpen == rhs.isOpen && lhs.draft == rhs.draft && lhs.result == rhs.result
             && lhs.tokenHostQuestion == rhs.tokenHostQuestion && lhs.tokenProblem == rhs.tokenProblem
             && lhs.models == rhs.models
             && lhs.tokenHostAnswer?.origin == rhs.tokenHostAnswer?.origin
@@ -129,6 +134,12 @@ public final class EndpointService {
     /// The model chat uses now; nil with no endpoints.
     public private(set) var activeID: Endpoint.ID?
     public private(set) var form = EndpointForm()
+    /// The endpoint just added, until the form opens again: Settings scrolls it into view. It
+    /// gets no fill, since --sel marks the row being edited (Yuki).
+    public private(set) var addedID: Endpoint.ID?
+    /// Counts the add form's openings (New model, a quick add, Add a model): each one moves the
+    /// focus to Name, even when the add form already shows.
+    public private(set) var nameFocusRequests = 0
     /// The row asking "Remove GPT-4o mini? Its token is deleted from the Keychain."
     public private(set) var removing: Endpoint.ID?
     /// A removed endpoint whose token the keychain kept: the note under the list offers Try Again.
@@ -311,8 +322,26 @@ public final class EndpointService {
             break
         }
         draft.serviceID = matchingService(draft.baseURL)?.id
-        resetForm(EndpointForm(editing: nil, draft: draft))
+        resetForm(EndpointForm(editing: nil, draft: draft, isOpen: true))
+        nameFocusRequests += 1
         scheduleModelList()
+    }
+
+    /// New model: the empty add form opens, in place of any edit.
+    public func newEndpoint() {
+        resetForm(EndpointForm(isOpen: true))
+        nameFocusRequests += 1
+    }
+
+    /// Add a model, or the welcome's Set up a model: the empty add form, as New model. An add
+    /// form already open keeps its draft and only moves the focus to Name; an edit is dropped, as
+    /// a click on another row drops it.
+    public func openAddForm() {
+        if form.isOpen && form.editing == nil {
+            nameFocusRequests += 1
+        } else {
+            newEndpoint()
+        }
     }
 
     /// A row's click, or Edit…: the form loads that endpoint.
@@ -322,8 +351,7 @@ public final class EndpointService {
         scheduleModelList()
     }
 
-    /// Cancel, while editing: nothing is kept, a token marked for removal included, and the form
-    /// goes back to adding, empty.
+    /// Cancel, or esc: the form closes and nothing is kept, a token marked for removal included.
     public func cancelForm() {
         resetForm()
     }
@@ -437,6 +465,7 @@ public final class EndpointService {
         // The first endpoint added becomes the default and the active model.
         if isFirst || activeID == nil { activeID = id }
         resetForm()
+        if previous == nil { addedID = id }
         toaster?.toast(previous == nil ? Strings.Models.added(endpoint.name) : Strings.Models.saved(endpoint.name))
     }
 
@@ -445,6 +474,7 @@ public final class EndpointService {
         startWait?.cancel()
         cancelModelList()
         form = next
+        addedID = nil
     }
 
     // MARK: The Model id list

@@ -2,15 +2,15 @@
 /// Each feature's slice adds its own provider, in catalogue order.
 @MainActor
 enum ShellActions {
-    /// "Add a model", shown while there is no model to chat with.
-    static func addModel(hud: HUDStore, chat: HUDChat) -> [Action] {
+    /// "Add a model", shown while there is no model to chat with. `open` shows Settings → Models
+    /// with the add form open (`AppModel.openAddModel`).
+    static func addModel(chat: HUDChat, open: @escaping @MainActor () -> Void) -> [Action] {
         guard chat.askTarget == .noModel else { return [] }
         return [
             Action(
                 id: ActionID("model.add"), title: Strings.Actions.addModel,
                 subtitle: Strings.Actions.addModelSubtitle, kind: .model, glyph: .cpu,
-                keywords: "model llm endpoint add ollama openai", suggest: .never,
-                run: { [weak hud] in hud?.showSettings(.models) })
+                keywords: "model llm endpoint add ollama openai", suggest: .never, run: open)
         ]
     }
 

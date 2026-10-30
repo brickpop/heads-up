@@ -3,11 +3,13 @@ import SwiftUI
 
 /// The add or edit form under the endpoints, on the raised fill: name, model id, base URL with
 /// its http note, the token in a secure field, the vision and tools options, the linked service,
-/// Test connection with its result, and Add or Save. When the host changed with a saved token,
-/// the buttons turn into the token question (F7).
+/// Test connection with its result, and Cancel and Add or Save. When the host changed with a
+/// saved token, the buttons turn into the token question (F7). Opened to add, Name takes the focus.
 struct EndpointFormView: View {
     let model: AppModel
     let form: EndpointFormScreen
+
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         let endpoints = model.endpoints
@@ -17,6 +19,7 @@ struct EndpointFormView: View {
                 GridRow(alignment: .top) {
                     FormField(label: Strings.EndpointForm.name, problem: nil) {
                         TextField(Strings.EndpointForm.name, text: draft(form.name) { $0.name = $1 })
+                            .focused($nameFocused)
                     }
                     FormField(label: Strings.EndpointForm.modelID, help: form.modelIDHelp, problem: nil) {
                         ModelIDField(model: model, form: form)
@@ -116,10 +119,8 @@ struct EndpointFormView: View {
             case .none:
                 HStack {
                     Spacer()
-                    if let cancel = form.cancel {
-                        Button(cancel) { endpoints.cancelForm() }
-                            .buttonStyle(.borderless)
-                    }
+                    Button(form.cancel) { endpoints.cancelForm() }
+                        .buttonStyle(.borderless)
                     Button(form.test) { endpoints.testConnection() }
                         .buttonStyle(.bordered)
                         .disabled(!form.testEnabled)
@@ -144,6 +145,14 @@ struct EndpointFormView: View {
         .font(.system(size: HUDStyle.Settings.labelSize))
         .padding(HUDStyle.Endpoints.formPadding)
         .background(HUDStyle.Colors.raise, in: RoundedRectangle(cornerRadius: HUDStyle.Endpoints.formCornerRadius))
+        // Each add opening (New model, a quick add, Add a model) moves the focus to Name, also
+        // while the add form already shows. An edit leaves the focus where it is.
+        .onAppear {
+            if form.isAdding { nameFocused = true }
+        }
+        .onChange(of: form.nameFocusRequest) {
+            nameFocused = true
+        }
     }
 
     /// A text binding to one field of the core's draft.

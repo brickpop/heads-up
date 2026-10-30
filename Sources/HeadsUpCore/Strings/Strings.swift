@@ -1040,7 +1040,10 @@ public enum Strings {
     public enum Models {
         public static let title = "Model endpoints"
         public static let intro = "Any OpenAI-compatible URL. Switch from the HUD with “/model”."
-        public static let emptyCard = "Add an OpenAI-compatible URL below. Ollama and LM Studio run on this Mac."
+        public static let emptyCard =
+            "No models yet. Add one with the buttons below. Ollama and LM Studio run on this Mac."
+        /// Under the list: opens the empty add form.
+        public static let newModel = "New model"
         public static func quickAdd(_ kind: QuickAddKind) -> String {
             switch kind {
             case .openAI: "OpenAI"

@@ -53,10 +53,10 @@ private final class EndpointsHarness {
         try? FileManager.default.removeItem(at: folder.deletingLastPathComponent())
     }
 
-    /// Adds an endpoint through the form and returns its id.
+    /// Adds an endpoint through New model and the form, and returns its id.
     @discardableResult
     func add(_ name: String, url: String, model id: String = "", token: String = "") -> Endpoint.ID {
-        endpoints.cancelForm()
+        endpoints.newEndpoint()
         endpoints.updateDraft {
             $0.name = name
             $0.baseURL = url
@@ -83,7 +83,7 @@ private final class EndpointsHarness {
         #expect(h.endpoints.endpoints.isEmpty && h.endpoints.activeID == nil)
         #expect(
             h.endpoints.settingsScreen.emptyCard
-                == "Add an OpenAI-compatible URL below. Ollama and LM Studio run on this Mac.")
+                == "No models yet. Add one with the buttons below. Ollama and LM Studio run on this Mac.")
         #expect(
             h.model.modelChip
                 == ModelChip(
@@ -491,6 +491,16 @@ private final class EndpointsHarness {
         h.model.hud.showSettings(.models)
         h.model.escape()
         #expect(h.endpoints.form.tokenHostQuestion == nil && h.server.requests.isEmpty)
+        // The first esc closes only the question: the edit stays, with the changed URL.
+        #expect(h.endpoints.form.isOpen && h.endpoints.form.editing == id)
+        #expect(h.endpoints.form.draft.baseURL == "https://localhost:9443/v1")
+        // The second closes the form, and the endpoint is unchanged.
+        h.model.escape()
+        #expect(!h.endpoints.form.isOpen && h.endpoints.endpoint(id)?.baseURL == "https://localhost:8443/v1")
+        #expect(h.model.hud.isOpen)
+        // The third closes the HUD.
+        h.model.escape()
+        #expect(!h.model.hud.isOpen && h.server.requests.isEmpty)
     }
 
     @Test func theTransportRefusesASavedTokenForAnotherOrigin() async throws {
@@ -1000,5 +1010,158 @@ private final class EndpointsHarness {
         h.endpoints.cancelForm()
         await fetch(h)
         #expect(h.server.requests.isEmpty && field(h) == .text)
+    }
+}
+
+/// Settings › Models: the form shows only to add or edit, from New model, a quick add or a row
+/// (endpoints-new-button, CEO, 2026-10-30).
+@MainActor
+@Suite(.serialized) struct EndpointNewButtonTests {
+    @Test func theFormIsHiddenUntilNewModel() throws {
+        let h = try EndpointsHarness()
+        var screen = h.endpoints.settingsScreen
+        #expect(!screen.showsForm)
+        #expect(screen.newModel == "New model")
+        #expect(screen.emptyCard != nil)  // the empty line and the button, no form
+
+        h.endpoints.newEndpoint()
+        screen = h.endpoints.settingsScreen
+        #expect(screen.showsForm && screen.newModel == nil)
+        #expect(screen.form.label == "Add endpoint" && screen.form.name.isEmpty && screen.form.baseURL.isEmpty)
+        #expect(screen.form.primary == "Add endpoint" && screen.form.cancel == "Cancel")
+    }
+
+    @Test func cancelClosesTheFormAndKeepsNothing() throws {
+        let h = try EndpointsHarness()
+        h.endpoints.newEndpoint()
+        h.endpoints.updateDraft {
+            $0.name = "Half typed"
+            $0.baseURL = "https://a.example/v1"
+        }
+        h.endpoints.cancelForm()
+        #expect(!h.endpoints.settingsScreen.showsForm)
+        #expect(h.endpoints.endpoints.isEmpty)
+        h.endpoints.newEndpoint()
+        #expect(h.endpoints.settingsScreen.form.name.isEmpty)  // opens empty again
+    }
+
+    @Test func escClosesTheFormWithoutSaving() throws {
+        let h = try EndpointsHarness()
+        h.model.hud.showSettings(.models)
+        h.endpoints.newEndpoint()
+        h.endpoints.updateDraft { $0.name = "Half typed" }
+        h.model.escape()
+        #expect(!h.endpoints.settingsScreen.showsForm && h.endpoints.endpoints.isEmpty)
+        #expect(h.model.hud.isOpen)  // the first esc only closes the form
+        h.model.escape()
+        #expect(!h.model.hud.isOpen)
+    }
+
+    @Test func aSuccessfulAddClosesTheFormAndScrollsToTheNewRow() throws {
+        let h = try EndpointsHarness()
+        let first = h.add("GPT-4o mini", url: "https://api.openai.com/v1", model: "gpt-4o-mini")
+        let screen = h.endpoints.settingsScreen
+        #expect(!screen.showsForm && screen.newModel == "New model")
+        #expect(h.endpoints.addedID == first)
+        #expect(h.toast == .toast("Added GPT-4o mini"))
+        // The first one is still the default and the active model.
+        #expect(h.endpoints.defaultID == first && h.endpoints.activeID == first)
+
+        let second = h.add("Local", url: "http://localhost:11434/v1")
+        #expect(h.endpoints.addedID == second)
+        // No fill: --sel marks only the row being edited, so the new row doesn't look active.
+        #expect(!h.endpoints.settingsScreen.rows.contains { $0.isEditing })
+        #expect(h.endpoints.activeID == first)
+        h.endpoints.newEndpoint()  // the form opens again
+        #expect(h.endpoints.addedID == nil)
+    }
+
+    @Test func aRefusedAddKeepsTheFormOpen() throws {
+        let h = try EndpointsHarness()
+        h.endpoints.newEndpoint()
+        h.endpoints.updateDraft { $0.baseURL = "https://a.example/v1" }  // no name
+        h.endpoints.saveForm()
+        #expect(h.endpoints.settingsScreen.showsForm && h.endpoints.endpoints.isEmpty)
+    }
+
+    @Test func aQuickAddOpensTheFormFilledWithCancel() throws {
+        let h = try EndpointsHarness()
+        h.endpoints.quickAdd(.ollama)
+        let screen = h.endpoints.settingsScreen
+        #expect(screen.showsForm && screen.newModel == nil)
+        #expect(screen.form.name == "Ollama" && screen.form.cancel == "Cancel")
+    }
+
+    @Test func editingIsUnchanged() throws {
+        let h = try EndpointsHarness()
+        let id = h.add("GPT", url: "https://api.openai.com/v1")
+        h.endpoints.editEndpoint(id)
+        var screen = h.endpoints.settingsScreen
+        #expect(screen.showsForm)
+        #expect(screen.form.label == "Edit GPT" && screen.form.primary == "Save" && screen.form.cancel == "Cancel")
+        #expect(screen.rows.first?.isEditing == true && h.endpoints.addedID == nil)
+        #expect(screen.newModel == "New model")  // still there: it switches to an empty add form
+        h.endpoints.updateDraft { $0.name = "GPT 2" }
+        h.endpoints.saveForm()
+        screen = h.endpoints.settingsScreen
+        #expect(!screen.showsForm && h.endpoints.endpoint(id)?.name == "GPT 2")
+        #expect(h.toast == .toast("Saved GPT 2"))
+
+        h.endpoints.editEndpoint(id)
+        h.endpoints.newEndpoint()
+        #expect(h.endpoints.form.editing == nil && h.endpoints.settingsScreen.form.name.isEmpty)
+    }
+
+    @Test func nameTakesTheFocusAtEveryAddOpening() throws {
+        let h = try EndpointsHarness()
+        var request = h.endpoints.settingsScreen.form.nameFocusRequest
+        func focusedAgain() -> Bool {
+            let next = h.endpoints.settingsScreen.form.nameFocusRequest
+            defer { request = next }
+            return next != request
+        }
+        h.endpoints.newEndpoint()
+        #expect(focusedAgain())
+        h.endpoints.quickAdd(.ollama)  // the add form is already open
+        #expect(focusedAgain())
+        h.endpoints.quickAdd(.lmStudio)
+        #expect(focusedAgain())
+        h.endpoints.updateDraft { $0.name = "Typing" }
+        #expect(!focusedAgain())  // typing doesn't move the focus
+    }
+
+    @Test func addAModelOpensTheEmptyAddFormWithNameFocused() throws {
+        let h = try EndpointsHarness()
+        h.model.hud.open(tab: .focus)
+        let request = h.endpoints.settingsScreen.form.nameFocusRequest
+        try #require(h.model.registry.actions.first { $0.id == ActionID("model.add") }).run()
+        #expect(h.model.hud.tab == .settings && h.model.hud.settingsSection == .models)
+        let screen = h.endpoints.settingsScreen
+        #expect(screen.showsForm && h.endpoints.form.editing == nil && screen.form.name.isEmpty)
+        #expect(screen.form.nameFocusRequest != request)
+    }
+
+    @Test func setUpAModelOpensTheEmptyAddForm() throws {
+        let h = try EndpointsHarness()
+        h.model.welcomeSetUpModel()
+        #expect(h.model.hud.settingsSection == .models)
+        #expect(h.endpoints.settingsScreen.showsForm && h.endpoints.form.editing == nil)
+    }
+
+    @Test func openingTheAddFormKeepsADraftAndDropsAnEdit() throws {
+        let h = try EndpointsHarness()
+        h.endpoints.newEndpoint()
+        h.endpoints.updateDraft { $0.name = "Half typed" }
+        let request = h.endpoints.settingsScreen.form.nameFocusRequest
+        h.model.openAddModel()
+        #expect(h.endpoints.form.draft.name == "Half typed")  // the draft stays
+        #expect(h.endpoints.settingsScreen.form.nameFocusRequest != request)  // and Name is focused
+
+        let id = h.add("GPT", url: "https://api.openai.com/v1")
+        h.endpoints.editEndpoint(id)
+        h.endpoints.updateDraft { $0.name = "Unsaved" }
+        h.model.openAddModel()  // as a click on another row: the edit is dropped
+        #expect(h.endpoints.form.editing == nil && h.endpoints.form.draft.name.isEmpty)
+        #expect(h.endpoints.endpoint(id)?.name == "GPT")
     }
 }
