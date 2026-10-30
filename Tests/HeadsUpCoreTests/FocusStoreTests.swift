@@ -599,7 +599,7 @@ private struct FocusHarness {
         }
         #expect(automatic.label == "25 min session done · 1 today")
         #expect(automatic.title == "Time for a break")
-        #expect(automatic.done == "Done")
+        #expect(automatic.done == "Stop for now")
         #expect(automatic.options.first { $0.isSelected }?.id == "water")
         #expect(
             automatic.options.prefix(2).map(\.accessibilityLabel) == [
@@ -612,12 +612,12 @@ private struct FocusHarness {
         h.focus.setBreakLength(20)
         if case .breakPrompt(let changed) = h.focus.screen(at: h.clock.now) { #expect(changed.selectedLength == 20) }
         h.focus.setBreakLength(5)
-        #expect(automatic.snooze.choices.first { $0.isDefault }?.minutes == 5)
+        #expect(automatic.snooze.choices.first { $0.isSelected }?.minutes == 5)
         #expect(automatic.startBreak == "Start 5 min break")
 
         h.focus.takeBreakNow()
         guard case .breakPrompt(let manual) = h.focus.screen(at: h.clock.now) else { return }
-        #expect(manual.done == "Done")
+        #expect(manual.done == "Stop for now")
         #expect(manual.label == "1 session · 25m focused today")
     }
 
@@ -633,7 +633,7 @@ private struct FocusHarness {
         #expect(back.label == "Break finished")
         #expect(back.title == "Ready to get back to it?")
         #expect(back.start == "Start 25 min focus")
-        #expect(back.done == "Done")
+        #expect(back.done == "Stop for now")
         h.focus.snooze()
         guard case .snoozed(let snoozed) = h.focus.screen(at: h.clock.now.addingTimeInterval(48)) else { return }
         #expect(snoozed.title == "Prompt returns in 4:12")
@@ -1172,7 +1172,7 @@ private struct FocusHarness {
         }
         #expect(prompt.snooze.label == "Snooze")
         #expect(prompt.snooze.choices.map(\.title) == ["2m", "5m", "10m"])
-        #expect(prompt.snooze.choices.map(\.isDefault) == [false, false, true])
+        #expect(prompt.snooze.choices.map(\.isSelected) == [false, false, true])
         #expect(
             prompt.snooze.choices.map(\.accessibilityLabel) == [
                 "Snooze, 2 minutes", "Snooze, 5 minutes", "Snooze, 10 minutes",
@@ -1185,7 +1185,7 @@ private struct FocusHarness {
             Issue.record("expected the back prompt")
             return
         }
-        #expect(back.snooze.choices.map(\.isDefault) == [true, false, false])
+        #expect(back.snooze.choices.map(\.isSelected) == [true, false, false])
     }
 
     @Test func escOnAPromptSnoozesForTheDefault() {
@@ -1418,5 +1418,145 @@ private struct FocusHarness {
             return
         }
         #expect(run.minutes == 40)
+    }
+}
+
+/// ⌥⇧←/→ picks the snooze length on both prompts, and esc snoozes for it (break-prompt-layout,
+/// CEO, 2026-10-30).
+@MainActor
+@Suite(.serialized) struct SnoozeSelectionTests {
+    private let optionShiftLeft = Shortcut(keyCode: KeyCode.leftArrow, modifiers: [.option, .shift], key: "←")
+    private let optionShiftRight = Shortcut(keyCode: KeyCode.rightArrow, modifiers: [.option, .shift], key: "→")
+
+    private func atBreakPrompt(snooze: Int = 5) -> FocusHarness {
+        var settings = Settings()
+        settings.focus.snoozeMinutes = snooze
+        let h = FocusHarness(settings: settings)
+        h.focus.start()
+        h.minutes(25)
+        h.hud.open(tab: .focus)
+        return h
+    }
+
+    private func atBackPrompt() -> FocusHarness {
+        let h = atBreakPrompt()
+        h.focus.startBreak()
+        h.minutes(5)
+        h.hud.open(tab: .focus)
+        return h
+    }
+
+    private func selected(_ h: FocusHarness) -> Int? {
+        switch h.focus.screen(at: h.clock.now) {
+        case .breakPrompt(let prompt): prompt.snooze.choices.first { $0.isSelected }?.minutes
+        case .backPrompt(let prompt): prompt.snooze.choices.first { $0.isSelected }?.minutes
+        default: nil
+        }
+    }
+
+    @Test func theSelectionStartsAtTheSettingsDefault() {
+        let h = atBreakPrompt(snooze: 10)
+        #expect(selected(h) == 10)
+        guard case .breakPrompt(let prompt) = h.focus.screen(at: h.clock.now) else { return }
+        #expect(prompt.snooze.choices.map(\.isSelected) == [false, false, true])
+    }
+
+    @Test func optionShiftArrowsMoveItAndStopAtTheEnds() {
+        for h in [atBreakPrompt(), atBackPrompt()] {
+            #expect(h.model.handleShortcut(optionShiftRight))
+            #expect(selected(h) == 10)
+            #expect(h.model.handleShortcut(optionShiftRight))  // at the end: handled, no change
+            #expect(selected(h) == 10)
+            #expect(h.model.handleShortcut(optionShiftLeft))
+            #expect(h.model.handleShortcut(optionShiftLeft))
+            #expect(selected(h) == 2)
+            #expect(h.focus.snoozeMoves == 3)  // VoiceOver hears each change, not the stop at the end
+            #expect(h.model.settings.settings.focus.snoozeMinutes == 5)  // Settings doesn't change
+        }
+    }
+
+    @Test func theBreakOptionKeysStayTheirs() {
+        let h = atBreakPrompt()
+        #expect(h.model.handleShortcut(Shortcut(keyCode: KeyCode.rightArrow, modifiers: .option, key: "→")))
+        #expect(h.focus.activity.id == "stretch" && selected(h) == 5)
+        #expect(h.model.handleShortcut(optionShiftRight))
+        #expect(h.focus.activity.id == "stretch" && selected(h) == 10)
+    }
+
+    @Test func escSnoozesForTheSelectedLength() {
+        for h in [atBreakPrompt(), atBackPrompt()] {
+            _ = h.model.handleShortcut(optionShiftLeft)
+            h.model.escape()
+            #expect(h.focus.snapshot == .snoozed(until: h.clock.now.addingTimeInterval(2 * 60)))
+            #expect(h.hud.footerLeft == .toast("Snoozed for 2 min"))
+        }
+    }
+
+    @Test func aClickStillSnoozesForItsOwnLength() {
+        let h = atBreakPrompt()
+        _ = h.model.handleShortcut(optionShiftLeft)
+        h.focus.snooze(minutes: 10)
+        #expect(h.focus.snapshot == .snoozed(until: h.clock.now.addingTimeInterval(10 * 60)))
+    }
+
+    @Test func withTextTheKeysStayTheFields() {
+        let h = atBreakPrompt()
+        h.hud.setInput("x")
+        #expect(!h.model.handleShortcut(optionShiftRight))
+        #expect(selected(h) == 5)
+    }
+
+    @Test func onlyThePromptsHaveIt() {
+        let h = FocusHarness()
+        h.hud.open(tab: .focus)
+        #expect(!h.model.handleShortcut(optionShiftRight))  // idle
+        h.focus.start()
+        #expect(!h.model.handleShortcut(optionShiftRight))  // running
+        let prompt = atBreakPrompt()
+        prompt.hud.selectTab(.chat)
+        #expect(!prompt.model.handleShortcut(optionShiftRight))  // another tab
+    }
+
+    @Test func theNextPromptStartsAtTheDefaultAgain() {
+        let h = atBreakPrompt()
+        _ = h.model.handleShortcut(optionShiftRight)
+        h.focus.snooze(minutes: 2)
+        h.minutes(2)  // the prompt is back
+        #expect(selected(h) == 5)
+        _ = h.model.handleShortcut(optionShiftLeft)
+        h.focus.startBreak()
+        h.minutes(5)
+        #expect(selected(h) == 5)  // the back prompt too
+    }
+
+    @Test func notificationsKeepSnoozingForTheDefault() {
+        let h = atBreakPrompt()
+        _ = h.model.handleShortcut(optionShiftRight)
+        h.model.handleNotification(category: "focus.end", action: "snooze")
+        #expect(h.focus.snapshot == .snoozed(until: h.clock.now.addingTimeInterval(5 * 60)))
+    }
+
+    @Test func theGroupsArrowKeysSelectWithoutSnoozing() {
+        let h = atBreakPrompt()
+        h.focus.selectSnooze(10)
+        #expect(selected(h) == 10 && h.focus.phase == .prompt(.breakPrompt(manual: false)))
+        h.focus.selectSnooze(7)  // not a length: refused
+        #expect(selected(h) == 10)
+        h.model.escape()
+        #expect(h.focus.snapshot == .snoozed(until: h.clock.now.addingTimeInterval(10 * 60)))
+    }
+
+    @Test func doneIsStopForNowOnThePromptsAndInTheNotifications() {
+        #expect(Strings.Focus.done == "Stop for now")
+        #expect(Strings.Notifications.actionTitle(.done) == "Stop for now")
+        #expect(Strings.Focus.doneHelp == "Stop here. Nothing else starts.")
+    }
+
+    @Test func theLengthGroupReadsAsBreakLength() {
+        let h = atBreakPrompt()
+        guard case .breakPrompt(let prompt) = h.focus.screen(at: h.clock.now) else { return }
+        #expect(prompt.lengths.map(\.title) == ["2m", "5m", "10m", "20m", "50m"])
+        #expect(prompt.lengths.map(\.accessibilityLabel).first == "2 minutes")
+        #expect(Strings.Focus.lengthGroupAccessibility == "Break length")
     }
 }

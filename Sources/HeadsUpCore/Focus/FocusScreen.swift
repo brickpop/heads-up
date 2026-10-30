@@ -54,7 +54,7 @@ public enum FocusScreen: Equatable, Sendable {
         public let lengths: [LengthChoice]
         /// The break length picked, in minutes: the one `lengths` marks selected.
         public let selectedLength: Int
-        /// "Done": ends the loop, back to idle.
+        /// "Stop for now": ends the loop, back to idle.
         public let done: String
         public let snooze: SnoozeGroup
         public let startBreak: String
@@ -67,12 +67,13 @@ public enum FocusScreen: Equatable, Sendable {
         public let choices: [SnoozeChoice]
     }
 
-    /// One snooze length. `isDefault` marks Settings › Focus › Snooze length, which esc uses.
+    /// One snooze length. `isSelected` marks the one esc snoozes for: Settings' snooze length
+    /// each time a prompt shows, until ⌥⇧← ⌥⇧→ or ← → in the group picks another.
     public struct SnoozeChoice: Equatable, Sendable {
         public let minutes: Int
         /// "5m"
         public let title: String
-        public let isDefault: Bool
+        public let isSelected: Bool
         /// "Snooze, 5 minutes"
         public let accessibilityLabel: String
     }
@@ -89,11 +90,14 @@ public enum FocusScreen: Equatable, Sendable {
         public let accessibilityLabel: String
     }
 
-    /// One segment of the break length control.
+    /// One segment of the break prompt's Length group.
     public struct LengthChoice: Equatable, Sendable {
         public let minutes: Int
+        /// "5m"
         public let title: String
         public let isSelected: Bool
+        /// "Length, 5 minutes"
+        public let accessibilityLabel: String
     }
 
     public struct BackPrompt: Equatable, Sendable {
@@ -103,7 +107,7 @@ public enum FocusScreen: Equatable, Sendable {
         /// The focus lengths to start: 25, 40 and 50, and the last focus's length if it was
         /// typed and isn't one of these. The selected one is the last focus's at first.
         public let lengths: [LengthCard]
-        /// "Done": ends the loop, back to idle.
+        /// "Stop for now": ends the loop, back to idle.
         public let done: String
         public let snooze: SnoozeGroup
         /// "Start 40 min focus", for the selected length.
@@ -275,7 +279,8 @@ extension FocusStore {
             },
             lengths: FocusSettings.breakLengths.map { minutes in
                 FocusScreen.LengthChoice(
-                    minutes: minutes, title: Strings.Focus.minutes(minutes), isSelected: minutes == breakLength)
+                    minutes: minutes, title: Strings.Focus.lengthChoice(minutes), isSelected: minutes == breakLength,
+                    accessibilityLabel: Strings.Focus.lengthAccessibility(minutes))
             },
             selectedLength: breakLength,
             done: Strings.Focus.done,
@@ -291,12 +296,12 @@ extension FocusStore {
     }
 
     private var snoozeGroup: FocusScreen.SnoozeGroup {
-        let standard = settings.settings.focus.snoozeMinutes
-        return FocusScreen.SnoozeGroup(
+        FocusScreen.SnoozeGroup(
             label: Strings.Focus.snooze,
             choices: FocusSettings.snoozeLengths.map { minutes in
                 FocusScreen.SnoozeChoice(
-                    minutes: minutes, title: Strings.Focus.snoozeChoice(minutes), isDefault: minutes == standard,
+                    minutes: minutes, title: Strings.Focus.snoozeChoice(minutes),
+                    isSelected: minutes == selectedSnoozeMinutes,
                     accessibilityLabel: Strings.Focus.snoozeAccessibility(minutes))
             })
     }

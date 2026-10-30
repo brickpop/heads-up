@@ -30,6 +30,11 @@ public final class FocusStore {
     /// Counts the card moves made with ⌥← ⌥→ from the prompt field. The view announces the
     /// newly selected card each time it changes, as it does for the arrow keys in the cards.
     public private(set) var cardMoves = 0
+    /// The snooze length picked with ⌥⇧← ⌥⇧→ on a prompt; nil before a pick, which is Settings'
+    /// snooze length. Each prompt starts from the default again.
+    private var snoozePick: Int?
+    /// Counts the snooze length moves made with ⌥⇧← ⌥⇧→, for VoiceOver, as `cardMoves` does.
+    public private(set) var snoozeMoves = 0
 
     @ObservationIgnored private let clock: Clock
     @ObservationIgnored private let scheduler: Scheduler
@@ -193,11 +198,11 @@ public final class FocusStore {
         return true
     }
 
-    /// Snooze from the HUD, for `minutes` (2, 5 or 10) or Settings' snooze length: toasts, then
-    /// hides the HUD after 600 ms.
+    /// Snooze from the HUD, for `minutes` (a click on 2, 5 or 10) or the selected length (esc):
+    /// toasts, then hides the HUD after 600 ms.
     public func snooze(minutes: Int? = nil) {
         guard case .prompt = machine.phase else { return }
-        let minutes = minutes ?? settings.settings.focus.snoozeMinutes
+        let minutes = minutes ?? selectedSnoozeMinutes
         guard FocusSettings.snoozeLengths.contains(minutes) else { return }
         change { $0.snooze(minutes: minutes, now: clock.now) }
         toaster?.toast(Strings.Focus.snoozed(minutes))
@@ -251,6 +256,31 @@ public final class FocusStore {
         guard phase == .prompt(.backPrompt), backPromptLengths.contains(minutes) else { return }
         cancelHideSoon()
         backPromptPick = minutes
+    }
+
+    /// The snooze length esc uses on a prompt: the one picked with ⌥⇧← ⌥⇧→ or the group's arrow
+    /// keys, else Settings'.
+    public var selectedSnoozeMinutes: Int { snoozePick ?? settings.settings.focus.snoozeMinutes }
+
+    /// ← → in the snooze group: selects a length without snoozing. Settings doesn't change.
+    public func selectSnooze(_ minutes: Int) {
+        guard showsPrompt, FocusSettings.snoozeLengths.contains(minutes) else { return }
+        cancelHideSoon()
+        snoozePick = minutes
+    }
+
+    /// ⌥⇧← (-1) or ⌥⇧→ (+1) on a prompt: the previous or next snooze length, stopping at the
+    /// ends. Settings doesn't change. Returns false where there is no prompt, so the key goes on
+    /// to the prompt field.
+    public func moveSnoozeSelection(by delta: Int) -> Bool {
+        guard showsPrompt else { return false }
+        let lengths = FocusSettings.snoozeLengths
+        guard let next = Self.step(lengths.firstIndex(of: selectedSnoozeMinutes), by: delta, count: lengths.count)
+        else { return true }
+        selectSnooze(lengths[next])
+        // After the change, so the view announces the new length.
+        snoozeMoves += 1
+        return true
     }
 
     /// Whether the Focus tab shows a prompt, where esc snoozes.
@@ -423,6 +453,8 @@ public final class FocusStore {
         case .prompt(.backPrompt), .snoozed(_, .backPrompt): break
         default: backPromptPick = nil
         }
+        // A snooze pick lasts while its prompt shows; the next prompt starts from the default.
+        snoozePick = nil
         armWakeUp()
         updateNotification()
         // A prompt's notification stays in Notification Center until the prompt is answered

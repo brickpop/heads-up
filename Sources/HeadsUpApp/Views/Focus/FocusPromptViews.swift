@@ -1,7 +1,8 @@
 import HeadsUpCore
 import SwiftUI
 
-/// "Time for a break": the break options, the length, and Done, Snooze and Start break.
+/// "Time for a break": the break options, then Stop for now and Snooze, Start break, and the
+/// Length group under Start.
 /// VoiceOver announces it once.
 struct BreakPromptView: View {
     let focus: FocusStore
@@ -52,31 +53,27 @@ struct BreakPromptView: View {
             ) {
                 focus.selectActivity(screen.options[$0].id)
             }
-            HStack(spacing: HUDStyle.Focus.cardGap) {
-                Text(Strings.Focus.length)
-                    .font(.system(size: HUDStyle.Settings.labelSize))
-                    .foregroundStyle(.secondary)
-                Picker(
-                    Strings.Focus.length,
-                    selection: Binding(get: { screen.selectedLength }, set: { focus.setBreakLength($0) })
-                ) {
-                    ForEach(screen.lengths, id: \.minutes) { choice in
-                        Text(choice.title).tag(choice.minutes)
+            // Row 1: Stop for now and Snooze on the left, Start on the right. Row 2: Length under
+            // Start, right-aligned with it. Tab order: Stop for now, Snooze, Start, Length.
+            HStack(alignment: .top, spacing: 0) {
+                PromptLeftActions(done: screen.done, snooze: screen.snooze, focus: focus)
+                Spacer(minLength: HUDStyle.Focus.gap)
+                VStack(alignment: .trailing, spacing: HUDStyle.CardButton.spacing) {
+                    Button(action: focus.startBreak) {
+                        FocusPrimaryLabel(title: screen.startBreak)
                     }
+                    .buttonStyle(.hud(.primary))
+                    .accessibilityHint(Strings.Focus.primaryShortcutHint)
+                    // A click selects the length; it doesn't start the break.
+                    SegmentGroupView(
+                        symbol: Symbols.breakLength, label: Strings.Focus.length,
+                        accessibilityLabel: Strings.Focus.lengthGroupAccessibility,
+                        segments: screen.lengths.map {
+                            SegmentGroupView.Segment(
+                                id: $0.minutes, title: $0.title, accessibilityLabel: $0.accessibilityLabel,
+                                isSelected: $0.isSelected)
+                        }, select: focus.setBreakLength, act: focus.setBreakLength)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-            HStack(spacing: HUDStyle.CardButton.spacing) {
-                DoneButton(title: screen.done, focus: focus)
-                Spacer()
-                SnoozeGroupView(group: screen.snooze) { focus.snooze(minutes: $0) }
-                Button(action: focus.startBreak) {
-                    FocusPrimaryLabel(title: screen.startBreak)
-                }
-                .buttonStyle(.hud(.primary))
-                .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
         .announcing(screen.title)
@@ -84,7 +81,7 @@ struct BreakPromptView: View {
 }
 
 /// "Ready to get back to it?": today's stats, the focus length cards with the last focus's
-/// length selected, and Done, Snooze and Start focus of the selected length.
+/// length selected, and Stop for now, Snooze and Start focus of the selected length.
 struct BackPromptView: View {
     let focus: FocusStore
     let screen: FocusScreen.BackPrompt
@@ -99,10 +96,10 @@ struct BackPromptView: View {
                     .foregroundStyle(.secondary)
             }
             FocusLengthCards(lengths: screen.lengths, cardMoves: focus.cardMoves, select: focus.setNextFocusLength)
-            HStack(spacing: HUDStyle.CardButton.spacing) {
-                DoneButton(title: screen.done, focus: focus)
-                Spacer()
-                SnoozeGroupView(group: screen.snooze) { focus.snooze(minutes: $0) }
+            // The break prompt's row 1; the length cards above take the place of its Length row.
+            HStack(spacing: 0) {
+                PromptLeftActions(done: screen.done, snooze: screen.snooze, focus: focus)
+                Spacer(minLength: HUDStyle.Focus.gap)
                 Button {
                     focus.start()
                 } label: {
@@ -137,14 +134,28 @@ struct SnoozedView: View {
     }
 }
 
-/// Done, on both prompts: ends the loop. A secondary button, so it reads as a button, not as text.
-private struct DoneButton: View {
-    let title: String
+/// The left of both prompts' first row: Stop for now (secondary: it ends the loop), then the
+/// snooze group, two separate controls 8 pt apart. A click on a snooze length snoozes at once;
+/// the selected length, where esc snoozes, starts at Settings' and moves with ⌥⇧← ⌥⇧→ or ← → in
+/// the group.
+private struct PromptLeftActions: View {
+    let done: String
+    let snooze: FocusScreen.SnoozeGroup
     let focus: FocusStore
 
     var body: some View {
-        Button(title, action: focus.doneForNow)
-            .buttonStyle(.hud(.secondary))
-            .help(Strings.Focus.doneHelp)
+        HStack(spacing: HUDStyle.CardButton.spacing) {
+            Button(done, action: focus.doneForNow)
+                .buttonStyle(.hud(.secondary))
+                .help(Strings.Focus.doneHelp)
+            SegmentGroupView(
+                symbol: Symbols.snooze, label: snooze.label,
+                segments: snooze.choices.map {
+                    SegmentGroupView.Segment(
+                        id: $0.minutes, title: $0.title, accessibilityLabel: $0.accessibilityLabel,
+                        isSelected: $0.isSelected)
+                }, keyboardMoves: focus.snoozeMoves, select: focus.selectSnooze
+            ) { focus.snooze(minutes: $0) }
+        }
     }
 }

@@ -749,8 +749,9 @@ extension AppModel {
     }
 
     /// A key with modifiers, while the HUD is key. The Focus, Caffeine and Commands tabs' own keys
-    /// come first, while their view shows: ⌥← ⌥→ pick a card while the prompt field is empty
-    /// (with text, they move by word); ⌘↩ runs Focus's primary button, or the selected command.
+    /// come first, while their view shows: ⌥← ⌥→ pick a card and ⌥⇧← ⌥⇧→ a prompt's snooze length
+    /// while the prompt field is empty (with text, they move or select by word); ⌘↩ runs Focus's
+    /// primary button, or the selected command.
     /// Then the HUD's ⌘ shortcuts, ⌘← ⌘→ for the tabs among them.
     public func handleShortcut(_ shortcut: Shortcut) -> Bool {
         if body == .focus {
@@ -759,6 +760,10 @@ extension AppModel {
                 if focus.moveCardSelection(by: -1) { return true }
             case (.option, KeyCode.rightArrow) where hud.input.isEmpty:
                 if focus.moveCardSelection(by: 1) { return true }
+            case ([.option, .shift], KeyCode.leftArrow) where hud.input.isEmpty:
+                if focus.moveSnoozeSelection(by: -1) { return true }
+            case ([.option, .shift], KeyCode.rightArrow) where hud.input.isEmpty:
+                if focus.moveSnoozeSelection(by: 1) { return true }
             case (.command, KeyCode.returnKey), (.command, KeyCode.keypadEnter):
                 if focus.runPrimaryAction() { return true }
             default:

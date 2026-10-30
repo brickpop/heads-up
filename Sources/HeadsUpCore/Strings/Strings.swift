@@ -133,10 +133,10 @@ public enum Strings {
             Hint(keys: ["⌘↩"], label: "start"),
             Hint(keys: ["esc"], label: "close"),
         ]
-        /// The Focus tab's two prompts, with the prompt field empty: esc snoozes for the default.
+        /// The Focus tab's two prompts, with the prompt field empty. The Start button shows its own ⌘↩.
         public static let focusPrompt = [
             Hint(keys: ["⌥←→"], label: "choose"),
-            Hint(keys: ["⌘↩"], label: "start"),
+            Hint(keys: ["⌥⇧←→"], label: "snooze length"),
             Hint(keys: ["esc"], label: "snooze"),
         ]
     }
@@ -347,7 +347,7 @@ public enum Strings {
             case .startBreak: "Start break"
             case .startFocus: "Start focus"
             case .snooze: "Snooze"
-            case .done: "Done"
+            case .done: "Stop for now"
             case .stop: "Stop"
             case .showLogs: "Show Logs"
             }
@@ -442,7 +442,7 @@ public enum Strings {
         public static let resume = "Resume"
 
         /// Both prompts: ends the loop.
-        public static let done = "Done"
+        public static let done = "Stop for now"
         public static let doneHelp = "Stop here. Nothing else starts."
         /// VoiceOver's hint on the primary buttons that show the ⌘↩ keycap.
         public static let primaryShortcutHint = "Command-Return"
@@ -455,14 +455,18 @@ public enum Strings {
         }
         public static let timeForABreak = "Time for a break"
         public static let length = "Length"
+        /// A segment of the break prompt's Length group: "5m".
+        public static func lengthChoice(_ minutes: Int) -> String { "\(minutes)m" }
+        /// What VoiceOver says for a Length segment: "5 minutes".
+        public static func lengthAccessibility(_ minutes: Int) -> String { "\(minutes) minutes" }
+        /// What VoiceOver says for the Length group.
+        public static let lengthGroupAccessibility = "Break length"
         /// The snooze group on both prompts: "Snooze", then a segment for each length.
         public static let snooze = "Snooze"
         /// A snooze segment: "5m".
         public static func snoozeChoice(_ minutes: Int) -> String { "\(minutes)m" }
         /// What VoiceOver says for a snooze segment: "Snooze, 5 minutes".
         public static func snoozeAccessibility(_ minutes: Int) -> String { "Snooze, \(minutes) minutes" }
-        /// VoiceOver's value on the default snooze segment.
-        public static let snoozeDefault = "default"
         public static func startBreak(_ minutes: Int) -> String { "Start \(minutes) min break" }
 
         // Back prompt

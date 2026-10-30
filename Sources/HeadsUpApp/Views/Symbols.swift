@@ -40,8 +40,10 @@ enum Symbols {
     static let warning = "exclamationmark.triangle.fill"
     /// The ghost × that dismisses a notice.
     static let close = "xmark"
-    /// The bell on Snooze buttons.
+    /// The bell on the Snooze group.
     static let snooze = "bell"
+    /// The break prompt's Length group: an hourglass, since the timer is the Focus tab's icon.
+    static let breakLength = "hourglass"
     /// The Logs toggle on a service row.
     static let logs = "list.bullet"
     /// The status dot of a failed service: red with a small ×.

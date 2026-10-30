@@ -241,7 +241,8 @@ enum HUDStyle {
         static let progressHeight: CGFloat = 6
     }
 
-    /// The snooze group on the Focus prompts (Yuki, ux-card-buttons › Snooze group).
+    /// The snooze group on the Focus prompts, and the break prompt's Length group in the same look
+    /// (Yuki, ux-card-buttons › Snooze group).
     enum Snooze {
         /// The container: the card button's height and radius.
         static let height: CGFloat = 28
