@@ -192,6 +192,18 @@ private final class CommandsHarness {
 
     // MARK: Running
 
+    // The leading space goes only to the terminal: commands.json keeps the command as typed.
+    @Test func runningLeavesTheSavedCommandAsTyped() async throws {
+        let h = try CommandsHarness()
+        let id = h.add(command: "ssh deploy@staging")
+        await h.model.runCommand(id).value
+        #expect(h.terminals.ran.count == 1)
+        let reloaded = try CommandsHarness(sharing: h)
+        #expect(reloaded.commands.definitions.first { $0.id == id }?.command == "ssh deploy@staging")
+        let text = try String(contentsOf: h.file, encoding: .utf8)
+        #expect(text.contains("\"ssh deploy@staging\"") && !text.contains("\" ssh deploy@staging\""))
+    }
+
     @Test func runningOpensTheTerminalWithTheCommandAsData() async throws {
         let h = try CommandsHarness()
         let id = h.add(command: #"echo "a\b" $HOME; ls"#)

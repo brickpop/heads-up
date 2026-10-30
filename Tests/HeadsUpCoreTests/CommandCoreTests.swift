@@ -67,18 +67,6 @@ import Testing
         #expect(Array(arguments.suffix(7)) == run(" ls"))
     }
 
-    @Test func theSavedCommandIsNeverChanged() throws {
-        let definition = CommandDefinition(name: "Deploy", command: "ssh deploy@staging", cwd: "~/code")
-        for terminal in Terminal.allCases {
-            _ = TerminalPlan.make(
-                definition, in: InstalledTerminal(terminal: terminal, appPath: "/Applications/x.app"),
-                loginShell: "/bin/zsh", home: home)
-        }
-        #expect(definition.command == "ssh deploy@staging")
-        let saved = try JSONDecoder().decode(CommandDefinition.self, from: JSONEncoder().encode(definition))
-        #expect(saved.command == "ssh deploy@staging")
-    }
-
     @Test func warpCantRunACommand() {
         #expect(plan(.warp) == nil)
     }

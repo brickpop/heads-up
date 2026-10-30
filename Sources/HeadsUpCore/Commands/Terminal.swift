@@ -77,10 +77,10 @@ public enum TerminalPlan: Equatable, Sendable {
     ) -> TerminalPlan? {
         let directory = SpawnPlan.expand(command.cwd, home: home)
         let shell = SpawnPlan.shell(for: loginShell).shell
-        // One leading space, so a shell that ignores such lines (zsh HIST_IGNORE_SPACE, bash
-        // HISTCONTROL=ignorespace) keeps the command out of its history. Terminal and iTerm2 type
-        // it into an interactive shell; for the others it is harmless. The saved command isn't
-        // changed.
+        // One leading space, unless there is one already. For Terminal and iTerm2 the space that
+        // keeps the line out of history (zsh HIST_IGNORE_SPACE, bash HISTCONTROL=ignorespace) is
+        // the one their scripts put before "cd": that is how the typed line starts. This one is
+        // there only so every plan follows one rule. The saved command isn't changed.
         let typed = command.command.hasPrefix(" ") ? command.command : " " + command.command
         // The command runs in a POSIX shell, then the user's own login shell (even fish) takes
         // over, so the window stays open as in Terminal. The command and that shell are the
