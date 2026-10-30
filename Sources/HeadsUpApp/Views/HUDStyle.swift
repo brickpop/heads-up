@@ -277,6 +277,8 @@ enum HUDStyle {
         /// The Start / Stop button's fixed width.
         static let buttonWidth: CGFloat = 84
         static let warningDotSize: CGFloat = 6
+        /// How far inside the Logs button's top-right corner the warning dot sits, clear of its radius.
+        static let warningDotInset: CGFloat = 3
         static let drawerHeight: CGFloat = 180
         /// The drawer starts under the row's text, past the chip.
         static let drawerLeading: CGFloat = 60
@@ -315,6 +317,25 @@ enum HUDStyle {
         static let formPadding: CGFloat = 14
         static let gridGap: CGFloat = 10
         static let tagPadding: CGFloat = 6
+    }
+
+    /// The HUD's card-style buttons (Visual language › Buttons): smaller than a selection card,
+    /// with a resting fill.
+    enum CardButton {
+        static let height: CGFloat = 28
+        static let cornerRadius: CGFloat = 8
+        static let padding: CGFloat = 12
+        /// Between neighbouring buttons.
+        static let spacing: CGFloat = 8
+        /// Between the icon, the title and the keycap.
+        static let gap: CGFloat = 6
+        static let fontSize: CGFloat = 13
+        static let iconSize: CGFloat = 12
+        /// The icon of an icon-only button, which is `height` square.
+        static let iconOnlySize: CGFloat = 13
+        /// The black laid over the accent of a primary button under the pointer, and pressed.
+        static let primaryHover = 0.1
+        static let primaryPressed = 0.2
     }
 
     enum Outline {

@@ -563,6 +563,7 @@ private struct FocusHarness {
         #expect(running.subtitle == "25 min session · break at \(expectedUS)")
         #expect(british.subtitle == "25 min session · break at \(expectedGB)")
         #expect(running.stopTitle == "Stop")
+        #expect(running.stopIsDestructive)  // the session would be lost
         #expect(running.pauseTitle == "Pause" && running.pauseGlyph == .pause)
         #expect(abs(running.progress - 1.0 / 25) < 1e-9)
     }
@@ -583,6 +584,7 @@ private struct FocusHarness {
         #expect(rest.label == "Break · Drink water")
         #expect(rest.subtitle == "Step away. The HUD will call you back.")
         #expect(rest.stopTitle == "End break")
+        #expect(!rest.stopIsDestructive)  // it only moves on to the back prompt
         h.focus.stopRun()
         #expect(h.focus.phase == .prompt(.backPrompt))
     }

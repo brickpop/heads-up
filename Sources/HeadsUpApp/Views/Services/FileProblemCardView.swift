@@ -3,11 +3,12 @@ import SwiftUI
 
 /// A data file HeadsUp can't use (services.json, later commands.json): what happened, in the
 /// core's words with file names in mono, and Show in Finder, with Try Again when a reload can help.
+/// In the HUD (`inHUD`) its buttons are card-style secondary buttons; in Settings they stay native.
 struct FileProblemCardView: View {
     let card: FileProblemCard
+    var inHUD = false
     let reveal: @MainActor () -> Void
     let retry: @MainActor () -> Void
-
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
 
@@ -25,15 +26,11 @@ struct FileProblemCardView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: HUDStyle.Notice.gap) {
-                    Button(card.showInFinder, action: reveal)
-                        .buttonStyle(.bordered)
-                    if let tryAgain = card.tryAgain {
-                        Button(tryAgain, action: retry)
-                            .buttonStyle(.bordered)
-                    }
+                if inHUD {
+                    actions.buttonStyle(.hud(.secondary))
+                } else {
+                    actions.buttonStyle(.bordered).controlSize(.small)
                 }
-                .controlSize(.small)
             }
             Spacer(minLength: 0)
         }
@@ -45,5 +42,15 @@ struct FileProblemCardView: View {
                     lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale))
         )
         .accessibilityElement(children: .contain)
+    }
+
+    /// Show in Finder, and Try Again when a reload can help.
+    private var actions: some View {
+        HStack(spacing: inHUD ? HUDStyle.CardButton.spacing : HUDStyle.Notice.gap) {
+            Button(card.showInFinder, action: reveal)
+            if let tryAgain = card.tryAgain {
+                Button(tryAgain, action: retry)
+            }
+        }
     }
 }

@@ -514,6 +514,11 @@ private final class ServicesHarness {
         h.services.dismissIsolationNotice()
         #expect(h.services.screen(at: h.clock.now).isolationNotice == nil)
     }
+
+    @Test func theIconOnlyLogsToggleSaysWhatItWillDo() {
+        #expect(Strings.Services.logsHelp(isOpen: false) == "Show Logs")
+        #expect(Strings.Services.logsHelp(isOpen: true) == "Hide Logs")
+    }
 }
 
 /// Nick's regression tests (msg-406): a removed service counts nowhere.

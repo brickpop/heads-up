@@ -167,8 +167,7 @@ private struct AssertionNoteView: View {
         HStack(spacing: HUDStyle.Footer.keyGap) {
             ProblemNote(text: note.text)
             Button(note.tryAgain, action: caffeine.retry)
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+                .buttonStyle(.ghost)
         }
         .padding(.leading, HUDStyle.Caffeine.chipSize + HUDStyle.Caffeine.headerGap)
         .announcing(note.text)
@@ -187,7 +186,7 @@ private struct ExtendRow: View {
             Spacer(minLength: HUDStyle.Focus.gap)
             ForEach(extend.buttons, id: \.minutes) { button in
                 Button(button.title) { caffeine.extend(minutes: button.minutes) }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.hud(.secondary))
             }
         }
         .padding(HUDStyle.Caffeine.extendPadding)

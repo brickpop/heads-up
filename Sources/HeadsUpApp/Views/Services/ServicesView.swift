@@ -46,7 +46,7 @@ private struct ServicesContent: View {
                 }
                 Spacer()
                 Button(screen.edit, action: model.openServicesSettings)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.ghost)
             }
             .padding(.horizontal, HUDStyle.Services.headerPadding)
             .padding(.vertical, HUDStyle.Footer.keyGap)
@@ -54,12 +54,13 @@ private struct ServicesContent: View {
             if let notice = screen.isolationNotice {
                 NoticeBar(text: notice.title, detail: notice.text) {
                     Button(notice.ok, action: services.dismissIsolationNotice)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.hud(.secondary))
                 }
             }
 
             if let problem = screen.fileProblem {
-                FileProblemCardView(card: problem, reveal: services.revealServicesFile, retry: services.reloadServices)
+                FileProblemCardView(
+                    card: problem, inHUD: true, reveal: services.revealServicesFile, retry: services.reloadServices)
             } else if let empty = screen.empty {
                 ServicesEmptyView(empty: empty, add: model.addService)
             } else {
@@ -92,7 +93,7 @@ private struct ServicesEmptyView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button(empty.add, action: add)
-                .buttonStyle(.bordered)
+                .buttonStyle(.hud(.secondary))
         }
         .frame(maxWidth: .infinity)
         .padding(HUDStyle.Welcome.padding)
@@ -269,15 +270,15 @@ private struct RowActionButton: View {
             }
             .frame(width: HUDStyle.Services.buttonWidth)
             if isPrimary {
-                button.buttonStyle(.borderedProminent)
+                button.buttonStyle(.hud(.primary))
             } else {
-                button.buttonStyle(.bordered)
+                button.buttonStyle(.hud(.secondary))
             }
         case .edit(let title):
             Button(action: edit) {
                 Text(title).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.hud(.secondary))
             .frame(width: HUDStyle.Services.buttonWidth)
         }
     }
@@ -314,7 +315,7 @@ private struct ServiceChip: View {
     }
 }
 
-/// The Logs toggle: a native button-style toggle with the list icon, on while the drawer is
+/// The Logs toggle: an icon-only card button with the list icon, on while the drawer is
 /// open, with a --warn dot while the service's port stays silent.
 private struct LogsToggle: View {
     let isOpen: Bool
@@ -325,12 +326,17 @@ private struct LogsToggle: View {
         Toggle(isOn: Binding(get: { isOpen }, set: { _ in toggle() })) {
             Label(Strings.Services.logs, systemImage: Symbols.logs)
         }
+        // A button-style toggle draws with the button style, and VoiceOver still reads it as a
+        // toggle button, on or off.
         .toggleStyle(.button)
+        .buttonStyle(.hud(.iconOnly(isOn: isOpen)))
+        .help(Strings.Services.logsHelp(isOpen: isOpen))
         .overlay(alignment: .topTrailing) {
             if warning {
                 Circle()
                     .fill(HUDStyle.Colors.warn)
                     .frame(width: HUDStyle.Services.warningDotSize, height: HUDStyle.Services.warningDotSize)
+                    .padding(HUDStyle.Services.warningDotInset)
                     .accessibilityHidden(true)
             }
         }
@@ -369,8 +375,7 @@ private struct LogDrawer: View {
                 }
             }
             Button(log.clear, action: clear)
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+                .buttonStyle(.ghost)
         }
         .padding(HUDStyle.Services.drawerPadding)
         .frame(height: HUDStyle.Services.drawerHeight)

@@ -710,6 +710,8 @@ public enum Strings {
         public static let noOutput = "No output yet. Start the service to see its logs."
         /// Each row's Logs toggle.
         public static let logs = "Logs"
+        /// The Logs toggle's tooltip: it shows the label only as an icon.
+        public static func logsHelp(isOpen: Bool) -> String { isOpen ? "Hide Logs" : "Show Logs" }
         public static let clear = "Clear"
         public static let ok = "OK"
         public static let isolationTitle = "Services run with HeadsUp's permissions on this version of macOS."

@@ -68,14 +68,14 @@ struct BreakPromptView: View {
                 .labelsHidden()
                 .fixedSize()
             }
-            HStack {
+            HStack(spacing: HUDStyle.CardButton.spacing) {
                 DoneButton(title: screen.done, focus: focus)
                 Spacer()
                 SnoozeGroupView(group: screen.snooze) { focus.snooze(minutes: $0) }
                 Button(action: focus.startBreak) {
                     FocusPrimaryLabel(title: screen.startBreak)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.hud(.primary))
                 .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
@@ -99,7 +99,7 @@ struct BackPromptView: View {
                     .foregroundStyle(.secondary)
             }
             FocusLengthCards(lengths: screen.lengths, cardMoves: focus.cardMoves, select: focus.setNextFocusLength)
-            HStack {
+            HStack(spacing: HUDStyle.CardButton.spacing) {
                 DoneButton(title: screen.done, focus: focus)
                 Spacer()
                 SnoozeGroupView(group: screen.snooze) { focus.snooze(minutes: $0) }
@@ -108,7 +108,7 @@ struct BackPromptView: View {
                 } label: {
                     FocusPrimaryLabel(title: screen.start, glyph: .play)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.hud(.primary))
                 .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
@@ -130,21 +130,21 @@ struct SnoozedView: View {
             Button(action: focus.showNow) {
                 FocusPrimaryLabel(title: screen.showNow, onAccent: false)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.hud(.secondary))
             .accessibilityHint(Strings.Focus.primaryShortcutHint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Done, on both prompts: ends the loop. Bordered, so it reads as a button, not as text.
+/// Done, on both prompts: ends the loop. A secondary button, so it reads as a button, not as text.
 private struct DoneButton: View {
     let title: String
     let focus: FocusStore
 
     var body: some View {
         Button(title, action: focus.doneForNow)
-            .buttonStyle(.bordered)
+            .buttonStyle(.hud(.secondary))
             .help(Strings.Focus.doneHelp)
     }
 }

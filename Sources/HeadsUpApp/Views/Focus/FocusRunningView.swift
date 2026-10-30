@@ -17,16 +17,16 @@ struct FocusRunningView: View {
                     .foregroundStyle(.secondary)
             }
             FocusProgressBar(progress: screen.progress, label: screen.label)
-            HStack {
+            HStack(spacing: HUDStyle.CardButton.spacing) {
                 Spacer()
                 Button(action: focus.stopRun) {
                     Label(screen.stopTitle, systemImage: Glyph.stop.symbolName)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.hud(screen.stopIsDestructive ? .destructive : .secondary))
                 Button(action: focus.togglePause) {
                     Label(screen.pauseTitle, systemImage: screen.pauseGlyph.symbolName)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.hud(.secondary))
             }
         }
     }

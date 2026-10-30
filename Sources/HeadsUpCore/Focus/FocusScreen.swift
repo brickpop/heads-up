@@ -39,6 +39,9 @@ public enum FocusScreen: Equatable, Sendable {
         public let progress: Double
         /// "Stop" in a focus, "End break" in a break; both call `stopRun()`.
         public let stopTitle: String
+        /// True in a focus: Stop ends it and the session isn't counted. False in a break: End
+        /// break only moves on to the back prompt.
+        public let stopIsDestructive: Bool
         /// "Pause" or "Resume"; both call `togglePause()`.
         public let pauseTitle: String
         public let pauseGlyph: Glyph
@@ -148,13 +151,14 @@ extension FocusStore {
                     run, now: now, label: run.isPaused ? Strings.Focus.focusPaused : Strings.Focus.focusing,
                     subtitle: Strings.Focus.sessionSubtitle(
                         minutes: run.minutes, breakAt: Self.clockTime(breakAt, locale: locale, timeZone: timeZone)),
-                    stopTitle: Strings.Focus.stop))
+                    stopTitle: Strings.Focus.stop, stopIsDestructive: true))
         case .rest(let run, _):
             return .running(
                 runningScreen(
                     run, now: now,
                     label: run.isPaused ? Strings.Focus.breakPaused : Strings.Focus.breakLabel(activity.label),
-                    subtitle: Strings.Focus.breakSubtitle, stopTitle: Strings.Focus.endBreak))
+                    subtitle: Strings.Focus.breakSubtitle, stopTitle: Strings.Focus.endBreak,
+                    stopIsDestructive: false))
         case .prompt(.breakPrompt(let manual)):
             return .breakPrompt(breakPromptScreen(manual: manual))
         case .prompt(.backPrompt):
@@ -236,13 +240,14 @@ extension FocusStore {
     }
 
     private func runningScreen(
-        _ run: FocusRun, now: Date, label: String, subtitle: String, stopTitle: String
+        _ run: FocusRun, now: Date, label: String, subtitle: String, stopTitle: String, stopIsDestructive: Bool
     ) -> FocusScreen.Running {
         let left = run.timeLeft(at: now)
         return FocusScreen.Running(
             label: label, timer: Format.clock(left),
             timerAccessibility: Strings.Focus.timeLeftAccessibility(Format.spokenMinutes(left, rounding: .up)),
             subtitle: subtitle, progress: run.progress(at: now), stopTitle: stopTitle,
+            stopIsDestructive: stopIsDestructive,
             pauseTitle: run.isPaused ? Strings.Focus.resume : Strings.Focus.pause,
             pauseGlyph: run.isPaused ? .play : .pause)
     }

@@ -31,7 +31,7 @@ struct FocusIdleView: View {
                 } label: {
                     FocusPrimaryLabel(title: screen.start, glyph: .play)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.hud(.primary))
                 .accessibilityHint(Strings.Focus.primaryShortcutHint)
             }
         }
