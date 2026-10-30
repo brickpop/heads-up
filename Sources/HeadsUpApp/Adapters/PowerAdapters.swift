@@ -3,23 +3,24 @@ import HeadsUpCore
 import IOKit.ps
 import IOKit.pwr_mgt
 
-/// Caffeine's power assertions through IOKit (`IOPMAssertionCreateWithName`). It holds
-/// exactly the kinds last asked for: a kind no longer wanted is released at once.
+/// Power assertions through IOKit (`IOPMAssertionCreateWithName`), one per hold, labelled with
+/// its name ("HeadsUp: Caffeine", "HeadsUp: web-app"), as `pmset -g assertions` shows them. It
+/// holds exactly the holds last asked for: one no longer wanted is released at once.
 @MainActor
 final class IOKitPowerAssertions: PowerAssertions {
-    private var held: [PowerAssertionKind: IOPMAssertionID] = [:]
+    private var held: [PowerHold: IOPMAssertionID] = [:]
 
-    func hold(_ kinds: Set<PowerAssertionKind>) -> Set<PowerAssertionKind> {
-        for (kind, id) in held where !kinds.contains(kind) {
+    func hold(_ holds: Set<PowerHold>) -> Set<PowerHold> {
+        for (hold, id) in held where !holds.contains(hold) {
             IOPMAssertionRelease(id)
-            held[kind] = nil
+            held[hold] = nil
         }
-        for kind in kinds where held[kind] == nil {
+        for hold in holds where held[hold] == nil {
             var id: IOPMAssertionID = 0
             let result = IOPMAssertionCreateWithName(
-                Self.type(kind), IOPMAssertionLevel(kIOPMAssertionLevelOn), "HeadsUp Caffeine" as CFString, &id)
+                Self.type(hold.kind), IOPMAssertionLevel(kIOPMAssertionLevelOn), hold.name as CFString, &id)
             if result == kIOReturnSuccess {
-                held[kind] = id
+                held[hold] = id
             }
         }
         return Set(held.keys)

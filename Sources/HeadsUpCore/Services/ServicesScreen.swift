@@ -68,6 +68,9 @@ public struct ServicesScreen: Equatable, Sendable {
         public let keepsAwake: Bool
         /// Restart if it stops: the arrow glyph after the meta.
         public let restarts: Bool
+        /// The hold's state while it applies (starting, running or waiting to restart, with Keep
+        /// awake on); nil otherwise. It picks the cup's tooltip and colour (`--warn` when refused).
+        public let awake: AwakeState?
         public let logsOpen: Bool
         /// A small --warn dot on the Logs toggle: running while its port is silent.
         public let logsWarning: Bool
@@ -197,12 +200,12 @@ extension ServiceStore {
         return ServicesScreen.Row(
             id: definition.id, name: definition.name, status: status, meta: meta, metaStyle: metaStyle,
             commandLine: Strings.Services.actionSubtitle(command: definition.command, cwd: definition.cwd),
-            keepsAwake: definition.keepAwake, restarts: definition.restartOnExit,
+            keepsAwake: definition.keepAwake, restarts: definition.restartOnExit, awake: awake[definition.id],
             logsOpen: logsOpen, logsWarning: silent && state.isLive,
             action: Self.action(
                 isLive: state.isLive || waiting || isWaitingToRestart(definition.id), canStart: problem == nil),
             accessibilityLabel: Strings.Services.rowAccessibility(
-                name: definition.name, status: status, keepsAwake: definition.keepAwake,
+                name: definition.name, status: status, keepsAwake: definition.keepAwake, awake: awake[definition.id],
                 restarts: definition.restartOnExit),
             accessibilityValue: spoken,
             log: logsOpen

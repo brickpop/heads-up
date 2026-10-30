@@ -55,6 +55,9 @@ public final class ServiceStore {
     public private(set) var isolationWarning: Bool
     /// The editor in Settings → Services, while open (see ServiceForm.swift).
     public internal(set) var form: ServiceForm?
+    /// Each Keep awake service's hold, while it should hold: starting, running or waiting to
+    /// restart (service flags addendum §3).
+    public private(set) var awake: [ServiceDefinition.ID: AwakeState] = [:]
     private var logs: [ServiceDefinition.ID: LogRing] = [:]
 
     @ObservationIgnored private var pendingOutput: [ServiceDefinition.ID: Data] = [:]
@@ -87,6 +90,9 @@ public final class ServiceStore {
     @ObservationIgnored private let loginShell: String
     @ObservationIgnored let home: String
     @ObservationIgnored private let baseEnvironment: [String: String]
+    /// Holds the Mac awake for Keep awake services, through the one owner of power assertions;
+    /// nil holds nothing.
+    @ObservationIgnored private let holds: PowerHolding?
     /// Reads the shell's environment; nil starts services from `baseEnvironment` as it is.
     @ObservationIgnored private let shellReader: ShellEnvironmentReader?
     @ObservationIgnored private var shellEnvironment: ShellEnvironmentState
@@ -109,7 +115,8 @@ public final class ServiceStore {
     public init(
         folder: URL?, clock: Clock, scheduler: Scheduler, launcher: ServiceLauncher, ports: PortProbe,
         notifier: Notifier, files: FileRevealer, settings: SettingsStore, toaster: Toaster, loginShell: String,
-        home: String, baseEnvironment: [String: String], readsShellEnvironment: Bool = false
+        home: String, baseEnvironment: [String: String], readsShellEnvironment: Bool = false,
+        holds: PowerHolding? = nil
     ) {
         file = JSONListFile(.services, folder: folder)
         self.clock = clock
@@ -130,7 +137,13 @@ public final class ServiceStore {
                 baseEnvironment: baseEnvironment) : nil
         shellEnvironment = readsShellEnvironment ? .unread : .own(baseEnvironment, reason: nil)
         isolationWarning = !launcher.canDisclaim
+        self.holds = holds
         load()
+        // On battery with "Only on power adapter", or back on power: each hold says so.
+        holds?.observePause { [weak self] in
+            guard let self else { return }
+            for id in Array(self.awake.keys) { self.syncHold(id) }
+        }
     }
 
     // MARK: State
@@ -213,6 +226,7 @@ public final class ServiceStore {
         if let index = waitingForEnvironment.firstIndex(where: { $0.id == id }) {
             waitingForEnvironment.remove(at: index)
             automaticRestarts.remove(id)
+            syncHold(id)
             if let definition = definition(id) { toaster?.toast(Strings.Services.stopped(definition.name)) }
             return
         }
@@ -302,6 +316,8 @@ public final class ServiceStore {
         definitions = list
         // Restart switched off: a restart that waits doesn't run.
         if !trimmed.restartOnExit { _ = cancelRestart(trimmed.id) }
+        // Keep awake switched on or off takes or releases the hold now.
+        syncHold(trimmed.id)
         toaster?.toast(isNew ? Strings.Services.added(trimmed.name) : Strings.Services.saved(trimmed.name))
         return [:]
     }
@@ -348,6 +364,7 @@ public final class ServiceStore {
 
     private func launch(_ definition: ServiceDefinition, toast: Bool) {
         let id = definition.id
+        defer { syncHold(id) }
         let environment: [String: String]
         var environmentProblem: String?
         switch shellEnvironment {
@@ -495,6 +512,7 @@ public final class ServiceStore {
     }
 
     private func exited(_ id: ServiceDefinition.ID, _ exit: ProcessExit) {
+        defer { syncHold(id) }
         flushOutput()
         // The leader stays a zombie while its group's SIGKILL is due, so the group id stays ours.
         if let pid = state(id).pid {
@@ -590,6 +608,7 @@ public final class ServiceStore {
         if let problem = definition.firstProblem {
             restartStreaks[id] = nil
             log(id, Strings.Services.cantStart(problem))
+            syncHold(id)
             return
         }
         automaticRestarts.insert(id)
@@ -631,7 +650,63 @@ public final class ServiceStore {
         restartStreaks[id] = nil
         runtime[id] = .stopped
         log(id, Strings.Services.restartCancelled)
+        syncHold(id)
         return true
+    }
+
+    // MARK: Keep awake
+
+    /// The services whose hold applies, in list order, for Caffeine and the menu bar.
+    public var serviceHolds: [ServiceHold] {
+        definitions.compactMap { definition in
+            awake[definition.id].map { ServiceHold(name: sanitizeForDisplay(definition.name, max: 64), awake: $0) }
+        }
+    }
+
+    /// Takes, keeps or releases the service's hold to match its state: held while starting,
+    /// running, waiting to restart or waiting for the environment, with Keep awake on. Each change
+    /// is logged (UX flags §3). A refusal doesn't stop the service.
+    private func syncHold(_ id: ServiceDefinition.ID) {
+        guard let holds else { return }
+        let definition = definition(id)
+        let before = awake[id]
+        guard let definition, definition.keepAwake, holdsWhile(id) else {
+            guard before != nil else { return }
+            holds.set(.service(id), kinds: [], name: "")
+            awake[id] = nil
+            // A removed service keeps no log.
+            if definition != nil && before != .refused { log(id, Strings.Services.noLongerKeepingAwake) }
+            return
+        }
+        let name = Strings.Services.assertionName(sanitizeForDisplay(definition.name, max: 64))
+        let held = holds.set(.service(id), kinds: [.systemSleep], name: name)
+        let now: AwakeState =
+            held.contains(.systemSleep) ? .holding : holds.pausedOnBattery ? .pausedOnBattery : .refused
+        awake[id] = now
+        guard now != before else { return }
+        switch (before, now) {
+        case (nil, .holding), (.refused?, .holding):
+            log(id, Strings.Services.keepingAwake)
+        case (nil, .pausedOnBattery):
+            log(id, Strings.Services.keepingAwake)
+            log(id, Strings.Services.keepingAwakePaused)
+        case (_, .pausedOnBattery):
+            log(id, Strings.Services.keepingAwakePaused)
+        case (.pausedOnBattery?, .holding):
+            log(id, Strings.Services.keepingAwakeResumed)
+        case (_, .refused):
+            log(id, Strings.Services.keepAwakeRefused)
+        default:
+            break
+        }
+    }
+
+    private func holdsWhile(_ id: ServiceDefinition.ID) -> Bool {
+        if isWaitingForEnvironment(id) { return true }
+        switch state(id) {
+        case .starting, .running, .waitingToRestart: return true
+        case .stopped, .failed: return false
+        }
     }
 
     // MARK: The shell's environment
@@ -672,6 +747,7 @@ public final class ServiceStore {
         restartStreaks[id] = nil
         automaticRestarts.remove(id)
         runtime[id] = nil
+        syncHold(id)
         logs[id] = nil
         pendingOutput[id] = nil
         silentPorts.remove(id)
@@ -738,6 +814,7 @@ public final class ServiceStore {
             ]
             for service in services { _ = save(service) }
             runtime["preview.web"] = .running(pid: 1001, since: now.addingTimeInterval(-42 * 60), port: 3000)
+            awake["preview.web"] = .holding
             runtime["preview.postgres"] = .waitingToRestart(
                 attempt: 2, at: now.addingTimeInterval(5), lastExit: 128 + SIGTERM)
             runtime["preview.worker"] = .failed(

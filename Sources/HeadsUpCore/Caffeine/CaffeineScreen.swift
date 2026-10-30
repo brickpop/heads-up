@@ -11,6 +11,12 @@ public struct CaffeineScreen: Equatable, Sendable {
     public let options: [OptionRow]
     /// The --danger note under the header when macOS refused, with Try Again (`retry()`).
     public let assertionNote: AssertionNote?
+    /// Under the header while Caffeine is on and services also keep the Mac awake, 12 pt
+    /// --ink-2: "Web dev server also keeps your Mac awake while it runs."
+    public let heldLine: String?
+    /// Under the header in --warn when macOS refused a service's hold: "macOS didn't let HeadsUp
+    /// keep your Mac awake for Web dev server."
+    public let refusedLine: String?
 
     public struct Header: Equatable, Sendable {
         public let title: String
@@ -21,6 +27,8 @@ public struct CaffeineScreen: Equatable, Sendable {
         public let chipAccent: Bool
         /// The small pause badge on the chip, while paused on battery.
         public let showsPauseBadge: Bool
+        /// The small server badge on the chip: Caffeine is off, and services keep the Mac awake.
+        public let showsServerBadge: Bool
         public let switchLabel: String
     }
 
@@ -102,15 +110,42 @@ extension CaffeineStore {
             assertionNote: assertionProblem.map {
                 CaffeineScreen.AssertionNote(
                     text: Strings.Caffeine.assertionNote($0), tryAgain: Strings.Caffeine.tryAgain)
-            })
+            },
+            heldLine: isOn && !applying.isEmpty ? Strings.Caffeine.alsoKeeps(applying) : nil,
+            refusedLine: refused.isEmpty ? nil : Strings.Caffeine.refusedFor(refused))
+    }
+
+    /// The services that keep the Mac awake, or would but for the battery, in list order.
+    private var applying: [String] {
+        serviceHolds().filter { $0.awake != .refused }.map(\.name)
+    }
+
+    private var refused: [String] {
+        serviceHolds().filter { $0.awake == .refused }.map(\.name)
     }
 
     private func header(at now: Date, locale: Locale, timeZone: TimeZone) -> CaffeineScreen.Header {
         let switchLabel = Strings.Caffeine.switchLabel
         guard isOn else {
+            let holds = serviceHolds()
+            let holding = holds.filter { $0.awake == .holding }.map(\.name)
+            let paused = holds.filter { $0.awake == .pausedOnBattery }.map(\.name)
+            // Held by services: the Mac *is* kept awake, though Caffeine's switch stays off.
+            if !holding.isEmpty {
+                return CaffeineScreen.Header(
+                    title: Strings.Caffeine.keptAwakeBy(holding), subtitle: Strings.Caffeine.subtitleKeptAwake(holding),
+                    isOn: false, chipAccent: true, showsPauseBadge: false, showsServerBadge: true,
+                    switchLabel: switchLabel)
+            }
+            if !paused.isEmpty {
+                return CaffeineScreen.Header(
+                    title: Strings.Caffeine.titlePaused, subtitle: Strings.Caffeine.subtitleHeldPaused(paused),
+                    isOn: false, chipAccent: false, showsPauseBadge: true, showsServerBadge: false,
+                    switchLabel: switchLabel)
+            }
             return CaffeineScreen.Header(
                 title: Strings.Caffeine.titleOff, subtitle: Strings.Caffeine.subtitleOff, isOn: false,
-                chipAccent: false, showsPauseBadge: false, switchLabel: switchLabel)
+                chipAccent: false, showsPauseBadge: false, showsServerBadge: false, switchLabel: switchLabel)
         }
         let left = endsAt.map { Format.minutes($0.timeIntervalSince(now), rounding: .nearest) }
         let endTime = endsAt.map { FocusStore.clockTime($0, locale: locale, timeZone: timeZone) }
@@ -123,7 +158,7 @@ extension CaffeineStore {
                 }
             return CaffeineScreen.Header(
                 title: Strings.Caffeine.titlePaused, subtitle: subtitle, isOn: true, chipAccent: false,
-                showsPauseBadge: true, switchLabel: switchLabel)
+                showsPauseBadge: true, showsServerBadge: false, switchLabel: switchLabel)
         }
         let subtitle =
             if let left, let endTime {
@@ -133,6 +168,6 @@ extension CaffeineStore {
             }
         return CaffeineScreen.Header(
             title: Strings.Caffeine.titleOn, subtitle: subtitle, isOn: true, chipAccent: true, showsPauseBadge: false,
-            switchLabel: switchLabel)
+            showsServerBadge: false, switchLabel: switchLabel)
     }
 }

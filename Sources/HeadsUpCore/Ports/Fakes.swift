@@ -307,15 +307,36 @@ import Foundation
     /// Holds what it is asked to, and can be told to refuse.
     @MainActor
     public final class FakePowerAssertions: PowerAssertions {
-        public private(set) var held: Set<PowerAssertionKind> = []
-        /// The kinds macOS refuses, as set by the test.
+        /// The holds now held, with their labels as last asked.
+        public private(set) var holds: Set<PowerHold> = []
+        /// The kinds macOS refuses to anyone, as set by the test.
         public var refused: Set<PowerAssertionKind> = []
+        /// The holders macOS refuses, whatever the kind.
+        public var refusedHolders: Set<PowerHolder> = []
 
         public init() {}
 
-        public func hold(_ kinds: Set<PowerAssertionKind>) -> Set<PowerAssertionKind> {
-            held = kinds.subtracting(refused)
-            return held
+        /// The kinds held, by anyone.
+        public var held: Set<PowerAssertionKind> { Set(holds.map(\.kind)) }
+
+        /// The kinds held for `holder`.
+        public func held(by holder: PowerHolder) -> Set<PowerAssertionKind> {
+            Set(holds.filter { $0.holder == holder }.map(\.kind))
+        }
+
+        /// The label of `holder`'s hold, as `pmset -g assertions` would show it.
+        public func name(of holder: PowerHolder) -> String? {
+            holds.first { $0.holder == holder }?.name
+        }
+
+        public func hold(_ asked: Set<PowerHold>) -> Set<PowerHold> {
+            // An existing hold keeps its label, as an IOKit assertion does.
+            let kept = holds.filter { asked.contains($0) }
+            let new = asked.subtracting(kept).filter {
+                !refused.contains($0.kind) && !refusedHolders.contains($0.holder)
+            }
+            holds = kept.union(new).filter { !refused.contains($0.kind) && !refusedHolders.contains($0.holder) }
+            return holds
         }
     }
 

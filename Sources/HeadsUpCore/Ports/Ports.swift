@@ -209,13 +209,44 @@ public enum PowerAssertionKind: String, CaseIterable, Sendable {
     case systemSleep
 }
 
-/// IOKit power assertions (`IOPMAssertionCreateWithName`). Declarative: the adapter holds
-/// exactly the kinds last asked for, creating and releasing assertions as needed.
+/// Who holds a power assertion: Caffeine, or a service with Keep awake.
+public enum PowerHolder: Hashable, Sendable {
+    case caffeine
+    case service(ServiceDefinition.ID)
+}
+
+/// One power assertion, by who holds it and what it keeps from happening. `name` is only its
+/// label in `pmset -g assertions` ("HeadsUp: web-app"): equality and hashing leave it out, so
+/// two services with the same name are two holds, and a rename keeps the hold.
+public struct PowerHold: Hashable, Sendable {
+    public let holder: PowerHolder
+    public let kind: PowerAssertionKind
+    public let name: String
+
+    public init(holder: PowerHolder, kind: PowerAssertionKind, name: String) {
+        self.holder = holder
+        self.kind = kind
+        self.name = name
+    }
+
+    public static func == (lhs: PowerHold, rhs: PowerHold) -> Bool {
+        lhs.holder == rhs.holder && lhs.kind == rhs.kind
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(holder)
+        hasher.combine(kind)
+    }
+}
+
+/// IOKit power assertions (`IOPMAssertionCreateWithName`), one per hold. Declarative: the
+/// adapter holds exactly the holds last asked for, creating and releasing assertions as needed.
+/// `PowerHolds` is its only caller.
 @MainActor
 public protocol PowerAssertions: AnyObject {
-    /// Holds these kinds and releases any others; an empty set releases all. Returns the kinds
-    /// now held, which lacks any that macOS refused.
-    func hold(_ kinds: Set<PowerAssertionKind>) -> Set<PowerAssertionKind>
+    /// Holds these and releases any others; an empty set releases all. Returns the holds now
+    /// held, which lacks any that macOS refused.
+    func hold(_ holds: Set<PowerHold>) -> Set<PowerHold>
 }
 
 /// The power source (`IOPSNotificationCreateRunLoopSource`), for "Only on power adapter".

@@ -34,6 +34,15 @@ private struct CaffeineScreenView: View {
                 if let note = screen.assertionNote {
                     AssertionNoteView(caffeine: caffeine, note: note)
                 }
+                // Services that also keep the Mac awake while Caffeine is on, then a service
+                // hold macOS refused: under the header, past the chip.
+                if let held = screen.heldLine {
+                    HeaderLine(text: held, color: .secondary)
+                }
+                if let refused = screen.refusedLine {
+                    // Announced once, when it's new, by RefusedHoldAnnouncer on the HUD's root.
+                    HeaderLine(text: refused, color: HUDStyle.Colors.warn)
+                }
             }
             if let extend = screen.extend {
                 ExtendRow(caffeine: caffeine, extend: extend)
@@ -95,12 +104,13 @@ private struct CaffeineHeader: View {
                     in: RoundedRectangle(cornerRadius: HUDStyle.Caffeine.chipCornerRadius)
                 )
                 .overlay(alignment: .bottomTrailing) {
+                    // Secondary, not warn: pausing on battery is the user's option working. The
+                    // server badge says a service, not Caffeine, keeps the Mac awake. The core
+                    // never shows both.
                     if header.showsPauseBadge {
-                        // Secondary, not warn: pausing on battery is the user's option working.
-                        Image(systemName: Symbols.pauseBadge)
-                            .font(.system(size: HUDStyle.Caffeine.badgeSize))
-                            .foregroundStyle(.secondary)
-                            .background(Circle().fill(.regularMaterial))
+                        ChipBadge(symbol: Symbols.pauseBadge)
+                    } else if header.showsServerBadge {
+                        ChipBadge(symbol: Glyph.server.symbolName)
                     }
                 }
                 .animation(reduceMotion ? nil : HUDStyle.Motion.standard, value: header.chipAccent)
@@ -119,6 +129,32 @@ private struct CaffeineHeader: View {
                 .controlSize(.regular)
                 .labelsHidden()
         }
+    }
+}
+
+/// A small badge at the chip's bottom-right corner, on the material so it reads on either fill.
+private struct ChipBadge: View {
+    let symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: HUDStyle.Caffeine.badgeSize))
+            .foregroundStyle(.secondary)
+            .background(Circle().fill(.regularMaterial))
+    }
+}
+
+/// A 12 pt line under the header, starting under the title rather than the chip.
+private struct HeaderLine: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: HUDStyle.Settings.helpSize))
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, HUDStyle.Caffeine.chipSize + HUDStyle.Caffeine.headerGap)
     }
 }
 
@@ -156,5 +192,26 @@ private struct ExtendRow: View {
         }
         .padding(HUDStyle.Caffeine.extendPadding)
         .background(HUDStyle.Colors.raise, in: RoundedRectangle(cornerRadius: HUDStyle.Caffeine.extendCornerRadius))
+    }
+}
+
+/// Has VoiceOver say, once, that macOS refused a service's hold: when the refusal is new, while
+/// the HUD is open, whichever tab shows. The refused line under the Caffeine header stays
+/// silent, so visiting the tab doesn't repeat it (Rev).
+struct RefusedHoldAnnouncer: ViewModifier {
+    let model: AppModel
+
+    func body(content: Content) -> some View {
+        content.onChange(of: refused) { old, new in
+            guard model.hud.isOpen else { return }
+            let names = model.services.definitions.filter { new.contains($0.id) && !old.contains($0.id) }.map(\.name)
+            guard !names.isEmpty else { return }
+            AccessibilityNotification.Announcement(Strings.Caffeine.refusedFor(names)).post()
+        }
+    }
+
+    /// The services whose hold macOS refused.
+    private var refused: Set<ServiceDefinition.ID> {
+        Set(model.services.awake.filter { $0.value == .refused }.keys)
     }
 }

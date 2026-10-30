@@ -90,6 +90,7 @@ struct HUDRootView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Strings.HUD.accessibilityLabel)
         .modifier(GaveUpAnnouncer(model: model))
+        .modifier(RefusedHoldAnnouncer(model: model))
     }
 
     /// The new body comes in from the right when the tab is further right than the one
@@ -164,6 +165,17 @@ private enum AccessibilityOrder {
                         $0.caffeine.toggle()
                     }
                     .previewDisplayName("Caffeine, on")
+                    hud {
+                        $0.services.showPreviewFlags()
+                        $0.hud.selectTab(.caffeine)
+                    }
+                    .previewDisplayName("Caffeine, off, kept awake by a service")
+                    hud {
+                        $0.services.showPreviewFlags()
+                        $0.hud.selectTab(.caffeine)
+                        $0.caffeine.toggle()
+                    }
+                    .previewDisplayName("Caffeine, on, a service also keeps it awake")
                 }
                 .preferredColorScheme(scheme)
                 Group {

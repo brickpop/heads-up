@@ -10,6 +10,9 @@ public enum MenuEntry: Equatable, Sendable {
     /// "HeadsUp", with the wake shortcut on the right, or nothing when it isn't registered.
     case header(title: String, shortcut: String?)
     case row(MenuRow)
+    /// A disabled, indented line in secondary text under the row before it: "Kept awake by Web
+    /// dev server" under Caffeine (UX flags §5).
+    case note(String)
     case separator
     /// Quit HeadsUp, ⌘Q. The shell sends it to `NSApp.terminate(_:)`, the same path as the
     /// keyboard's ⌘Q (amendment 4). Slice 5 adds the question about running services there.
@@ -55,32 +58,36 @@ public struct MenuModel: Equatable, Sendable {
         let shortcut: String? =
             if case .ok(let registered) = hotkey { registered.displayName } else { nil }
         let focusValue = Self.focusValue(focus, now: now)
-        let caffeineOn = if case .on = caffeine { true } else { false }
-        entries = [
-            .header(title: Strings.MenuBar.appName, shortcut: shortcut),
-            .row(MenuRow(action: .openHUD, title: Strings.MenuBar.openHUD, glyph: .chat)),
-            .separator,
-            .row(
-                MenuRow(
-                    action: .focus, title: Strings.Tabs.title(.focus), glyph: .timer, value: focusValue.text,
-                    valueIsWarning: focusValue.warning)),
-            .row(
-                MenuRow(
-                    action: .toggleCaffeine, title: Strings.Tabs.title(.caffeine), glyph: .cup,
-                    switchIsOn: caffeineOn)),
-            .row(
-                MenuRow(
-                    action: .services, title: Strings.Tabs.title(.services), glyph: .servers,
-                    value: Strings.MenuBar.services(services))),
-            .separator,
-            .row(
-                MenuRow(
-                    action: .pinned, title: Strings.MenuBar.pinnedChats, glyph: .pin,
-                    value: pinnedChats > 0 ? "\(pinnedChats)" : nil)),
-            .row(MenuRow(action: .settings, title: Strings.MenuBar.settings, glyph: .sliders, commandKey: ",")),
-            .separator,
-            .quit(title: Strings.MenuBar.quit),
-        ]
+        let caffeineOn = caffeine.isOn
+        let held = caffeine.serviceHolds.filter { $0.awake == .holding }.map(\.name)
+        let caffeineNote: [MenuEntry] = held.isEmpty ? [] : [.note(Strings.Caffeine.menuKeptAwakeBy(held))]
+        entries =
+            [
+                .header(title: Strings.MenuBar.appName, shortcut: shortcut),
+                .row(MenuRow(action: .openHUD, title: Strings.MenuBar.openHUD, glyph: .chat)),
+                .separator,
+                .row(
+                    MenuRow(
+                        action: .focus, title: Strings.Tabs.title(.focus), glyph: .timer, value: focusValue.text,
+                        valueIsWarning: focusValue.warning)),
+                .row(
+                    MenuRow(
+                        action: .toggleCaffeine, title: Strings.Tabs.title(.caffeine), glyph: .cup,
+                        switchIsOn: caffeineOn)),
+            ] + caffeineNote + [
+                .row(
+                    MenuRow(
+                        action: .services, title: Strings.Tabs.title(.services), glyph: .servers,
+                        value: Strings.MenuBar.services(services))),
+                .separator,
+                .row(
+                    MenuRow(
+                        action: .pinned, title: Strings.MenuBar.pinnedChats, glyph: .pin,
+                        value: pinnedChats > 0 ? "\(pinnedChats)" : nil)),
+                .row(MenuRow(action: .settings, title: Strings.MenuBar.settings, glyph: .sliders, commandKey: ",")),
+                .separator,
+                .quit(title: Strings.MenuBar.quit),
+            ]
     }
 
     /// The Focus row's right side (UX part 2, §16). Prompts and pauses are orange here

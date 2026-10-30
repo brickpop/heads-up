@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// Caffeine (ADR-001 §4.2; Caffeine spec): keeps the Mac awake for a while, with power
-/// assertions it holds only while on, and not while paused on battery.
+/// assertions it holds only while on, and not while paused on battery. It holds them through
+/// `PowerHolds`, which also holds the services' and owns "Only on power adapter".
 ///
 /// The countdown runs on the wall clock, on battery too; one wake-up is armed at the end date,
 /// and expiry turns Caffeine off. Assertions die with the process, so quitting ends Caffeine.
@@ -17,30 +18,31 @@ public final class CaffeineStore {
     /// Counts the duration moves made with ⌥← ⌥→ from the prompt field. The view announces the
     /// newly selected card each time it changes, as it does for the arrow keys in the cards.
     public private(set) var cardMoves = 0
-    private var onBattery: Bool
+    /// Bumped when the pause on battery begins or ends, so views that read `pausedOnBattery`
+    /// redraw.
+    private var pauseChanges = 0
 
     @ObservationIgnored private let clock: Clock
     @ObservationIgnored private let scheduler: Scheduler
     @ObservationIgnored let settings: SettingsStore
-    @ObservationIgnored private let assertions: PowerAssertions
-    @ObservationIgnored private let power: PowerSource
+    @ObservationIgnored private let holds: PowerHolding
     @ObservationIgnored private weak var toaster: Toaster?
+    /// The services whose hold applies, in list order (`ServiceStore.serviceHolds`); AppModel
+    /// sets it.
+    @ObservationIgnored var serviceHolds: @MainActor () -> [ServiceHold] = { [] }
     @ObservationIgnored private var expiry: ScheduledWork?
 
     public init(
-        clock: Clock, scheduler: Scheduler, settings: SettingsStore, assertions: PowerAssertions,
-        power: PowerSource, toaster: Toaster
+        clock: Clock, scheduler: Scheduler, settings: SettingsStore, holds: PowerHolding, toaster: Toaster
     ) {
         self.clock = clock
         self.scheduler = scheduler
         self.settings = settings
-        self.assertions = assertions
-        self.power = power
+        self.holds = holds
         self.toaster = toaster
-        onBattery = power.isOnBattery
-        power.observe { [weak self] in
+        holds.observePause { [weak self] in
             guard let self else { return }
-            self.onBattery = self.power.isOnBattery
+            self.pauseChanges += 1
             self.applyAssertions()
         }
     }
@@ -55,12 +57,15 @@ public final class CaffeineStore {
     /// On, with "Only on power adapter", while the Mac runs on battery: the countdown keeps
     /// running, the assertions are released, and they come back on the adapter (UX §15).
     public var pausedOnBattery: Bool {
-        isOn && options.onlyOnAC && onBattery
+        _ = pauseChanges
+        return isOn && holds.pausedOnBattery
     }
 
-    /// What the menu bar, the menu and the tab dot need.
+    /// What the menu bar, the menu and the tab dot need, with the services that keep the Mac
+    /// awake.
     public var snapshot: CaffeineSnapshot {
-        isOn ? .on(endsAt: endsAt, pausedOnBattery: pausedOnBattery) : .off
+        CaffeineSnapshot(
+            state: isOn ? .on(endsAt: endsAt, pausedOnBattery: pausedOnBattery) : .off, serviceHolds: serviceHolds())
     }
 
     /// The footer pill at `now`: "Awake 58m", "Awake", "Paused 45m" or "Paused"; nil while off.
@@ -216,8 +221,10 @@ public final class CaffeineStore {
     /// switch, the cup and the pill must not claim a Mac that is kept awake (Yuki). If it refuses
     /// one of two, Caffeine stays on with the other, and the note names the one missing.
     private func applyAssertions() {
-        let wanted: Set<PowerAssertionKind> = isOn && !pausedOnBattery ? options.assertions : []
-        let held = assertions.hold(wanted)
+        let asked: Set<PowerAssertionKind> = isOn ? options.assertions : []
+        let held = holds.set(.caffeine, kinds: asked, name: Strings.Caffeine.assertionName)
+        // Paused on battery, nothing is held, and nothing is missing.
+        let wanted = holds.pausedOnBattery ? [] : asked
         if held == wanted {
             // Everything wanted is held: the note goes. With nothing wanted (off, or paused on
             // battery) it stays, so a refusal that stopped Caffeine, or one before a pause, still shows.

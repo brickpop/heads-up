@@ -118,7 +118,7 @@ private struct ServiceRowView: View {
                                 .font(.system(size: HUDStyle.Services.metaSize).monospacedDigit())
                                 .foregroundStyle(metaColor)
                         }
-                        ServiceFlags(keepsAwake: row.keepsAwake, restarts: row.restarts)
+                        ServiceFlags(keepsAwake: row.keepsAwake, awake: row.awake, restarts: row.restarts)
                     }
                     .lineLimit(1)
                     Text(row.commandLine)
@@ -156,16 +156,21 @@ private struct ServiceRowView: View {
 }
 
 /// The flags' glyphs after the meta, 11 pt and secondary, each shown while its flag is on, with
-/// a tooltip. VoiceOver reads them through the row's label instead.
+/// a tooltip. The cup's tooltip follows its hold, and it turns --warn when macOS refused it.
+/// VoiceOver reads them through the row's label instead.
 private struct ServiceFlags: View {
     let keepsAwake: Bool
+    let awake: AwakeState?
     let restarts: Bool
 
     var body: some View {
         HStack(spacing: HUDStyle.Services.flagGap) {
             if keepsAwake {
                 Image(systemName: Symbols.keepsAwake)
-                    .help(Strings.Services.keepAwakeIdleHelp)
+                    .foregroundStyle(
+                        awake == .refused ? AnyShapeStyle(HUDStyle.Colors.warn) : AnyShapeStyle(.secondary)
+                    )
+                    .help(Strings.Services.keepAwakeTooltip(awake))
             }
             if restarts {
                 Image(systemName: Symbols.restarts)

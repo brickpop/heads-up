@@ -155,6 +155,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 menu.addItem(header)
             case .row(let row):
                 menu.addItem(menuItem(for: row))
+            case .note(let text):
+                let note = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+                note.isEnabled = false
+                note.indentationLevel = 1
+                menu.addItem(note)
             case .quit(let title):
                 // The same path as the keyboard's ⌘Q: applicationShouldTerminate decides.
                 menu.addItem(

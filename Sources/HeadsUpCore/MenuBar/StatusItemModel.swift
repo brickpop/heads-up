@@ -9,7 +9,8 @@ public enum StatusItemPart: Equatable, Sendable {
     case timer(glyph: Glyph, text: String, warning: Bool)
     /// Caffeine: the cup, with the time left, or no text when it runs until turned off.
     /// `accent` tints the cup with the accent colour while on; slice 4 turns it off while
-    /// paused on battery (App shell spec; UX part 2, §15).
+    /// paused on battery (App shell spec; UX part 2, §15). With Caffeine off, a service that
+    /// keeps the Mac awake shows the cup in the template colour, with no text (UX flags §5).
     case cup(text: String?, accent: Bool)
 }
 
@@ -55,7 +56,14 @@ public struct StatusItemModel: Equatable, Sendable {
             spoken.append(words.lowercased())
         }
 
-        switch caffeine {
+        switch caffeine.state {
+        case .off where caffeine.isHeld:
+            parts.append(.cup(text: nil, accent: false))
+            spoken.append(
+                Strings.Caffeine.keptAwakeBySpoken(caffeine.serviceHolds.filter { $0.awake == .holding }.map(\.name)))
+        case .off where caffeine.isHeldButPaused:
+            parts.append(.cup(text: nil, accent: false))
+            spoken.append(Strings.MenuBar.caffeinePaused)
         case .off:
             break
         case .on(nil, let paused):

@@ -1895,5 +1895,13 @@ private final class ServicesHarness {
         #expect(worker.meta?.hasSuffix(" · gave up after 5 restarts") == true)
         let ollama = try #require(byName["Ollama"])
         #expect(ollama.status == .stopped && ollama.keepsAwake && ollama.restarts)
+        #expect(ollama.awake == nil)
+        // Slice B: Web dev server holds the Mac awake, so the row, the Caffeine tab and the
+        // menu bar show it held.
+        #expect(web.awake == .holding)
+        #expect(model.services.serviceHolds.map(\.name) == ["Web dev server"])
+        let caffeine = model.caffeine.screen(at: model.services.clock.now)
+        #expect(caffeine.header.title == "Kept awake by Web dev server")
+        #expect(caffeine.header.showsServerBadge && !caffeine.header.isOn)
     }
 }

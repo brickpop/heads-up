@@ -503,6 +503,49 @@ public enum Strings {
         // Header
         public static let titleOn = "Staying awake"
         public static let titleOff = "Caffeine is off"
+        /// The label of Caffeine's assertions in `pmset -g assertions`.
+        public static let assertionName = "HeadsUp: Caffeine"
+
+        // Services that keep the Mac awake (UX flags §5)
+        /// "Web dev server", "Web dev server and Postgres", "Web dev server, Postgres and 1 more".
+        static func serviceList(_ names: [String]) -> String {
+            switch names.count {
+            case 0: ""
+            case 1: names[0]
+            case 2: "\(names[0]) and \(names[1])"
+            default: "\(names[0]), \(names[1]) and \(names.count - 2) more"
+            }
+        }
+        /// The tab's title, and the menu's line: "Kept awake by Web dev server", or "Kept awake by 2
+        /// services".
+        public static func keptAwakeBy(_ names: [String]) -> String {
+            names.count == 1 ? "Kept awake by \(names[0])" : "Kept awake by \(names.count) services"
+        }
+        /// The menu bar item's VoiceOver and tooltip, after "HeadsUp, ".
+        public static func keptAwakeBySpoken(_ names: [String]) -> String {
+            names.count == 1 ? "kept awake by \(names[0])" : "kept awake by \(names.count) services"
+        }
+        public static func menuKeptAwakeBy(_ names: [String]) -> String { keptAwakeBy(names) }
+        public static func subtitleKeptAwake(_ names: [String]) -> String {
+            names.count == 1
+                ? "Caffeine is off. Your Mac stays awake while it runs."
+                : "Caffeine is off. \(serviceList(names)) keep your Mac awake while they run."
+        }
+        /// Under the header while Caffeine is on: "Web dev server also keeps your Mac awake while
+        /// it runs."
+        public static func alsoKeeps(_ names: [String]) -> String {
+            names.count == 1
+                ? "\(names[0]) also keeps your Mac awake while it runs."
+                : "\(serviceList(names)) also keep your Mac awake while they run."
+        }
+        /// Held only, paused on battery: "Web dev server would keep your Mac awake. Resumes on power."
+        public static func subtitleHeldPaused(_ names: [String]) -> String {
+            "\(serviceList(names)) would keep your Mac awake. Resumes on power."
+        }
+        /// In --warn under the header: "macOS didn't let HeadsUp keep your Mac awake for Web dev server."
+        public static func refusedFor(_ names: [String]) -> String {
+            "macOS didn't let HeadsUp keep your Mac awake for \(serviceList(names))."
+        }
         public static let titlePaused = "Paused on battery"
         public static let subtitleOff = "Your Mac sleeps and starts the screensaver as usual."
         public static let subtitleUntilOff = "Until you turn it off"
@@ -541,7 +584,7 @@ public enum Strings {
         public static let preventSystemSleep = "Prevent system sleep"
         public static let preventSystemSleepHelp = "Keeps background jobs and services running"
         public static let onlyOnAC = "Only on power adapter"
-        public static let onlyOnACHelp = "Pauses automatically on battery"
+        public static let onlyOnACHelp = "Pauses on battery. This also pauses services that keep your Mac awake."
         /// The tooltip on the one option that can't be turned off.
         public static let keepOneOn = "Keep at least one on."
         /// The --danger note under the header when macOS refuses (Yuki), with Try Again.
@@ -678,16 +721,41 @@ public enum Strings {
         /// The glyph tooltips while the service doesn't run (UX §2).
         public static let keepAwakeIdleHelp = "Keeps your Mac awake while it runs"
         public static let restartsHelp = "Restarts if it stops"
-        /// The row's VoiceOver label: "Web dev server, running, keeps your Mac awake while it runs,
-        /// restarts if it stops". Slice B makes the awake part follow the hold.
+        /// The row's VoiceOver label: "Web dev server, running, keeping your Mac awake, restarts if
+        /// it stops". The awake part follows the hold: "keeps your Mac awake while it runs" while it
+        /// doesn't run.
         public static func rowAccessibility(
-            name: String, status: ServicesScreen.Status, keepsAwake: Bool, restarts: Bool
+            name: String, status: ServicesScreen.Status, keepsAwake: Bool, awake: AwakeState? = nil, restarts: Bool
         ) -> String {
             var parts = [name, statusWord(status)]
-            if keepsAwake { parts.append("keeps your Mac awake while it runs") }
+            if keepsAwake {
+                switch awake {
+                case .holding: parts.append("keeping your Mac awake")
+                case .pausedOnBattery: parts.append("keeping awake is paused on battery")
+                case .refused: parts.append("can't keep your Mac awake")
+                case nil: parts.append("keeps your Mac awake while it runs")
+                }
+            }
             if restarts { parts.append("restarts if it stops") }
             return parts.joined(separator: ", ")
         }
+        /// The cup glyph's tooltip, by the hold's state (UX flags §2).
+        public static func keepAwakeTooltip(_ awake: AwakeState?) -> String {
+            switch awake {
+            case .holding: "Keeping your Mac awake"
+            case .pausedOnBattery: "Keeping awake is paused on battery"
+            case .refused: "macOS didn't let HeadsUp keep your Mac awake"
+            case nil: keepAwakeIdleHelp
+            }
+        }
+        /// A service's assertion in `pmset -g assertions`: "HeadsUp: web-app".
+        public static func assertionName(_ name: String) -> String { "HeadsUp: \(name)" }
+        // Log lines of the hold (UX flags §3)
+        public static let keepingAwake = "keeping the Mac awake"
+        public static let noLongerKeepingAwake = "no longer keeping the Mac awake"
+        public static let keepingAwakePaused = "keeping awake paused: on battery"
+        public static let keepingAwakeResumed = "keeping awake resumed: on power"
+        public static let keepAwakeRefused = "macOS didn't let HeadsUp keep the Mac awake"
         /// "just now", "12 min ago", "5 h ago", "yesterday", then the short local date: "Oct 21".
         public static func ago(
             _ date: Date, now: Date, locale: Locale = .current, timeZone: TimeZone = .current

@@ -99,6 +99,8 @@ public final class AppModel {
     public let registry: ActionRegistry
     public let focus: FocusStore
     public let caffeine: CaffeineStore
+    /// Holds the power assertions for Caffeine and the services.
+    public let powerHolds: PowerHolds
     public let services: ServiceStore
     public let commands: CommandStore
     public let endpoints: EndpointService
@@ -114,12 +116,16 @@ public final class AppModel {
     private var modelMenuSelection = 0
 
     /// The activity dot on each tab (amendment 1). Focus: a focus or break runs or is paused,
-    /// a prompt waits, or it is snoozed. Caffeine: on. Services adds its own in slice 5;
-    /// Chat, Commands and Settings never have one.
+    /// a prompt waits, or it is snoozed. Caffeine: on, or a service holds the Mac awake (or would,
+    /// but for the battery). Services: a failure unseen, or one running. Chat, Commands and Settings
+    /// never have one.
     public var tabActivity: [Tab: TabActivity] {
         var activity: [Tab: TabActivity] = [:]
         if focus.phase != .idle { activity[.focus] = .active }
-        if caffeine.isOn { activity[.caffeine] = .active }
+        let caffeineSnapshot = caffeine.snapshot
+        if caffeineSnapshot.isOn || caffeineSnapshot.isHeld || caffeineSnapshot.isHeldButPaused {
+            activity[.caffeine] = .active
+        }
         if services.failureUnseen {
             activity[.services] = .alert
         } else if !services.liveServices.isEmpty {
@@ -192,16 +198,19 @@ public final class AppModel {
             clock: ports.clock, scheduler: ports.scheduler, settings: settings, history: history,
             notifier: ports.notifier, navigator: hud, toaster: hud, secondsPerMinute: ports.focusSecondsPerMinute)
         self.focus = focus
+        // The one owner of power assertions, for Caffeine and the services (flags addendum §3).
+        let powerHolds = PowerHolds(assertions: ports.powerAssertions, power: ports.powerSource, settings: settings)
+        self.powerHolds = powerHolds
         let caffeine = CaffeineStore(
-            clock: ports.clock, scheduler: ports.scheduler, settings: settings, assertions: ports.powerAssertions,
-            power: ports.powerSource, toaster: hud)
+            clock: ports.clock, scheduler: ports.scheduler, settings: settings, holds: powerHolds, toaster: hud)
         self.caffeine = caffeine
         let services = ServiceStore(
             folder: ports.dataFolder, clock: ports.clock, scheduler: ports.scheduler, launcher: ports.serviceLauncher,
             ports: ports.portProbe, notifier: ports.notifier, files: ports.files, settings: settings, toaster: hud,
             loginShell: ports.loginShell, home: ports.home, baseEnvironment: ports.environment,
-            readsShellEnvironment: ports.readsShellEnvironment)
+            readsShellEnvironment: ports.readsShellEnvironment, holds: powerHolds)
         self.services = services
+        caffeine.serviceHolds = { [weak services] in services?.serviceHolds ?? [] }
         commands = CommandStore(
             folder: ports.dataFolder, launcher: ports.terminalLauncher, files: ports.files, settings: settings,
             toaster: hud, loginShell: ports.loginShell, home: ports.home)
