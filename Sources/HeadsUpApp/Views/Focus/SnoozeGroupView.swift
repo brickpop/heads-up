@@ -3,8 +3,8 @@ import SwiftUI
 
 /// "Snooze │ 2m 5m 10m", on both Focus prompts (Yuki, ux-card-buttons › Snooze group): one
 /// 28 pt container in the secondary button look. "Snooze" is a label; each segment snoozes for
-/// its length at once. The default length (Settings › Focus › Snooze length) has the gray fill
-/// and an accent border.
+/// its length at once. The default length (Settings › Focus › Snooze length) has the selected
+/// item's fill of a segmented control, `--seg-on`, and nothing in the group uses the accent.
 ///
 /// The group is one Tab stop: Tab lands on the default segment, ← → move the focus and stop at
 /// the ends without snoozing, Space snoozes for the focused one.
@@ -67,8 +67,9 @@ struct SnoozeGroupView: View {
 }
 
 /// A snooze segment: 24 pt tall, radius 6, `--raise2` under the pointer and `pressed` while
-/// pressed. The default one rests on `--sel` with a 1.5 pt accent border and a semibold title,
-/// and keeps the border while hovered or pressed.
+/// pressed. The default one rests on `--seg-on`, a segmented control's selected item, with a
+/// semibold title and no accent: accent is kept for what ⌘↩ starts. Under the pointer and
+/// pressed, `.primary` at 6 % and 12 % goes on top of it.
 private struct SnoozeSegmentStyle: ButtonStyle {
     let isDefault: Bool
 
@@ -85,6 +86,8 @@ private struct SnoozeSegment: View {
 
     private let isHovered = State(initialValue: false)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         configuration.label
@@ -92,12 +95,7 @@ private struct SnoozeSegment: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, HUDStyle.Snooze.segmentPadding)
             .frame(height: HUDStyle.Snooze.segmentHeight)
-            .background(fill, in: shape)
-            .overlay {
-                if isDefault {
-                    shape.strokeBorder(Color.accentColor, lineWidth: HUDStyle.Snooze.defaultBorder)
-                }
-            }
+            .background { background }
             .contentShape(shape)
             .contentShape(.focusEffect, shape)
             .onHover { isHovered.wrappedValue = $0 }
@@ -106,10 +104,34 @@ private struct SnoozeSegment: View {
                 reduceMotion || configuration.isPressed ? nil : HUDStyle.Motion.standard, value: isHovered.wrappedValue)
     }
 
+    @ViewBuilder private var background: some View {
+        if isDefault {
+            shape.fill(HUDStyle.Colors.segmentOn)
+                // The native soft shadow, in light mode only.
+                .shadow(
+                    color: .black.opacity(colorScheme == .light ? HUDStyle.Snooze.defaultShadowOpacity : 0),
+                    radius: HUDStyle.Snooze.defaultShadowRadius, y: HUDStyle.Snooze.defaultShadowY
+                )
+                .overlay(shape.fill(Color.primary.opacity(defaultShade)))
+                .overlay {
+                    if contrast == .increased {
+                        shape.strokeBorder(HUDStyle.Colors.line, lineWidth: 1)
+                    }
+                }
+        } else {
+            shape.fill(fill)
+        }
+    }
+
+    /// `.primary` over the default's fill: pressed, then hovered, else none.
+    private var defaultShade: Double {
+        if configuration.isPressed { return HUDStyle.Snooze.defaultPressed }
+        return isHovered.wrappedValue ? HUDStyle.Snooze.defaultHover : 0
+    }
+
     private var fill: Color {
         if configuration.isPressed { return HUDStyle.Colors.pressed }
-        if isHovered.wrappedValue { return HUDStyle.Colors.raise2 }
-        return isDefault ? HUDStyle.Colors.selection : Color.clear
+        return isHovered.wrappedValue ? HUDStyle.Colors.raise2 : Color.clear
     }
 
     private var shape: RoundedRectangle {

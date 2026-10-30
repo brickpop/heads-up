@@ -66,6 +66,15 @@ enum HUDStyle {
                     return NSColor.black.withAlphaComponent(dark ? 0.25 : 0.04)
                 })
         }
+        /// `--seg-on`: a segmented control's selected item, the snooze default. White 18 % in dark,
+        /// white in light (where it also casts `Snooze.defaultShadow…`).
+        static var segmentOn: Color {
+            Color(
+                nsColor: NSColor(name: nil) { appearance in
+                    let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                    return NSColor.white.withAlphaComponent(dark ? 0.18 : 1)
+                })
+        }
         static var alert: Color { .red }
         /// `--warn`: something the user should act on, as an icon or short text.
         static var warn: Color { .orange }
@@ -249,8 +258,13 @@ enum HUDStyle {
         static let segmentHeight: CGFloat = 24
         static let segmentPadding: CGFloat = 10
         static let segmentCornerRadius: CGFloat = 6
-        /// The default length's accent border: the selected card's, at button size.
-        static let defaultBorder: CGFloat = 1.5
+        /// `.primary` laid over the default length's `--seg-on` fill under the pointer, and pressed.
+        static let defaultHover = 0.06
+        static let defaultPressed = 0.12
+        /// The default's soft shadow in light mode, as a native segmented control's selected item.
+        static let defaultShadowOpacity = 0.12
+        static let defaultShadowRadius: CGFloat = 0.5
+        static let defaultShadowY: CGFloat = 0.5
     }
 
     enum Caffeine {
