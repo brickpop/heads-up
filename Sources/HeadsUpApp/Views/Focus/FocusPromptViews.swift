@@ -1,8 +1,8 @@
 import HeadsUpCore
 import SwiftUI
 
-/// "Time for a break": the break options, then Stop for now and Snooze, Start break, and the
-/// Length group under Start.
+/// "Time for a break": the break options, then the Length group, and under it Stop for now,
+/// Snooze and Start break.
 /// VoiceOver announces it once.
 struct BreakPromptView: View {
     let focus: FocusStore
@@ -53,26 +53,27 @@ struct BreakPromptView: View {
             ) {
                 focus.selectActivity(screen.options[$0].id)
             }
-            // Row 1: Stop for now and Snooze on the left, Start on the right. Row 2: Length under
-            // Start, right-aligned with it. Tab order: Stop for now, Snooze, Start, Length.
-            HStack(alignment: .top, spacing: 0) {
-                PromptLeftActions(done: screen.done, snooze: screen.snooze, focus: focus)
-                Spacer(minLength: HUDStyle.Focus.gap)
-                VStack(alignment: .trailing, spacing: HUDStyle.CardButton.spacing) {
+            // Length on its own row, right-aligned with Start, 8 pt above the action row: Stop for
+            // now and Snooze on the left, Start on the right. The Tab order follows: Length, Stop
+            // for now, Snooze, Start.
+            VStack(alignment: .trailing, spacing: HUDStyle.CardButton.spacing) {
+                // A click selects the length; it doesn't start the break.
+                SegmentGroupView(
+                    symbol: Symbols.breakLength, label: Strings.Focus.length,
+                    accessibilityLabel: Strings.Focus.lengthGroupAccessibility,
+                    segments: screen.lengths.map {
+                        SegmentGroupView.Segment(
+                            id: $0.minutes, title: $0.title, accessibilityLabel: $0.accessibilityLabel,
+                            isSelected: $0.isSelected)
+                    }, select: focus.setBreakLength, act: focus.setBreakLength)
+                HStack(spacing: 0) {
+                    PromptLeftActions(stopForNow: screen.stopForNow, snooze: screen.snooze, focus: focus)
+                    Spacer(minLength: HUDStyle.Focus.gap)
                     Button(action: focus.startBreak) {
                         FocusPrimaryLabel(title: screen.startBreak)
                     }
                     .buttonStyle(.hud(.primary))
                     .accessibilityHint(Strings.Focus.primaryShortcutHint)
-                    // A click selects the length; it doesn't start the break.
-                    SegmentGroupView(
-                        symbol: Symbols.breakLength, label: Strings.Focus.length,
-                        accessibilityLabel: Strings.Focus.lengthGroupAccessibility,
-                        segments: screen.lengths.map {
-                            SegmentGroupView.Segment(
-                                id: $0.minutes, title: $0.title, accessibilityLabel: $0.accessibilityLabel,
-                                isSelected: $0.isSelected)
-                        }, select: focus.setBreakLength, act: focus.setBreakLength)
                 }
             }
         }
@@ -96,9 +97,9 @@ struct BackPromptView: View {
                     .foregroundStyle(.secondary)
             }
             FocusLengthCards(lengths: screen.lengths, cardMoves: focus.cardMoves, select: focus.setNextFocusLength)
-            // The break prompt's row 1; the length cards above take the place of its Length row.
+            // The break prompt's action row; the length cards above take the place of its Length row.
             HStack(spacing: 0) {
-                PromptLeftActions(done: screen.done, snooze: screen.snooze, focus: focus)
+                PromptLeftActions(stopForNow: screen.stopForNow, snooze: screen.snooze, focus: focus)
                 Spacer(minLength: HUDStyle.Focus.gap)
                 Button {
                     focus.start()
@@ -139,15 +140,15 @@ struct SnoozedView: View {
 /// the selected length, where esc snoozes, starts at Settings' and moves with ⌥⇧← ⌥⇧→ or ← → in
 /// the group.
 private struct PromptLeftActions: View {
-    let done: String
+    let stopForNow: String
     let snooze: FocusScreen.SnoozeGroup
     let focus: FocusStore
 
     var body: some View {
         HStack(spacing: HUDStyle.CardButton.spacing) {
-            Button(done, action: focus.doneForNow)
+            Button(stopForNow, action: focus.doneForNow)
                 .buttonStyle(.hud(.secondary))
-                .help(Strings.Focus.doneHelp)
+                .help(Strings.Focus.stopForNowHelp)
             SegmentGroupView(
                 symbol: Symbols.snooze, label: snooze.label,
                 segments: snooze.choices.map {

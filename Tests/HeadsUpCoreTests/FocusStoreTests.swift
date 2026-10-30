@@ -599,7 +599,7 @@ private struct FocusHarness {
         }
         #expect(automatic.label == "25 min session done · 1 today")
         #expect(automatic.title == "Time for a break")
-        #expect(automatic.done == "Stop for now")
+        #expect(automatic.stopForNow == "Stop for now")
         #expect(automatic.options.first { $0.isSelected }?.id == "water")
         #expect(
             automatic.options.prefix(2).map(\.accessibilityLabel) == [
@@ -617,7 +617,7 @@ private struct FocusHarness {
 
         h.focus.takeBreakNow()
         guard case .breakPrompt(let manual) = h.focus.screen(at: h.clock.now) else { return }
-        #expect(manual.done == "Stop for now")
+        #expect(manual.stopForNow == "Stop for now")
         #expect(manual.label == "1 session · 25m focused today")
     }
 
@@ -633,7 +633,7 @@ private struct FocusHarness {
         #expect(back.label == "Break finished")
         #expect(back.title == "Ready to get back to it?")
         #expect(back.start == "Start 25 min focus")
-        #expect(back.done == "Stop for now")
+        #expect(back.stopForNow == "Stop for now")
         h.focus.snooze()
         guard case .snoozed(let snoozed) = h.focus.screen(at: h.clock.now.addingTimeInterval(48)) else { return }
         #expect(snoozed.title == "Prompt returns in 4:12")
@@ -1546,10 +1546,8 @@ private struct FocusHarness {
         #expect(h.focus.snapshot == .snoozed(until: h.clock.now.addingTimeInterval(10 * 60)))
     }
 
-    @Test func doneIsStopForNowOnThePromptsAndInTheNotifications() {
-        #expect(Strings.Focus.done == "Stop for now")
-        #expect(Strings.Notifications.actionTitle(.done) == "Stop for now")
-        #expect(Strings.Focus.doneHelp == "Stop here. Nothing else starts.")
+    @Test func theNotificationsStopButtonIsStopForNow() {
+        #expect(NotificationAction.done.title == "Stop for now")
     }
 
     @Test func theLengthGroupReadsAsBreakLength() {

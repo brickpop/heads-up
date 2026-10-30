@@ -170,7 +170,8 @@ public enum NotificationAction: String, CaseIterable, Sendable {
     case startBreak = "start-break"
     case startFocus = "start-focus"
     case snooze
-    /// Ends the focus loop: back to idle.
+    /// Stop for now: ends the focus loop, back to idle. Its id stays "done": notifications
+    /// already delivered carry it.
     case done
     case stop
     case showLogs = "show-logs"

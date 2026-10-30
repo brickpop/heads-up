@@ -55,7 +55,7 @@ public enum FocusScreen: Equatable, Sendable {
         /// The break length picked, in minutes: the one `lengths` marks selected.
         public let selectedLength: Int
         /// "Stop for now": ends the loop, back to idle.
-        public let done: String
+        public let stopForNow: String
         public let snooze: SnoozeGroup
         public let startBreak: String
     }
@@ -96,7 +96,7 @@ public enum FocusScreen: Equatable, Sendable {
         /// "5m"
         public let title: String
         public let isSelected: Bool
-        /// "Length, 5 minutes"
+        /// "5 minutes"
         public let accessibilityLabel: String
     }
 
@@ -108,7 +108,7 @@ public enum FocusScreen: Equatable, Sendable {
         /// typed and isn't one of these. The selected one is the last focus's at first.
         public let lengths: [LengthCard]
         /// "Stop for now": ends the loop, back to idle.
-        public let done: String
+        public let stopForNow: String
         public let snooze: SnoozeGroup
         /// "Start 40 min focus", for the selected length.
         public let start: String
@@ -177,7 +177,7 @@ extension FocusStore {
                             ? Strings.Focus.lengthHint(minutes) : Strings.Focus.lastFocusHint
                         return lengthCard(minutes, hint: hint, selected: minutes == next)
                     },
-                    done: Strings.Focus.done, snooze: snoozeGroup, start: Strings.Focus.startFocusOf(next)))
+                    stopForNow: Strings.Focus.stopForNow, snooze: snoozeGroup, start: Strings.Focus.startFocusOf(next)))
         case .snoozed(let until, _):
             return .snoozed(
                 FocusScreen.Snoozed(
@@ -283,7 +283,7 @@ extension FocusStore {
                     accessibilityLabel: Strings.Focus.lengthAccessibility(minutes))
             },
             selectedLength: breakLength,
-            done: Strings.Focus.done,
+            stopForNow: Strings.Focus.stopForNow,
             snooze: snoozeGroup,
             startBreak: Strings.Focus.startBreak(breakLength))
     }

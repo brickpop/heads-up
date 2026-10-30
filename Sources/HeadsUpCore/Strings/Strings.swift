@@ -442,8 +442,8 @@ public enum Strings {
         public static let resume = "Resume"
 
         /// Both prompts: ends the loop.
-        public static let done = "Stop for now"
-        public static let doneHelp = "Stop here. Nothing else starts."
+        public static let stopForNow = "Stop for now"
+        public static let stopForNowHelp = "Stop here. Nothing else starts."
         /// VoiceOver's hint on the primary buttons that show the ⌘↩ keycap.
         public static let primaryShortcutHint = "Command-Return"
         /// The keycap on the primary button: ⌘↩ runs it from the prompt field.
