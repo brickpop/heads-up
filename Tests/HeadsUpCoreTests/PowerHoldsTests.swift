@@ -81,6 +81,9 @@ private final class HoldsHarness {
 /// addendum §3–4, slice B).
 @MainActor
 @Suite(.serialized) struct PowerHoldsTests {
+    /// The menu bar's timer part while no focus round runs.
+    static let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
+
     // MARK: PowerHolds
 
     @Test func theUnionOfEveryHolderIsHeldAndEachReleasesOnlyItsOwn() {
@@ -349,10 +352,10 @@ private final class HoldsHarness {
         #expect(h.model.tabActivity[.caffeine] == .active)
 
         let item = StatusItemModel(
-            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now, promptVisible: false,
+            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
-        #expect(item.parts == [.cup(text: nil, accent: false)])
-        #expect(item.accessibilityLabel == "HeadsUp, kept awake by Web dev server")
+        #expect(item.parts == [Self.noFocus, .cup(text: nil, accent: false)])
+        #expect(item.accessibilityLabel == "HeadsUp, no focus, kept awake by Web dev server")
         let menu = h.model.menu
         #expect(menu.entries.contains(.note("Kept awake by Web dev server")))
 
@@ -372,10 +375,10 @@ private final class HoldsHarness {
         #expect(on.header.isOn && on.header.title != "Kept awake by 3 services" && !on.header.showsServerBadge)
         #expect(on.heldLine == "Web dev server, Postgres and 1 more also keep your Mac awake while they run.")
         let onItem = StatusItemModel(
-            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now, promptVisible: false,
+            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
         // Caffeine on: the accent cup with its time, as before.
-        guard case .cup(_?, true)? = onItem.parts.first else {
+        guard case .cup(_?, true)? = onItem.parts.last else {
             Issue.record("expected the accent cup with a time: \(onItem.parts)")
             return
         }
@@ -398,9 +401,9 @@ private final class HoldsHarness {
         #expect(!header.chipAccent && header.showsPauseBadge && !header.showsServerBadge)
         #expect(h.model.tabActivity[.caffeine] == .active)
         let item = StatusItemModel(
-            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now, promptVisible: false,
+            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
-        #expect(item.parts == [.cup(text: nil, accent: false)])
+        #expect(item.parts == [Self.noFocus, .cup(text: nil, accent: false)])
         #expect(!h.model.menu.entries.contains { if case .note = $0 { true } else { false } })
     }
 
@@ -410,9 +413,9 @@ private final class HoldsHarness {
         #expect(h.header.title == "Caffeine is off" && !h.header.chipAccent && !h.header.showsServerBadge)
         #expect(h.model.tabActivity[.caffeine] == nil)
         let item = StatusItemModel(
-            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now, promptVisible: false,
+            focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
-        #expect(item.parts == [.appGlyph])
+        #expect(item.parts == [Self.noFocus])
     }
 
     @Test func theCupTooltipFollowsTheHold() {

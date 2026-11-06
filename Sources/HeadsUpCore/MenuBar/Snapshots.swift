@@ -22,7 +22,8 @@ public enum FocusSnapshot: Equatable, Sendable {
     case running(Kind, endsAt: Date)
     case paused(Kind, left: TimeInterval)
     case prompt(Prompt)
-    case snoozed(until: Date)
+    /// A prompt snoozed until `until`: the menu bar still says what it waits for.
+    case snoozed(until: Date, prompt: Prompt)
 }
 
 /// What the menu bar needs to know about Caffeine, and about the services that keep the Mac

@@ -25,7 +25,7 @@ public struct MenuRow: Equatable, Sendable {
     public let glyph: Glyph?
     /// The text on the right, e.g. "Focus · 18:42" or "2 running".
     public let value: String?
-    /// The value is drawn in system orange: the user needs to act on it (UX part 2, §16).
+    /// The value is drawn in amber: the round waits on the user (UX part 2, §16).
     public let valueIsWarning: Bool
     /// The row carries an inline switch in this state (Caffeine), instead of a value.
     public let switchIsOn: Bool?
@@ -90,7 +90,7 @@ public struct MenuModel: Equatable, Sendable {
             ]
     }
 
-    /// The Focus row's right side (UX part 2, §16). Prompts and pauses are orange here
+    /// The Focus row's right side (UX part 2, §16). Prompts and pauses are amber here
     /// whether or not the HUD shows them: one colour for one state.
     static func focusValue(_ focus: FocusSnapshot, now: Date) -> (text: String, warning: Bool) {
         switch focus {
@@ -102,7 +102,7 @@ public struct MenuModel: Equatable, Sendable {
             ("\(Strings.MenuBar.paused) · \(Format.clock(left))", true)
         case .prompt(let prompt):
             (Strings.MenuBar.promptWords(prompt), true)
-        case .snoozed(let until):
+        case .snoozed(let until, _):
             ("\(Strings.MenuBar.snoozed) · \(Format.clock(until.timeIntervalSince(now)))", false)
         }
     }

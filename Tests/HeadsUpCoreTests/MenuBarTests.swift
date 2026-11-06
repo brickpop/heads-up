@@ -5,11 +5,14 @@ import Testing
 
 private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-private func status(
-    _ focus: FocusSnapshot, _ caffeine: CaffeineSnapshot = .off, promptVisible: Bool = false, seconds: Bool = false
-) -> StatusItemModel {
-    StatusItemModel(focus: focus, caffeine: caffeine, now: now, promptVisible: promptVisible, showSeconds: seconds)
+private func status(_ focus: FocusSnapshot, _ caffeine: CaffeineSnapshot = .off, seconds: Bool = false)
+    -> StatusItemModel
+{
+    StatusItemModel(focus: focus, caffeine: caffeine, now: now, showSeconds: seconds)
 }
+
+/// The timer part while no round runs: "No focus" in the menu bar's colour.
+private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
 
 @Suite struct FormatTests {
     @Test func minutesForTheFocusTimerRoundUp() {
@@ -47,63 +50,66 @@ private func status(
 }
 
 @Suite struct StatusItemModelTests {
-    @Test func idleShowsOnlyTheAppGlyph() {
+    @Test func idleSaysNoFocusWithTheTimerGlyph() {
         let model = status(.idle(nextLength: 25))
-        #expect(model.parts == [.appGlyph])
-        #expect(model.accessibilityLabel == "HeadsUp")
+        #expect(model.parts == [noFocus])
+        #expect(model.accessibilityLabel == "HeadsUp, no focus")
         #expect(model.nextChange == nil)
     }
 
     @Test func aRunningFocusShowsMinutesRoundedUp() {
         let model = status(.running(.focus, endsAt: now.addingTimeInterval(17 * 60 + 1)))
-        #expect(model.parts == [.timer(glyph: .timer, text: "18m", warning: false)])
+        #expect(model.parts == [.timer(text: "18m", warning: false)])
         #expect(model.accessibilityLabel == "HeadsUp, focus, 18 minutes left")
     }
 
     @Test func showSecondsUsesMinutesAndSecondsForFocus() {
         let model = status(.running(.rest, endsAt: now.addingTimeInterval(3 * 60 + 10)), seconds: true)
-        #expect(model.parts == [.timer(glyph: .timer, text: "3:10", warning: false)])
+        #expect(model.parts == [.timer(text: "3:10", warning: false)])
     }
 
     @Test func caffeineShowsTheCupNextToTheTimerAndOnlyTheCupUntilOff() {
         let both = status(
             .running(.focus, endsAt: now.addingTimeInterval(600)), .on(endsAt: now.addingTimeInterval(65 * 60)))
-        #expect(both.parts == [.timer(glyph: .timer, text: "10m", warning: false), .cup(text: "1h 05m", accent: true)])
-        #expect(status(.idle(nextLength: 25), .on(endsAt: nil)).parts == [.cup(text: nil, accent: true)])
+        #expect(both.parts == [.timer(text: "10m", warning: false), .cup(text: "1h 05m", accent: true)])
+        #expect(status(.idle(nextLength: 25), .on(endsAt: nil)).parts == [noFocus, .cup(text: nil, accent: true)])
     }
 
     @Test func caffeineWithSecondsOnUsesMinutesAndSecondsOnlyUnderAnHour() {
         #expect(
             status(.idle(nextLength: 25), .on(endsAt: now.addingTimeInterval(59 * 60)), seconds: true).parts
-                == [.cup(text: "59:00", accent: true)])
+                == [noFocus, .cup(text: "59:00", accent: true)])
         #expect(
             status(.idle(nextLength: 25), .on(endsAt: now.addingTimeInterval(65 * 60)), seconds: true).parts
-                == [.cup(text: "1h 05m", accent: true)])
+                == [noFocus, .cup(text: "1h 05m", accent: true)])
     }
 
-    @Test func pausedIsOrangeWithThePauseGlyphAndTheFrozenTime() {
+    @Test func pausedIsAmberWithTheTimerGlyphAndTheFrozenTime() {
         let model = status(.paused(.focus, left: 18 * 60))
-        #expect(model.parts == [.timer(glyph: .pause, text: "18m", warning: true)])
+        #expect(model.parts == [.timer(text: "18m", warning: true)])
         #expect(model.accessibilityLabel == "HeadsUp, focus paused, 18 minutes left")
         #expect(model.nextChange == nil)
         #expect(status(.paused(.rest, left: 90)).accessibilityLabel == "HeadsUp, break paused, 2 minutes left")
     }
 
-    @Test func anUnansweredPromptIsOrangeWithWords() {
-        let model = status(.prompt(.breakDue))
-        #expect(model.parts == [.timer(glyph: .timer, text: "Break due", warning: true)])
-        #expect(model.accessibilityLabel == "HeadsUp, break due")
-        #expect(status(.prompt(.breakOver)).parts == [.timer(glyph: .timer, text: "Break over", warning: true)])
+    @Test func aWaitingPromptIsAmberBreakDueOrNoFocus() {
+        let due = status(.prompt(.breakDue))
+        #expect(due.parts == [.timer(text: "Break due", warning: true)])
+        #expect(due.accessibilityLabel == "HeadsUp, break due")
+        let back = status(.prompt(.breakOver))
+        #expect(back.parts == [.timer(text: "No focus", warning: true)])
+        #expect(back.accessibilityLabel == "HeadsUp, no focus")
     }
 
-    @Test func aPromptTheHUDShowsIsNotOrange() {
+    @Test func aSnoozedPromptSaysTheSameInAmber() {
+        let until = now.addingTimeInterval(300)
         #expect(
-            status(.prompt(.breakDue), promptVisible: true).parts
-                == [.timer(glyph: .timer, text: "Break due", warning: false)])
-    }
-
-    @Test func snoozedShowsNothingInTheMenuBar() {
-        #expect(status(.snoozed(until: now.addingTimeInterval(300))).parts == [.appGlyph])
+            status(.snoozed(until: until, prompt: .breakDue)).parts
+                == [.timer(text: "Break due", warning: true)])
+        #expect(
+            status(.snoozed(until: until, prompt: .breakOver)).parts
+                == [.timer(text: "No focus", warning: true)])
+        #expect(status(.snoozed(until: until, prompt: .breakOver)).nextChange == nil)
     }
 
     // MARK: Next change
@@ -138,9 +144,9 @@ private func status(
         var texts: [String] = []
         for _ in 0..<3 {
             let model = StatusItemModel(
-                focus: .idle(nextLength: 25), caffeine: .on(endsAt: endsAt), now: time, promptVisible: false,
+                focus: .idle(nextLength: 25), caffeine: .on(endsAt: endsAt), now: time,
                 showSeconds: false)
-            if case .cup(let text?, _) = model.parts.first { texts.append(text) }
+            if case .cup(let text?, _) = model.parts.last { texts.append(text) }
             guard let next = model.nextChange else { break }
             time = next
         }
@@ -166,7 +172,7 @@ private func status(
         var steps = 0
         while let next = StatusItemModel(
             focus: .running(.focus, endsAt: focusEnd), caffeine: .on(endsAt: caffeineEnd), now: time,
-            promptVisible: false, showSeconds: false
+            showSeconds: false
         ).nextChange, next < caffeineEnd, steps < 100 {
             #expect(next > time)
             time = next
@@ -217,7 +223,7 @@ private func status(
         #expect(focusRow(.idle(nextLength: 50))?.value == "Start 50 min")
         #expect(focusRow(.running(.focus, endsAt: now.addingTimeInterval(18 * 60 + 42)))?.value == "Focus · 18:42")
         #expect(focusRow(.running(.rest, endsAt: now.addingTimeInterval(190)))?.value == "Break · 3:10")
-        #expect(focusRow(.snoozed(until: now.addingTimeInterval(252)))?.value == "Snoozed · 4:12")
+        #expect(focusRow(.snoozed(until: now.addingTimeInterval(252), prompt: .breakDue))?.value == "Snoozed · 4:12")
 
         let paused = focusRow(.paused(.focus, left: 18 * 60 + 42))
         #expect(paused?.value == "Paused · 18:42")
@@ -254,7 +260,7 @@ private func status(
 @Suite struct MenuBarAppModelTests {
     @Test func aPlainClickTogglesTheHUD() {
         let model = AppModel.preview()
-        #expect(model.statusItem.parts == [.appGlyph])
+        #expect(model.statusItem.parts == [noFocus])
         model.statusItemClicked()
         #expect(model.hud.isOpen)
         #expect(model.statusItemHighlighted)
@@ -263,23 +269,22 @@ private func status(
         #expect(!model.statusItemHighlighted)
     }
 
-    @Test func anOrangeItemLeadsToFocus() {
+    @Test func anAmberItemLeadsToFocus() {
         let model = AppModel.preview()
         model.focusSource = { .prompt(.breakDue) }
-        #expect(model.statusItem.parts == [.timer(glyph: .timer, text: "Break due", warning: true)])
+        #expect(model.statusItem.parts == [.timer(text: "Break due", warning: true)])
 
         model.statusItemClicked()  // closed → open on Focus
         #expect(model.hud.isOpen && model.hud.tab == .focus)
-        // With the HUD open the prompt isn't dismissed: no longer orange, and a click closes.
-        #expect(model.statusItem.parts == [.timer(glyph: .timer, text: "Break due", warning: false)])
+        // Still amber with the prompt on screen; on Focus a click closes.
+        #expect(model.statusItem.parts == [.timer(text: "Break due", warning: true)])
         model.statusItemClicked()
         #expect(!model.hud.isOpen)
 
-        // Open on another tab, a waiting prompt isn't orange either (Yuki, slice 3): a plain toggle.
+        // Open on another tab, a click goes to Focus.
         model.hud.open(tab: .chat)
-        #expect(model.statusItem.parts == [.timer(glyph: .timer, text: "Break due", warning: false)])
         model.statusItemClicked()
-        #expect(!model.hud.isOpen)
+        #expect(model.hud.isOpen && model.hud.tab == .focus)
     }
 
     @Test func aPausedTimerClickAlsoLeadsToFocus() {
@@ -331,7 +336,7 @@ private func status(
         settings.general.menuSeconds = true
         let model = AppModel.preview(settings: settings)
         model.focusSource = { .paused(.focus, left: 18 * 60 + 42) }
-        #expect(model.statusItem.parts == [.timer(glyph: .pause, text: "18:42", warning: true)])
+        #expect(model.statusItem.parts == [.timer(text: "18:42", warning: true)])
     }
 }
 

@@ -40,15 +40,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.highlight(highlighted)
         button.setAccessibilityLabel(status.accessibilityLabel)
 
-        if status.parts == [.appGlyph] {
-            let glyph = NSImage(named: "MenuBarGlyph")
-            glyph?.isTemplate = true
-            button.image = glyph
-            button.attributedTitle = NSAttributedString()
-        } else {
-            button.image = nil
-            button.attributedTitle = Self.title(for: status.parts)
-        }
+        button.image = nil
+        button.attributedTitle = Self.title(for: status.parts)
 
         // Redraw when the text next changes by itself, e.g. 18m → 17m.
         redraw?.cancel()
@@ -60,8 +53,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The timer item first, then the cup, each a glyph and its text. A warning part is
-    /// system orange, glyph and text; everything else uses the menu bar's own colours.
+    /// The timer item first, then the cup, each a glyph and its text. A warning part is amber,
+    /// glyph and text; everything else uses the menu bar's own colours.
     private static func title(for parts: [StatusItemPart]) -> NSAttributedString {
         let title = NSMutableAttributedString()
         for part in parts {
@@ -71,13 +64,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             /// The glyph's own colour, or nil for the menu bar's template colour.
             let glyphColor: NSColor?
             switch part {
-            case .appGlyph:
-                continue
-            case .timer(let glyph, let label, let isWarning):
-                symbol = glyph.symbolName
+            case .timer(let label, let isWarning):
+                symbol = Glyph.timer.symbolName
                 text = label
                 warning = isWarning
-                glyphColor = isWarning ? .systemOrange : nil
+                glyphColor = isWarning ? HUDStyle.Colors.amberTextNS : nil
             case .cup(let label, let accent):
                 symbol = Glyph.cup.symbolName
                 text = label
@@ -88,7 +79,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             title.append(symbolAttachment(symbol, color: glyphColor))
             if let text {
                 var attributes: [NSAttributedString.Key: Any] = [.font: font, .baselineOffset: 1]
-                if warning { attributes[.foregroundColor] = NSColor.systemOrange }
+                if warning { attributes[.foregroundColor] = HUDStyle.Colors.amberTextNS }
                 title.append(NSAttributedString(string: " " + text, attributes: attributes))
             }
         }
@@ -230,7 +221,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     string: "\t" + value,
                     attributes: [
                         .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
-                        .foregroundColor: warning ? NSColor.systemOrange : NSColor.secondaryLabelColor,
+                        .foregroundColor: warning ? HUDStyle.Colors.amberTextNS : NSColor.secondaryLabelColor,
                         .paragraphStyle: paragraph,
                     ]))
         }

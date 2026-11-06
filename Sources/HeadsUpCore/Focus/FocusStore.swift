@@ -109,9 +109,8 @@ public final class FocusStore {
         case .idle: .idle(nextLength: focusLength)
         case .focus(let run): Self.snapshot(of: run, kind: .focus)
         case .rest(let run, _): Self.snapshot(of: run, kind: .rest)
-        case .prompt(.breakPrompt): .prompt(.breakDue)
-        case .prompt(.backPrompt): .prompt(.breakOver)
-        case .snoozed(let until, _): .snoozed(until: until)
+        case .prompt(let prompt): .prompt(Self.snapshotPrompt(prompt))
+        case .snoozed(let until, let prompt): .snoozed(until: until, prompt: Self.snapshotPrompt(prompt))
         }
     }
 
@@ -122,6 +121,14 @@ public final class FocusStore {
         case .rest(let run, _): Strings.Focus.pillBreak(Format.clock(run.timeLeft(at: now)))
         case .snoozed(let until, _): Strings.Focus.pillSnoozed(Format.clock(until.timeIntervalSince(now)))
         case .idle, .prompt: nil
+        }
+    }
+
+    /// The menu bar's name for a prompt: a break is due, or the break is over.
+    private static func snapshotPrompt(_ prompt: FocusPrompt) -> FocusSnapshot.Prompt {
+        switch prompt {
+        case .breakPrompt: .breakDue
+        case .backPrompt: .breakOver
         }
     }
 

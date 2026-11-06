@@ -206,13 +206,18 @@ public enum Strings {
             return parts.isEmpty ? "None" : parts.joined(separator: " · ")
         }
 
-        /// "Break due" or "Break over": the words the item and the menu show for a waiting prompt.
+        /// "Break due" or "Break over": the words the menu shows for a waiting prompt.
         public static func promptWords(_ prompt: FocusSnapshot.Prompt) -> String {
             switch prompt {
-            case .breakDue: "Break due"
+            case .breakDue: breakDue
             case .breakOver: "Break over"
             }
         }
+
+        /// The menu bar item's words when no focus or break runs: "Break due" while a break prompt
+        /// waits or is snoozed, "No focus" otherwise (Yuki, prompt-tray-polish).
+        public static let breakDue = "Break due"
+        public static let noFocus = "No focus"
 
         /// "Focus" or "Break", as a menu value starts.
         public static func kindTitle(_ kind: FocusSnapshot.Kind) -> String {
@@ -347,7 +352,7 @@ public enum Strings {
             case .startBreak: "Start break"
             case .startFocus: "Start focus"
             case .snooze: "Snooze"
-            case .done: "Stop for now"
+            case .done: "Stop now"
             case .stop: "Stop"
             case .showLogs: "Show Logs"
             }
@@ -441,9 +446,9 @@ public enum Strings {
         public static let pause = "Pause"
         public static let resume = "Resume"
 
-        /// Both prompts: ends the loop.
-        public static let stopForNow = "Stop for now"
-        public static let stopForNowHelp = "Stop here. Nothing else starts."
+        /// The snooze group's last segment, on both prompts: ends the loop.
+        public static let stopNow = "Stop now"
+        public static let stopNowHelp = "Stop here. Nothing else starts."
         /// VoiceOver's hint on the primary buttons that show the ⌘↩ keycap.
         public static let primaryShortcutHint = "Command-Return"
         /// The keycap on the primary button: ⌘↩ runs it from the prompt field.
@@ -467,12 +472,12 @@ public enum Strings {
         public static func snoozeChoice(_ minutes: Int) -> String { "\(minutes)m" }
         /// What VoiceOver says for a snooze segment: "Snooze, 5 minutes".
         public static func snoozeAccessibility(_ minutes: Int) -> String { "Snooze, \(minutes) minutes" }
-        public static func startBreak(_ minutes: Int) -> String { "Start \(minutes) min break" }
+        /// The break prompt's Start: the length shows in the Length group above it.
+        public static let startBreak = "Start break"
 
         // Back prompt
         public static let breakFinished = "Break finished"
         public static let readyToGetBack = "Ready to get back to it?"
-        public static func startFocusOf(_ minutes: Int) -> String { "Start \(minutes) min focus" }
         /// The hint on the back prompt's extra card: the last focus's typed length, not a preset.
         public static let lastFocusHint = "Last focus"
 

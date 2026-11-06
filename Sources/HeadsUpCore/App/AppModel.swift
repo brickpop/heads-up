@@ -463,7 +463,7 @@ public final class AppModel {
     public var statusItem: StatusItemModel {
         StatusItemModel(
             focus: focusSnapshot, caffeine: caffeineSnapshot, now: clock.now,
-            promptVisible: hud.isOpen, showSeconds: settings.settings.general.menuSeconds)
+            showSeconds: settings.settings.general.menuSeconds)
     }
 
     /// The item shows as pressed while the HUD or its menu is open.
@@ -476,11 +476,11 @@ public final class AppModel {
             pinnedChats: pins.count, now: clock.now)
     }
 
-    /// A left click on the menu bar item. An orange Focus item leads to the Focus tab
+    /// A left click on the menu bar item. An amber Focus item leads to the Focus tab
     /// (UX part 2, §14): closed → open on Focus; open elsewhere → Focus; on Focus → close.
     public func statusItemClicked() {
         let warning = statusItem.parts.contains { part in
-            if case .timer(_, _, let warning) = part { return warning }
+            if case .timer(_, let warning) = part { return warning }
             return false
         }
         guard warning else {

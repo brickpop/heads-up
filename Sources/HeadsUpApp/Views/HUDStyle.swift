@@ -81,6 +81,36 @@ enum HUDStyle {
         /// A keycap's text and border on an accent-filled button (Yuki, focus-loop-keys).
         static var keycapOnAccent: Color { Color.white.opacity(0.85) }
         static var keycapOnAccentLine: Color { Color.white.opacity(0.4) }
+        /// Amber, the colour of a round that needs you, as a fill: Start break (Yuki,
+        /// prompt-tray-polish). System orange with its values pinned, so Increase Contrast doesn't
+        /// swap in a darker orange that fails the black title. Text and glyphs use `amberTextNS`.
+        static var amber: Color { Color(nsColor: amberNS) }
+        /// `amber` as an NSColor.
+        static var amberNS: NSColor {
+            NSColor(name: nil) { appearance in
+                let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                return dark
+                    ? NSColor(srgbRed: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255, alpha: 1)
+                    : NSColor(srgbRed: 0xFF / 255, green: 0x95 / 255, blue: 0, alpha: 1)
+            }
+        }
+        /// Amber as text or a glyph: the menu bar item and the menu's Focus row in the due, snoozed
+        /// and paused states. Darker than `amber` in light mode, to pass AA on light backgrounds
+        /// (Yuki). The same values with Increase Contrast.
+        static var amberTextNS: NSColor {
+            NSColor(name: nil) { appearance in
+                let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                return dark
+                    ? NSColor(srgbRed: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255, alpha: 1)
+                    : NSColor(srgbRed: 0xA8 / 255, green: 0x43 / 255, blue: 0, alpha: 1)
+            }
+        }
+        /// Text and icons on amber, the title and the keycap alike: black 85 % (about 8:1), or pure
+        /// black with Increase Contrast.
+        static func onAmber(_ contrast: ColorSchemeContrast) -> Color {
+            contrast == .increased ? .black : Color.black.opacity(0.85)
+        }
+        static var keycapOnAmberLine: Color { Color.black.opacity(0.3) }
     }
 
     /// The two mappings of the gray fills to the system fill colors, one step apart.

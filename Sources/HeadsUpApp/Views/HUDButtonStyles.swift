@@ -76,6 +76,9 @@ struct HUDButtonStyle: ButtonStyle {
     enum Kind: Equatable {
         /// The accent fill and a white title: at most one per view.
         case primary
+        /// Start break: the primary's shape on amber, with a black 85 % title. The accent starts a
+        /// focus, amber starts a break.
+        case breakStart
         /// `--raise` and a hairline.
         case secondary
         /// As secondary, with a red title and icon. Never a red fill.
@@ -114,7 +117,7 @@ private struct CardButtonBody: View {
             .frame(width: isIconOnly ? HUDStyle.CardButton.height : nil, height: HUDStyle.CardButton.height)
             .background { background }
             .overlay {
-                if kind != .primary {
+                if !isFilled {
                     shape.strokeBorder(
                         HUDStyle.Colors.line,
                         lineWidth: HUDStyle.lineWidth(contrast: contrast, displayScale: displayScale))
@@ -138,16 +141,16 @@ private struct CardButtonBody: View {
         } else {
             configuration.label
                 .labelStyle(CardButtonLabelStyle())
-                .font(.system(size: HUDStyle.CardButton.fontSize, weight: kind == .primary ? .semibold : .medium))
+                .font(.system(size: HUDStyle.CardButton.fontSize, weight: isFilled ? .semibold : .medium))
                 .lineLimit(1)
                 .padding(.horizontal, HUDStyle.CardButton.padding)
         }
     }
 
-    /// The accent with black laid over it for a primary button; the gray fills for the others.
+    /// The accent or amber with black laid over it for a filled button; the gray fills for the others.
     @ViewBuilder private var background: some View {
-        if kind == .primary {
-            shape.fill(Color.accentColor)
+        if isFilled {
+            shape.fill(kind == .breakStart ? HUDStyle.Colors.amber : Color.accentColor)
                 .overlay(shape.fill(Color.black.opacity(primaryShade)))
         } else {
             shape.fill(fill)
@@ -157,6 +160,9 @@ private struct CardButtonBody: View {
     private var isPressed: Bool { isEnabled && configuration.isPressed }
     private var isHoveredAndEnabled: Bool { isEnabled && isHovered.wrappedValue }
 
+    /// Primary and Start break: a solid fill and no hairline.
+    private var isFilled: Bool { kind == .primary || kind == .breakStart }
+
     private var isIconOnly: Bool {
         if case .iconOnly = kind { return true }
         return false
@@ -165,6 +171,7 @@ private struct CardButtonBody: View {
     private var foreground: AnyShapeStyle {
         switch kind {
         case .primary: AnyShapeStyle(Color.white)
+        case .breakStart: AnyShapeStyle(HUDStyle.Colors.onAmber(contrast))
         case .secondary: AnyShapeStyle(.primary)
         case .destructive: AnyShapeStyle(HUDStyle.Colors.alert)
         case .iconOnly(let isOn): isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)

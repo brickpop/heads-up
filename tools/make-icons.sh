@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Rebuilds the icon files in Resources/ from the SVG sources in Resources/Icons/source/:
-# MenuBarGlyph.pdf, MenuBarGlyph.png, MenuBarGlyph@2x.png and AppIcon.icns.
+# Rebuilds the app icon, Resources/AppIcon.icns, from the SVG source in Resources/Icons/source/.
 #
 # Usage: tools/make-icons.sh
 # Needs Node.js and npm. Works on Linux and macOS. It installs one pinned package,
 # @resvg/resvg-js, into a temporary folder with `npm ci` from tools/icons/package-lock.json
 # (sha512-checked, install scripts off) and removes it after.
-# This is a manual tool for when the SVGs change; `just build` never runs it.
+# This is a manual tool for when the SVG changes; `just build` never runs it.
 set -euo pipefail
 
 die() {
@@ -30,4 +29,4 @@ NODE_PATH="$tmp/node_modules" node -e 'require("@resvg/resvg-js")' 2>/dev/null |
     die "the renderer for this platform wasn't installed. Look for a 'corrupted' warning from npm above."
 
 NODE_PATH="$tmp/node_modules" node "$root/tools/make-icons.js" "$root/Resources/Icons/source" "$root/Resources"
-echo "make-icons: wrote MenuBarGlyph.pdf, MenuBarGlyph.png, MenuBarGlyph@2x.png and AppIcon.icns in Resources/"
+echo "make-icons: wrote AppIcon.icns in Resources/"

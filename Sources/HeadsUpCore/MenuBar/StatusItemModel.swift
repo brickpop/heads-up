@@ -2,11 +2,10 @@ import Foundation
 
 /// One piece of the menu bar item, left to right (ADR-001 §4.3).
 public enum StatusItemPart: Equatable, Sendable {
-    /// HeadsUp's own glyph, shown only when nothing else is.
-    case appGlyph
-    /// Focus: the timer glyph (or the pause glyph while paused) and its text.
-    /// `warning` draws it in system orange: the user needs to act on it.
-    case timer(glyph: Glyph, text: String, warning: Bool)
+    /// Focus: the timer glyph, in every state, with its text: "18m", "Break due" or "No focus".
+    /// `warning` draws it in amber: the round waits on the user (a prompt, waiting or snoozed,
+    /// or a paused timer). Otherwise it uses the menu bar's own colour.
+    case timer(text: String, warning: Bool)
     /// Caffeine: the cup, with the time left, or no text when it runs until turned off.
     /// `accent` tints the cup with the accent colour while on; slice 4 turns it off while
     /// paused on battery (App shell spec; UX part 2, §15). With Caffeine off, a service that
@@ -25,34 +24,31 @@ public struct StatusItemModel: Equatable, Sendable {
     /// When the text next changes, or nil when nothing will change by itself.
     public let nextChange: Date?
 
-    /// - Parameters:
-    ///   - promptVisible: the HUD is open. A waiting prompt counts as dismissed, and its item
-    ///     turns orange, only once the HUD closes without an answer (Yuki, slice 3).
-    ///   - showSeconds: Settings → General → Show seconds in the menu bar.
-    public init(
-        focus: FocusSnapshot, caffeine: CaffeineSnapshot, now: Date, promptVisible: Bool, showSeconds: Bool
-    ) {
+    /// - Parameter showSeconds: Settings → General → Show seconds in the menu bar.
+    public init(focus: FocusSnapshot, caffeine: CaffeineSnapshot, now: Date, showSeconds: Bool) {
         var parts: [StatusItemPart] = []
         var spoken: [String] = []
         var changes: [Date] = []
 
         switch focus {
-        case .idle, .snoozed:
-            break
+        case .idle:
+            parts.append(.timer(text: Strings.MenuBar.noFocus, warning: false))
+            spoken.append(Strings.MenuBar.noFocus.lowercased())
         case .running(let kind, let endsAt):
             let left = endsAt.timeIntervalSince(now)
-            parts.append(.timer(glyph: .timer, text: Self.focusText(left, showSeconds), warning: false))
+            parts.append(.timer(text: Self.focusText(left, showSeconds), warning: false))
             spoken.append("\(Strings.MenuBar.kindName(kind)), \(Format.spokenMinutes(left, rounding: .up)) left")
             if let change = Self.nextFocusChange(endsAt: endsAt, now: now, showSeconds: showSeconds) {
                 changes.append(change)
             }
         case .paused(let kind, let left):
-            parts.append(.timer(glyph: .pause, text: Self.focusText(left, showSeconds), warning: true))
+            parts.append(.timer(text: Self.focusText(left, showSeconds), warning: true))
             spoken.append(
                 "\(Strings.MenuBar.kindName(kind)) paused, \(Format.spokenMinutes(left, rounding: .up)) left")
-        case .prompt(let prompt):
-            let words = Strings.MenuBar.promptWords(prompt)
-            parts.append(.timer(glyph: .timer, text: words, warning: !promptVisible))
+        // A snoozed prompt still waits on the user: it reads as the prompt does.
+        case .prompt(let prompt), .snoozed(_, let prompt):
+            let words = prompt == .breakDue ? Strings.MenuBar.breakDue : Strings.MenuBar.noFocus
+            parts.append(.timer(text: words, warning: true))
             spoken.append(words.lowercased())
         }
 
@@ -80,7 +76,7 @@ public struct StatusItemModel: Equatable, Sendable {
             }
         }
 
-        self.parts = parts.isEmpty ? [.appGlyph] : parts
+        self.parts = parts
         accessibilityLabel = ([Strings.MenuBar.appName] + spoken).joined(separator: ", ")
         nextChange = changes.min()
     }

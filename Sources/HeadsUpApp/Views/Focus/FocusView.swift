@@ -206,13 +206,13 @@ private struct CardGroupKeys: ViewModifier {
 }
 
 /// The label of the Focus tab's primary button: its title, then the ⌘↩ keycap that runs it
-/// from the prompt field. The keycap is white on a primary (accent-filled) button; pass
-/// `onAccent: false` on a secondary one. The button itself adds
+/// from the prompt field. Its `keycap` tone follows the button: `.onAccent` (the default) on a
+/// primary button, `.onAmber` on Start break, `.plain` on a secondary one. The button itself adds
 /// `.accessibilityHint(Strings.Focus.primaryShortcutHint)`.
 struct FocusPrimaryLabel: View {
     let title: String
     var glyph: Glyph?
-    var onAccent = true
+    var keycap = Keycap.Tone.onAccent
 
     var body: some View {
         HStack(spacing: HUDStyle.CardButton.gap) {
@@ -222,7 +222,7 @@ struct FocusPrimaryLabel: View {
                 Text(title)
             }
             // VoiceOver users reach the button directly; the keycap is for the eye.
-            Keycap(key: Strings.Focus.primaryShortcut, onAccent: onAccent)
+            Keycap(key: Strings.Focus.primaryShortcut, tone: keycap)
                 .accessibilityHidden(true)
         }
     }

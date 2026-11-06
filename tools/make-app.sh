@@ -178,9 +178,9 @@ cp "${binaries[0]}" "$app/Contents/MacOS/HeadsUp"
 archs=$(lipo -archs "$app/Contents/MacOS/HeadsUp")
 [ "$archs" = arm64 ] || die "the app's binary must be arm64 only, but it has: $archs"
 echo "make-app: $(lipo -info "$app/Contents/MacOS/HeadsUp")"
-# The app icon (CFBundleIconFile), the menu bar glyph, and the fixed AppleScript files Commands
+# The app icon (CFBundleIconFile) and the fixed AppleScript files Commands
 # compiles (F14): the shell loads them from the bundle.
-for resource in AppIcon.icns MenuBarGlyph.pdf Terminal.applescript iTerm.applescript; do
+for resource in AppIcon.icns Terminal.applescript iTerm.applescript; do
     [ -f "Resources/$resource" ] || die "Resources/$resource is missing"
     cp "Resources/$resource" "$app/Contents/Resources/$resource"
 done

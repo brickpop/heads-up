@@ -5,7 +5,8 @@ import SwiftUI
 /// one 28 pt container in the secondary button look, an icon and a label, a hairline, then the
 /// segments. The selected one rests on `--seg-on`, a segmented control's selected item, and
 /// nothing in the group uses the accent. The break prompts' Snooze (a click snoozes) and Length
-/// (a click selects) use it.
+/// (a click selects) use it. A group can end with an `action` segment (the snooze group's Stop
+/// now) behind another hairline: it is never selected and is a Tab stop of its own.
 ///
 /// The group is one Tab stop: Tab lands on the selected segment, and ← → select the next one and
 /// move the focus with it, stopping at the ends, without acting; Space acts on the focused one.
@@ -21,6 +22,8 @@ struct SegmentGroupView: View {
     /// ← → in the group: selects a segment without acting.
     let select: @MainActor (Int) -> Void
     let act: @MainActor (Int) -> Void
+    /// A last segment that does something else, such as Stop now; nil for none.
+    var action: Action?
 
     /// One segment: `id` is what `act` gets, its minutes.
     struct Segment {
@@ -30,7 +33,14 @@ struct SegmentGroupView: View {
         let isSelected: Bool
     }
 
-    /// The focused segment, while one is.
+    /// The last segment's title, tooltip and what it does.
+    struct Action {
+        let title: String
+        let help: String
+        let run: @MainActor () -> Void
+    }
+
+    /// The focused length segment, while one is.
     @FocusState private var focused: Int?
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.displayScale) private var displayScale
@@ -49,11 +59,7 @@ struct SegmentGroupView: View {
             .padding(.horizontal, HUDStyle.Snooze.labelPadding)
             // The container says the label; each segment says it again with its length.
             .accessibilityHidden(true)
-            Rectangle()
-                .fill(HUDStyle.Colors.line)
-                .frame(width: line, height: HUDStyle.Snooze.dividerHeight)
-                .padding(.trailing, HUDStyle.Snooze.inset)
-                .accessibilityHidden(true)
+            separator(line)
             ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                 Button(segment.title) { act(segment.id) }
                     .buttonStyle(SegmentStyle(isSelected: segment.isSelected))
@@ -62,6 +68,15 @@ struct SegmentGroupView: View {
                     )
                     .accessibilityLabel(segment.accessibilityLabel)
                     .accessibilityAddTraits(segment.isSelected ? [.isSelected] : [])
+            }
+            if let action {
+                separator(line)
+                Button(action.title, action: action.run)
+                    .buttonStyle(SegmentStyle(isSelected: false))
+                    // Focusable whatever the Keyboard navigation setting, as the lengths are.
+                    .focusable(interactions: .activate)
+                    .help(action.help)
+                    .accessibilityHint(action.help)
             }
         }
         .padding(.trailing, HUDStyle.Snooze.inset)
@@ -83,6 +98,15 @@ struct SegmentGroupView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel ?? label)
+    }
+
+    /// The hairline after the label, and before the action segment.
+    private func separator(_ width: CGFloat) -> some View {
+        Rectangle()
+            .fill(HUDStyle.Colors.line)
+            .frame(width: width, height: HUDStyle.Snooze.dividerHeight)
+            .padding(.trailing, HUDStyle.Snooze.inset)
+            .accessibilityHidden(true)
     }
 
     private var container: RoundedRectangle {
