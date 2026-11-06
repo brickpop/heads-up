@@ -90,10 +90,10 @@ private struct ChatToolbar: View {
             if let problem = toolbar.problem {
                 // Saving the pinned copy failed: said here, never as a toast.
                 Image(systemName: Symbols.failedDot)
-                    .foregroundStyle(HUDStyle.Colors.alert)
+                    .foregroundStyle(HUDStyle.Colors.alertText)
                     .accessibilityHidden(true)
                 Text(problem.text)
-                    .foregroundStyle(HUDStyle.Colors.alert)
+                    .foregroundStyle(HUDStyle.Colors.alertText)
                     .lineLimit(1)
                     // The line is cut to fit the toolbar, so the whole text is in the tooltip.
                     .help(problem.text)

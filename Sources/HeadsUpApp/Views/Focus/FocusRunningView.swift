@@ -2,7 +2,7 @@ import HeadsUpCore
 import SwiftUI
 
 /// A focus or a break that runs or is paused: the countdown, its subtitle, the progress bar,
-/// and Stop or End break, Pause or Resume.
+/// and Pause or Resume, then Stop focus or Skip break.
 struct FocusRunningView: View {
     let focus: FocusStore
     let screen: FocusScreen.Running
@@ -18,16 +18,24 @@ struct FocusRunningView: View {
             }
             FocusProgressBar(progress: screen.progress, label: screen.label)
             HStack(spacing: HUDStyle.CardButton.spacing) {
-                Spacer()
-                Button(action: focus.stopRun) {
-                    Label(screen.stopTitle, systemImage: Glyph.stop.symbolName)
-                }
-                .buttonStyle(.hud(screen.stopIsDestructive ? .destructive : .secondary))
                 Button(action: focus.togglePause) {
                     Label(screen.pauseTitle, systemImage: screen.pauseGlyph.symbolName)
                 }
                 .buttonStyle(.hud(.secondary))
+                Spacer()
+                Button(action: focus.stopRun) {
+                    Label(screen.end.title, systemImage: screen.end.glyph.symbolName)
+                }
+                .buttonStyle(.hud(endKind))
             }
+        }
+    }
+
+    /// Red for Stop focus, which loses the session; the warn colour for Skip break.
+    private var endKind: HUDButtonStyle.Kind {
+        switch screen.end {
+        case .stopFocus: .destructive
+        case .skipBreak: .breakSkip
         }
     }
 }

@@ -47,9 +47,9 @@ private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60)
         #expect(machine.nextFocusMinutes(standard: 25) == 50)
     }
 
-    @Test func endBreakByHandShowsTheBackPromptEvenWithAutoStart() {
+    @Test func skipBreakByHandShowsTheBackPromptEvenWithAutoStart() {
         var machine = FocusMachine(phase: .rest(.running(minutes: 5, from: t0), activity: "water"))
-        machine.endBreak()
+        machine.skipBreak()
         #expect(machine.phase == .prompt(.backPrompt))
     }
 
@@ -151,7 +151,7 @@ private func at(_ minutes: Double) -> Date { t0.addingTimeInterval(minutes * 60)
         machine.startBreak(activity: "water", minutes: 5, now: t0)
         machine.snooze(minutes: 5, now: t0)
         machine.showNow()
-        machine.endBreak()
+        machine.skipBreak()
         machine.pause(now: t0)
         #expect(machine.phase == .idle)
     }

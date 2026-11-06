@@ -12,6 +12,7 @@ extension Glyph {
         case .sliders: "slider.horizontal.3"
         case .sparkle: "sparkle"
         case .stop: "stop.circle"
+        case .skip: "forward.end.circle"
         case .droplet: "drop"
         case .plus: "plus"
         case .cpu: "cpu"
@@ -36,7 +37,7 @@ extension Glyph {
 enum Symbols {
     /// The accent check in front of a toast.
     static let toastCheck = "checkmark.circle.fill"
-    /// The warning icon on a notice bar, in orange.
+    /// The warning icon on a notice bar, in `warn`.
     static let warning = "exclamationmark.triangle.fill"
     /// The ghost × that dismisses a notice.
     static let close = "xmark"

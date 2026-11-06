@@ -746,7 +746,7 @@ private func date(_ text: String) -> Date {
             return
         }
         #expect(run.minutes == 5)
-        h.model.focus.endBreak()
+        h.model.focus.skipBreak()
         h.hud.setInput("/start 35")
         h.hud.submit()
         #expect(phase(h) == .focus(.running(minutes: 35, from: h.clock.now)))
@@ -872,7 +872,7 @@ private func date(_ text: String) -> Date {
                 "back prompt",
                 {
                     $0.takeBreak(minutes: 5)
-                    $0.endBreak()
+                    $0.skipBreak()
                 }, "“Ready to get back to it?” is waiting for your answer",
                 "A prompt to start the next focus is waiting for the user's answer."
             ),

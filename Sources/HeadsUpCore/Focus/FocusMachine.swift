@@ -164,8 +164,8 @@ public struct FocusMachine: Equatable, Sendable {
         phase = .prompt(prompt)
     }
 
-    /// End break, by hand: the back prompt, even with auto-start on.
-    public mutating func endBreak() {
+    /// Skip break, by hand: the back prompt, even with auto-start on.
+    public mutating func skipBreak() {
         guard case .rest = phase else { return }
         phase = .prompt(.backPrompt)
     }

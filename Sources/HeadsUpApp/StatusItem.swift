@@ -53,7 +53,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The timer item first, then the cup, each a glyph and its text. A warning part is amber,
+    /// The timer item first, then the cup, each a glyph and its text. A warning part is in `warnNS`,
     /// glyph and text; everything else uses the menu bar's own colours.
     private static func title(for parts: [StatusItemPart]) -> NSAttributedString {
         let title = NSMutableAttributedString()
@@ -68,7 +68,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 symbol = Glyph.timer.symbolName
                 text = label
                 warning = isWarning
-                glyphColor = isWarning ? HUDStyle.Colors.amberTextNS : nil
+                glyphColor = isWarning ? HUDStyle.Colors.warnNS : nil
             case .cup(let label, let accent):
                 symbol = Glyph.cup.symbolName
                 text = label
@@ -79,7 +79,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             title.append(symbolAttachment(symbol, color: glyphColor))
             if let text {
                 var attributes: [NSAttributedString.Key: Any] = [.font: font, .baselineOffset: 1]
-                if warning { attributes[.foregroundColor] = HUDStyle.Colors.amberTextNS }
+                if warning { attributes[.foregroundColor] = HUDStyle.Colors.warnNS }
                 title.append(NSAttributedString(string: " " + text, attributes: attributes))
             }
         }
@@ -221,7 +221,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     string: "\t" + value,
                     attributes: [
                         .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
-                        .foregroundColor: warning ? HUDStyle.Colors.amberTextNS : NSColor.secondaryLabelColor,
+                        .foregroundColor: warning ? HUDStyle.Colors.warnNS : NSColor.secondaryLabelColor,
                         .paragraphStyle: paragraph,
                     ]))
         }

@@ -276,7 +276,7 @@ private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
 
         model.statusItemClicked()  // closed → open on Focus
         #expect(model.hud.isOpen && model.hud.tab == .focus)
-        // Still amber with the prompt on screen; on Focus a click closes.
+        // Still in the warn colour with the prompt on screen; on Focus a click closes.
         #expect(model.statusItem.parts == [.timer(text: "Break due", warning: true)])
         model.statusItemClicked()
         #expect(!model.hud.isOpen)

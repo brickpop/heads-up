@@ -476,7 +476,7 @@ public final class AppModel {
             pinnedChats: pins.count, now: clock.now)
     }
 
-    /// A left click on the menu bar item. An amber Focus item leads to the Focus tab
+    /// A left click on the menu bar item. A Focus item in the warn colour leads to the Focus tab
     /// (UX part 2, §14): closed → open on Focus; open elsewhere → Focus; on Focus → close.
     public func statusItemClicked() {
         let warning = statusItem.parts.contains { part in

@@ -35,7 +35,9 @@ struct EndpointFormView: View {
                         if let note = form.baseURLNote {
                             Text(note.text)
                                 .font(.system(size: HUDStyle.Settings.helpSize))
-                                .foregroundStyle(note.style == .danger ? HUDStyle.Colors.alert : HUDStyle.Colors.warn)
+                                .foregroundStyle(
+                                    note.style == .danger ? HUDStyle.Colors.alertText : HUDStyle.Colors.warn
+                                )
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }

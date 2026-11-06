@@ -174,7 +174,7 @@ struct FormBottomBar: View {
                 HStack {
                     if let remove {
                         Button(action: actions.askRemove) {
-                            Text(remove).foregroundStyle(HUDStyle.Colors.alert)
+                            Text(remove).foregroundStyle(HUDStyle.Colors.alertText)
                         }
                         .buttonStyle(.borderless)
                     }
@@ -198,7 +198,7 @@ struct FormBottomBar: View {
                 Button(cancel, action: actions.dismissBar)
                     .buttonStyle(.bordered)
                 Button(action: actions.confirmRemove) {
-                    Text(remove).foregroundStyle(HUDStyle.Colors.alert)
+                    Text(remove).foregroundStyle(HUDStyle.Colors.alertText)
                 }
                 .buttonStyle(.borderless)
             }

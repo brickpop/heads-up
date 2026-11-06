@@ -15,8 +15,6 @@ enum HUDStyle {
 
         /// `--line-strong`: hairlines and borders.
         static var line: Color { Color(nsColor: .separatorColor) }
-        /// The HUD's outer edge in dark mode, in place of `line`: a dark outline that sets it off
-        /// from mid-gray windows. Black at 55 %, or 90 % with Increase Contrast. HUDFrameView only.
         /// `--hud`: the solid tint over the HUD's blurred material, so it reads dark in dark mode and
         /// near-white in light mode whatever is behind it. Drawn at `hudTintOpacity`.
         static let hudTintDark = Color(red: 0x1E / 255, green: 0x1E / 255, blue: 0x21 / 255)
@@ -75,15 +73,27 @@ enum HUDStyle {
                     return NSColor.white.withAlphaComponent(dark ? 0.18 : 1)
                 })
         }
+        /// Red where 3:1 is enough: dots and status icons that stand alone. Red text, and a glyph
+        /// in the same line as red text, use `alertText`.
         static var alert: Color { .red }
-        /// `--warn`: something the user should act on, as an icon or short text.
-        static var warn: Color { .orange }
+        /// Red as text anywhere, a glyph beside it, and the destructive kind's icon and outline.
+        /// Darker than `alert` in light mode and lighter in dark, so it passes AA on the hover fill
+        /// too (Yuki). The same values with Increase Contrast.
+        static var alertText: Color {
+            Color(
+                nsColor: NSColor(name: nil) { appearance in
+                    let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                    return dark
+                        ? NSColor(srgbRed: 0xFF / 255, green: 0x69 / 255, blue: 0x61 / 255, alpha: 1)
+                        : NSColor(srgbRed: 0xC0 / 255, green: 0, blue: 0x18 / 255, alpha: 1)
+                })
+        }
         /// A keycap's text and border on an accent-filled button (Yuki, focus-loop-keys).
         static var keycapOnAccent: Color { Color.white.opacity(0.85) }
         static var keycapOnAccentLine: Color { Color.white.opacity(0.4) }
         /// Amber, the colour of a round that needs you, as a fill: Start break (Yuki,
         /// prompt-tray-polish). System orange with its values pinned, so Increase Contrast doesn't
-        /// swap in a darker orange that fails the black title. Text and glyphs use `amberTextNS`.
+        /// swap in a darker orange that fails the black title. Text, icons and dots use `warn`.
         static var amber: Color { Color(nsColor: amberNS) }
         /// `amber` as an NSColor.
         static var amberNS: NSColor {
@@ -94,10 +104,13 @@ enum HUDStyle {
                     : NSColor(srgbRed: 0xFF / 255, green: 0x95 / 255, blue: 0, alpha: 1)
             }
         }
-        /// Amber as text or a glyph: the menu bar item and the menu's Focus row in the due, snoozed
-        /// and paused states. Darker than `amber` in light mode, to pass AA on light backgrounds
-        /// (Yuki). The same values with Increase Contrast.
-        static var amberTextNS: NSColor {
+        /// `--warn`, the one warm colour as text, an icon, a dot or an outline: something the user
+        /// should act on, the menu bar item and the menu's Focus row while a round needs you, and Skip
+        /// break. Darker than `amber` in light mode, to pass AA on light backgrounds (Yuki). The same
+        /// values with Increase Contrast.
+        static var warn: Color { Color(nsColor: warnNS) }
+        /// `warn` as an NSColor, for AppKit.
+        static var warnNS: NSColor {
             NSColor(name: nil) { appearance in
                 let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
                 return dark

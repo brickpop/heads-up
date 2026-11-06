@@ -4,7 +4,7 @@ public enum Glyph: String, CaseIterable, Sendable {
     // Tabs
     case chat, timer, cup, servers, terminal, sliders
     // Actions
-    case sparkle, stop, droplet, plus, cpu, server, pin
+    case sparkle, stop, skip, droplet, plus, cpu, server, pin
     // Menu bar
     case pause
     // Settings

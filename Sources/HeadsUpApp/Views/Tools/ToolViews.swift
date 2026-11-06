@@ -40,7 +40,7 @@ struct ToolRowView: View {
                 case .success:
                     Image(systemName: Glyph.check.symbolName).foregroundStyle(HUDStyle.Colors.running)
                 case .error:
-                    Image(systemName: Symbols.close).foregroundStyle(HUDStyle.Colors.alert)
+                    Image(systemName: Symbols.close).foregroundStyle(HUDStyle.Colors.alertText)
                 case .refused:
                     Image(systemName: Symbols.close).foregroundStyle(.secondary)
                 case .pending:
@@ -64,13 +64,11 @@ struct ToolRowView: View {
         .accessibilityLabel(row.accessibilityLabel)
     }
 
-    /// Green when it worked, red when it failed or macOS blocked it, secondary when it was
-    /// refused on purpose (denied, off in Settings) or is still waiting.
+    /// Red when it failed or macOS blocked it, secondary otherwise.
     private var statusColor: Color {
         switch row.outcome {
-        case .success: HUDStyle.Colors.running
-        case .error: HUDStyle.Colors.alert
-        case .refused, .pending: .secondary
+        case .error: HUDStyle.Colors.alertText
+        case .success, .refused, .pending: .secondary
         }
     }
 }

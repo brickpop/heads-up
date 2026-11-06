@@ -176,7 +176,7 @@ private struct RemoveEndpointBar: View {
                 Button {
                     endpoints.confirmRemoveEndpoint()
                 } label: {
-                    Text(bar.remove).foregroundStyle(HUDStyle.Colors.alert)
+                    Text(bar.remove).foregroundStyle(HUDStyle.Colors.alertText)
                 }
                 .buttonStyle(.borderless)
             }

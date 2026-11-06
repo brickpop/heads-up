@@ -160,7 +160,7 @@ public final class FocusStore {
     public func pause() { change { $0.pause(now: clock.now) } }
     public func resume() { change { $0.resume(now: clock.now) } }
     public func stop() { change { $0.stop() } }
-    public func endBreak() { change { $0.endBreak() } }
+    public func skipBreak() { change { $0.skipBreak() } }
     /// Done, from either prompt: the loop ends, back to idle.
     public func doneForNow() { change { $0.doneForNow() } }
     public func showNow() { change { $0.showNow() } }

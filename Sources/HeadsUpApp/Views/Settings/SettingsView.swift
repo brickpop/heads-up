@@ -213,7 +213,7 @@ struct ProblemNote: View {
     var body: some View {
         Text(text)
             .font(.system(size: HUDStyle.Settings.helpSize))
-            .foregroundStyle(HUDStyle.Colors.alert)
+            .foregroundStyle(HUDStyle.Colors.alertText)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

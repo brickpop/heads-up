@@ -441,8 +441,8 @@ public enum Strings {
             "\(minutes) min session · break at \(breakAt)"
         }
         public static let breakSubtitle = "Step away. The HUD will call you back."
-        public static let stop = "Stop"
-        public static let endBreak = "End break"
+        public static let stopFocus = "Stop focus"
+        public static let skipBreak = "Skip break"
         public static let pause = "Pause"
         public static let resume = "Resume"
 
