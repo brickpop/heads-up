@@ -229,6 +229,11 @@ extension ChatStore: ToolDisplay {
     func awaitingApproval(_ waiting: Bool) {
         if waiting {
             phase = .awaitingApproval
+            let card = items.lazy.reversed().compactMap { item -> PendingCard? in
+                if case .tool(let record) = item, case .waiting(let card) = record.status { return card }
+                return nil
+            }.first
+            if let card { notifyToolAsk(card) }
         } else if phase == .awaitingApproval {
             phase = .waiting
         }

@@ -14,10 +14,12 @@ private final class ChatHarness {
     let probe = FakePortProbe()
     let launcher = FakeServiceLauncher()
     let window = FakeHUDWindow()
+    let notifier = FakeNotifier()
     private(set) var model: AppModel!
     var chat: ChatStore { model.chat }
 
-    init(endpoints: [Endpoint]? = nil, clearOnClose: Bool = false) {
+    /// `pinned` keeps the pinned chats; in memory when nil.
+    init(endpoints: [Endpoint]? = nil, clearOnClose: Bool = false, pinned: PinnedChats? = nil) {
         scheduler = ManualScheduler(clock: clock)
         var settings = Settings()
         settings.general.welcomeDone = true
@@ -27,16 +29,16 @@ private final class ChatHarness {
                 Endpoint(id: "gpt", name: "GPT-4o mini", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini")
             ]
         settings.defaultEndpointID = settings.endpoints.first?.id
-        model = AppModel(
-            ports: AppModel.Ports(
-                clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
-                files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
-                notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
-                serviceLauncher: launcher, portProbe: probe, openPanels: FakeOpenPanels(),
-                imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
-                terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
-                linkOpener: links, pasteboard: pasteboard, llmProvider: provider, dataFolder: nil),
-            settings: settings)
+        var ports = AppModel.Ports(
+            clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
+            files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
+            notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+            serviceLauncher: launcher, portProbe: probe, openPanels: FakeOpenPanels(),
+            imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
+            terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),
+            linkOpener: links, pasteboard: pasteboard, llmProvider: provider, dataFolder: nil)
+        ports.pinnedChats = pinned
+        model = AppModel(ports: ports, settings: settings)
         model.hud.attach(window: window)
         model.launch()
         model.hud.selectTab(.chat)
@@ -621,5 +623,239 @@ private final class ChatHarness {
         let help = try #require(link.help)
         #expect(help.hasPrefix("https://example.com/"))
         #expect(!help.unicodeScalars.contains { [0x202E, 0x200B].contains($0.value) })
+    }
+}
+
+/// The notification when a reply ends while the HUD is hidden (card chat-notify): its three
+/// cases, when it isn't posted, when it goes, and where a click leads.
+@MainActor
+@Suite(.serialized) struct ChatNotificationTests {
+    private let id = ChatStore.notificationID
+
+    /// Sends, then hides the HUD while the reply is on its way.
+    private func sendAndHide(_ h: ChatHarness, _ text: String = "Hello?") async {
+        await h.send(text)
+        h.model.hud.close()
+    }
+
+    /// What Notification Center shows once the notification is due.
+    private func shown(_ h: ChatHarness) -> NotificationRequest? {
+        h.notifier.deliverDue(at: h.clock.now)
+        return h.notifier.delivered[id]
+    }
+
+    @Test func aReplyThatEndsWhileTheHUDIsHiddenSaysItIsReady() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        await h.reply("Here you go.")
+        let request = try #require(shown(h))
+        #expect(request.category == .chatReply && request.category.actions.isEmpty)
+        #expect(request.title == "Reply ready" && request.body == "GPT-4o mini")
+    }
+
+    @Test func noNotificationWhileTheHUDIsOpenEvenIfNotKey() async throws {
+        let h = ChatHarness()
+        await h.send("Hello?")
+        await h.reply("Hi.")
+        #expect(shown(h) == nil)
+
+        await sendAndHide(h, "Again")
+        h.model.hud.open(tab: .chat, makeKey: false)
+        #expect(h.model.hud.isOpen && !h.model.hud.isKey)
+        await h.reply("Hi again.")
+        #expect(shown(h) == nil && h.notifier.pending.isEmpty)
+    }
+
+    @Test func aToolAskTakesTheCardsTitleAndSaysItWaits() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h, "What did I copy?")
+        h.provider.say(.toolCall(id: "call_1", name: "clipboard_read", arguments: Data("{}".utf8)))
+        h.provider.finish(.toolCalls)
+        await h.waitUntil { h.chat.phase == .awaitingApproval }
+        let request = try #require(shown(h))
+        #expect(request.title == "GPT-4o mini wants to read your clipboard")
+        #expect(request.body == "It's waiting for your answer.")
+    }
+
+    // The only card title with the model's arguments: a length checked to be 1 to 180 minutes,
+    // and a kind of two. No free text from the model reaches a notification.
+    @Test func aFocusTimerAskShowsOnlyItsCheckedLength() async throws {
+        let h = ChatHarness()
+        h.model.settings.setToolPermission(.focusTimer, .ask)
+        await sendAndHide(h, "Start a focus")
+        h.provider.say(
+            .toolCall(id: "call_1", name: "focus_timer", arguments: Data(#"{"kind":"focus","minutes":35}"#.utf8)))
+        h.provider.finish(.toolCalls)
+        await h.waitUntil { h.chat.phase == .awaitingApproval }
+        #expect(shown(h)?.title == "GPT-4o mini wants to start a 35 min focus")
+    }
+
+    @Test func aFailureNeverShowsTheError() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        await h.fail(.server(status: 500, message: "secret detail"))
+        let request = try #require(shown(h))
+        #expect(request.title == "Reply failed" && request.body == "Open HeadsUp to see why.")
+        #expect(!request.body.contains("secret") && !request.title.contains("500"))
+    }
+
+    @Test func stoppedByTheUserPostsNothing() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        h.chat.stop()
+        await h.settle()
+        #expect(shown(h) == nil && h.notifier.pending.isEmpty)
+    }
+
+    @Test func itGoesWhenTheHUDOpensOnTheChatButNotOnAnotherTab() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        await h.reply("Done.")
+        #expect(shown(h) != nil)
+        h.model.hud.open(tab: .focus)
+        #expect(h.notifier.delivered[id] != nil)
+        h.model.hud.selectTab(.chat)
+        #expect(h.notifier.delivered[id] == nil)
+    }
+
+    @Test func itGoesWhenTheNextReplyStartsAndANewOneReplacesIt() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        await h.fail(.timeout)
+        #expect(shown(h)?.title == "Reply failed")
+        // Asked again from the menu bar while hidden: the old one goes at the start.
+        h.chat.retry()
+        await h.waitUntil { h.provider.requests.count == 2 }
+        #expect(h.notifier.delivered[id] == nil && h.notifier.pending[id] == nil)
+        await h.reply("Better now.")
+        #expect(shown(h)?.title == "Reply ready" && h.notifier.delivered.count == 1)
+    }
+
+    @Test func anUnpinnedChatClearedTakesItsNotificationAlong() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        await h.reply("Done.")
+        #expect(shown(h) != nil)
+        h.chat.newChat()
+        #expect(h.notifier.delivered[id] == nil)
+    }
+
+    // A pin unpinned or deleted takes its notification along, so a click can't open the
+    // wrong chat.
+    @Test func itGoesWhenItsPinIsUnpinnedOrDeleted() async throws {
+        let h = ChatHarness()
+        await h.send("Plan my week")
+        await h.reply("Sure.")
+        h.chat.togglePin()
+        await sendAndHide(h, "And Friday?")
+        await h.reply("Friday is free.")
+        #expect(shown(h) != nil)
+        // Unpinned from the chat itself (⌘P), which stays on screen.
+        h.chat.togglePin()
+        #expect(!h.chat.isPinned && h.notifier.delivered[id] == nil)
+
+        // Deleted from the Pinned list while another chat shows.
+        h.chat.togglePin()
+        let pinned = try #require(h.chat.pinnedID)
+        await sendAndHide(h, "And Saturday?")
+        await h.reply("Also free.")
+        #expect(shown(h) != nil)
+        h.chat.newChat()
+        #expect(h.notifier.delivered[id] != nil)
+        h.model.pins.unpin(pinned)
+        #expect(h.notifier.delivered[id] == nil)
+        // Another pin's deletion leaves a notification alone.
+        await sendAndHide(h, "Hi")
+        await h.reply("Hello.")
+        #expect(shown(h) != nil)
+        h.model.pins.unpin("someone-else")
+        #expect(h.notifier.delivered[id] != nil)
+    }
+
+    // A notification from the last run points to a chat nobody knows any more.
+    @Test func aNotificationLeftFromTheLastRunGoesAtLaunch() {
+        let h = ChatHarness()
+        h.notifier.schedule(
+            NotificationRequest(
+                id: id, category: .chatReply, title: "Reply ready", body: "GPT-4o mini", date: h.clock.now))
+        #expect(shown(h) != nil)
+        h.model.launch()
+        #expect(h.notifier.delivered[id] == nil && h.notifier.pending[id] == nil)
+    }
+
+    // A click goes through even when its pinned chat can't be read, and the
+    // notification goes with it.
+    @Test func aClickThatCantOpenItsPinnedChatStillRemovesIt() async throws {
+        let store = FakePinnedChats()
+        let h = ChatHarness(pinned: store)
+        await h.send("Plan my week")
+        await h.reply("Sure.")
+        h.chat.togglePin()
+        await sendAndHide(h, "And Friday?")
+        await h.reply("Friday is free.")
+        h.scheduler.advance(by: 1)
+        #expect(shown(h) != nil)
+        h.chat.newChat()
+        store.failure = PinnedChatsError(message: "disk I/O error")
+        h.model.handleNotification(category: "chat.reply", action: nil, requestID: id)
+        #expect(h.model.hud.isOpen && h.model.hud.tab == .chat && h.chat.pinnedID == nil)
+        #expect(h.notifier.delivered[id] == nil)
+    }
+
+    // With its chat already showing, a click closes the Pinned list.
+    @Test func aClickClosesThePinnedListWhenItsChatShows() async throws {
+        let h = ChatHarness()
+        await h.send("Hello?")
+        h.model.hud.togglePinnedList()
+        h.model.hud.close()
+        await h.reply("Hi.")
+        #expect(shown(h) != nil && h.model.hud.chatView == .pinned)
+        h.model.handleNotification(category: "chat.reply", action: nil, requestID: id)
+        #expect(h.model.hud.chatView == .conversation && h.notifier.delivered[id] == nil)
+    }
+
+    // Sending a prompt asks for notification permission.
+    @Test func sendingAPromptAsksForNotificationPermission() async throws {
+        let h = ChatHarness()
+        #expect(h.notifier.authorizationRequests == 0)
+        await h.send("Hello?")
+        #expect(h.notifier.authorizationRequests == 1)
+    }
+
+    @Test func aClickOpensTheChatTab() async throws {
+        let h = ChatHarness()
+        await sendAndHide(h)
+        await h.reply("Done.")
+        #expect(shown(h) != nil)
+        h.model.hud.selectTab(.focus)
+        h.model.hud.close()
+        h.model.handleNotification(category: "chat.reply", action: nil, requestID: id)
+        #expect(h.model.hud.isOpen && h.model.hud.tab == .chat && h.model.hud.chatView == .conversation)
+        #expect(h.lastReplyText == "Done." && h.notifier.delivered[id] == nil)
+        // A button it doesn't have is ignored.
+        h.model.hud.close()
+        h.model.handleNotification(category: "chat.reply", action: "show-logs", requestID: id)
+        #expect(!h.model.hud.isOpen)
+    }
+
+    @Test func aClickLoadsThePinnedChatItBelongsTo() async throws {
+        let h = ChatHarness()
+        await h.send("Plan my week")
+        await h.reply("Sure.")
+        h.chat.togglePin()
+        let pinned = try #require(h.chat.pinnedID)
+        await sendAndHide(h, "And Friday?")
+        await h.reply("Friday is free.")
+        h.scheduler.advance(by: 1)
+        #expect(shown(h) != nil)
+
+        // Another chat shows by the time of the click.
+        h.model.hud.open(tab: .settings)
+        h.chat.newChat()
+        #expect(h.chat.pinnedID == nil && h.notifier.delivered[id] != nil)
+        h.model.hud.close()
+        h.model.handleNotification(category: "chat.reply", action: nil, requestID: id)
+        #expect(h.chat.pinnedID == pinned && h.model.hud.tab == .chat && h.model.hud.chatView == .conversation)
+        #expect(h.notifier.delivered[id] == nil)
     }
 }

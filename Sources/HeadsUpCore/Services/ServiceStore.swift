@@ -229,6 +229,8 @@ public final class ServiceStore {
     /// While a restart waits, it starts at once; either way the restart count starts over.
     public func start(_ id: ServiceDefinition.ID) {
         guard let definition = definition(id), definition.problems.isEmpty, !state(id).isLive else { return }
+        // A start by the user may end in a failure notification: ask for permission now.
+        notifier.requestAuthorization()
         userStarts(id)
         launch(definition, toast: true)
     }
@@ -255,6 +257,7 @@ public final class ServiceStore {
     /// Restart a running service: stop it, and start it again once it has exited.
     public func restart(_ id: ServiceDefinition.ID) {
         guard state(id).isLive else { return start(id) }
+        notifier.requestAuthorization()
         userStarts(id)
         restartAfterStop.insert(id)
         stop(id)

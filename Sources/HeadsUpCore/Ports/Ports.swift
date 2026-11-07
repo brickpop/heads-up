@@ -154,6 +154,9 @@ public enum NotificationCategory: String, CaseIterable, Sendable {
     case breakAutostart = "break.autostart"
     /// A service exited by itself: Show Logs.
     case serviceFailed = "service.failed"
+    /// A chat reply ended, or waits at an approval card, while the HUD was hidden. No buttons:
+    /// a click opens the HUD on its chat.
+    case chatReply = "chat.reply"
 
     public var actions: [NotificationAction] {
         switch self {
@@ -161,6 +164,7 @@ public enum NotificationCategory: String, CaseIterable, Sendable {
         case .breakEnd: [.startFocus, .snooze, .done]
         case .breakAutostart: [.stop]
         case .serviceFailed: [.showLogs]
+        case .chatReply: []
         }
     }
 }

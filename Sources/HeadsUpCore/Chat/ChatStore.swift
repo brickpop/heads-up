@@ -95,6 +95,12 @@ public final class ChatStore: HUDChat {
     /// When a guarded button shown at `shownAt` starts taking input, or nil while the HUD isn't
     /// key (`ActionGuard`, F6, S2). AppModel sets it.
     @ObservationIgnored var armedAt: @MainActor (_ shownAt: Date) -> Date? = { $0 }
+    /// Posts the notification when a reply ends while the HUD is hidden (ChatNotice.swift).
+    @ObservationIgnored let notifier: Notifier
+    /// The HUD: no notification while it is open, key or not (ChatNotice.swift).
+    @ObservationIgnored private(set) weak var navigator: Navigator?
+    /// The chat the posted notification belongs to, until it goes.
+    @ObservationIgnored var notice: Notice?
 
     /// Whether a guarded button shown at `shownAt` takes input now.
     func guardAllows(_ shownAt: Date) -> Bool {
@@ -118,8 +124,10 @@ public final class ChatStore: HUDChat {
         actions: ActionResolving, clock: Clock,
         scheduler: Scheduler, ports: PortProbe, links: LinkOpener, pasteboard: Pasteboard,
         imageProcessor: ImageProcessor,
-        pins: PinSaving, toaster: Toaster
+        pins: PinSaving, toaster: Toaster, notifier: Notifier, navigator: Navigator
     ) {
+        self.notifier = notifier
+        self.navigator = navigator
         self.endpoints = endpoints
         self.provider = provider
         self.settings = settings
@@ -152,6 +160,8 @@ public final class ChatStore: HUDChat {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isBusy, !text.isEmpty || !pending.isEmpty else { return }
         guard !isSendBlocked else { return }
+        // The first action that can lead to a notification asks for permission (Yuki).
+        notifier.requestAuthorization()
         supersedeRows()
         pendingLink = nil
         pendingSuggestion = nil
@@ -192,6 +202,8 @@ public final class ChatStore: HUDChat {
     /// Forgets the conversation, its images and its link to a pin.
     func clearConversation() {
         cancelRun()
+        // An unpinned chat is gone for good: its notification can't open it any more.
+        if let notice, notice.pinID == nil { withdrawNotice() }
         startWait?.cancel()
         pinSave?.cancel()
         pinSave = nil
@@ -256,6 +268,7 @@ public final class ChatStore: HUDChat {
 
     private func start(_ endpoint: Endpoint, steps: Int) {
         cancelRun()
+        withdrawNotice()
         let id = UUID()
         run = id
         // Busy at once, so Enter waits from the moment it is sent.
@@ -306,7 +319,7 @@ public final class ChatStore: HUDChat {
             flushText()
             guard reason == .toolCalls, !calls.isEmpty else {
                 updateReply { $0.state = .done }
-                finishRun()
+                finishRun(.ready(model: endpoint.name))
                 return
             }
             updateReply { reply in
@@ -331,7 +344,7 @@ public final class ChatStore: HUDChat {
                         Problem(
                             kind: .stepLimit(steps: steps, endpointID: endpoint.id, continued: false),
                             shownAt: clock.now)))
-                finishRun()
+                finishRun(.ready(model: endpoint.name))
                 return
             }
         }
@@ -345,15 +358,17 @@ public final class ChatStore: HUDChat {
             updateReply { $0.state = .done }
         }
         items.append(.problem(Problem(kind: .error(error, endpointID: endpoint.id), shownAt: clock.now)))
-        finishRun()
+        finishRun(.failed)
     }
 
-    private func finishRun() {
+    /// The reply ended by itself (not by Stop): the notification, if the HUD is hidden.
+    private func finishRun(_ end: ReplyEnd) {
         run = nil
         task = nil
         phase = .idle
         suggestionsSettled()
         savePin()
+        notifyReplyEnded(end)
     }
 
     /// The system prompt, then every message, with tool calls and their results, as the model

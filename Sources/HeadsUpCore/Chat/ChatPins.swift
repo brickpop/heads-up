@@ -73,8 +73,9 @@ extension ChatStore {
     }
 
     /// The pin was deleted (here or from the Pinned list): if it was this chat's, the chat stays
-    /// on screen, not kept.
+    /// on screen, not kept. Its notification goes: a click could no longer open it.
     func pinDeleted(_ id: String) {
+        if let notice, notice.pinID == id { withdrawNotice() }
         guard pin?.id == id else { return }
         pin = nil
         pinProblem = nil

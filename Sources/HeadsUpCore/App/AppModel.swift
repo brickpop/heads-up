@@ -159,7 +159,23 @@ public final class AppModel {
             services.showLogs(id)
         case .focusEnd, .breakEnd, .breakAutostart:
             focus.handleNotification(category, action: parsed)
+        case .chatReply:
+            // A click opens the HUD on its chat. A pinned chat is loaded first if another chat shows.
+            if let pinID = chat.noticePinID, chat.pinnedID != pinID {
+                loadPinned(pinID)
+            } else if hud.chatView == .pinned {
+                hud.togglePinnedList()
+            }
+            hud.selectTab(.chat)
+            // Clicked: it goes, even when its pinned chat couldn't be read.
+            chat.withdrawNotice()
         }
+    }
+
+    /// The HUD shows the conversation: its chat's notification goes.
+    private func chatSeenIfShown() {
+        guard hud.isOpen, hud.tab == .chat, hud.chatView == .conversation else { return }
+        chat.conversationShown()
     }
 
     /// The question before quitting while services run (UX part 1, §10), or nil to quit at once.
@@ -237,7 +253,7 @@ public final class AppModel {
             tools: gatedTools, actions: registry,
             clock: ports.clock, scheduler: ports.scheduler, ports: ports.portProbe, links: ports.linkOpener,
             pasteboard: ports.pasteboard, imageProcessor: ports.imageProcessor,
-            pins: pins, toaster: hud)
+            pins: pins, toaster: hud, notifier: ports.notifier, navigator: hud)
         self.chat = chatStore
         gatedTools.display = chatStore
         chatStore.pinCount = { [weak pins] in pins?.count ?? 0 }
@@ -302,6 +318,8 @@ public final class AppModel {
 
     private func handle(_ event: HUDEvent) {
         switch event {
+        case .opened:
+            chatSeenIfShown()
         case .closed:
             if settingsNotice != nil { noticeSeen = settings.fileProblem }
             // Closing never stops a reply, unless an unpinned chat is cleared on close: then it
@@ -318,6 +336,7 @@ public final class AppModel {
             if tab == .commands || tab == .settings { commands.refreshTerminals() }
             if tab == .commands { commands.resetSelection() }
             if tab != .chat { endWelcome() }
+            if tab == .chat { chatSeenIfShown() }
             // The user may have changed Open at Login in System Settings meanwhile.
             if tab == .settings { refreshOpenAtLogin() }
             if tab == .settings && hud.settingsSection == .models { endpoints.probeLocal() }
@@ -333,6 +352,7 @@ public final class AppModel {
     /// very first launch opens the HUD with the welcome (UX part 1, §3).
     public func launch() {
         hud.registerHotkey()
+        chat.removeLeftoverNotice()
         services.startAutostart()
         if !settings.settings.general.welcomeDone {
             hud.open(tab: .chat, makeKey: true)
@@ -989,6 +1009,7 @@ extension AppModel {
         chat.restore(stored)
         if hud.chatView == .pinned { hud.togglePinnedList() }
         hud.setInput("")
+        chatSeenIfShown()
         let images = stored.images.mapValues(\.data)
         guard !images.isEmpty else { return nil }
         let processor = imageProcessor

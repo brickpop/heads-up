@@ -224,6 +224,21 @@ private final class ServicesHarness {
         #expect(next.services.state(id).isLive)
     }
 
+    // A start by the user asks for notification permission; an autostart at launch doesn't.
+    @Test func aManualStartAsksForNotificationPermissionAndAutostartDoesnt() async throws {
+        let h = try ServicesHarness()
+        let id = h.add(autostart: true)
+        let data = try Data(contentsOf: h.file)
+        let next = try ServicesHarness(file: String(decoding: data, as: UTF8.self))
+        #expect(next.services.state(id).isLive && next.notifier.authorizationRequests == 0)
+        next.services.restart(id)
+        #expect(next.notifier.authorizationRequests == 1)
+
+        let other = next.add("Postgres", command: "postgres")
+        next.services.start(other)
+        #expect(next.notifier.authorizationRequests == 2)
+    }
+
     @Test func theProbedPortMarksItRunning() async throws {
         let h = try ServicesHarness()
         let id = h.add()

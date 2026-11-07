@@ -39,6 +39,8 @@ public protocol HUDChat: AnyObject {
 
 /// Something that happened in the HUD, reported to AppModel through `HUDStore.onEvent`.
 public enum HUDEvent: Equatable, Sendable {
+    /// The HUD was closed and is now open.
+    case opened
     case closed
     case tabChanged(Tab)
     /// The model menu opened: local servers are asked whether they run.
@@ -178,9 +180,11 @@ public final class HUDStore: Navigator, Toaster {
     /// when a session ends) it shows without taking keyboard focus.
     public func open(tab: Tab? = nil, makeKey: Bool = true) {
         if let tab { switchTab(to: tab) }
-        if !isOpen { notKeySinceAutoOpen = !makeKey }
+        let wasOpen = isOpen
+        if !wasOpen { notKeySinceAutoOpen = !makeKey }
         isOpen = true
         window?.show(makeKey: makeKey)
+        if !wasOpen { onEvent?(.opened) }
     }
 
     /// Closes the HUD. The input is cleared and the model menu closes; the tab is kept.

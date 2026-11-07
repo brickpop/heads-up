@@ -1498,6 +1498,13 @@ public enum Strings {
     }
 
     public enum Chat {
+        // The notification when a reply ends while the HUD is hidden (card chat-notify). Never
+        // the reply's text, nor the error's.
+        public static let replyReadyTitle = "Reply ready"
+        public static let replyFailedTitle = "Reply failed"
+        public static let replyFailedBody = "Open HeadsUp to see why."
+        public static let toolAskBody = "It's waiting for your answer."
+
         // The toolbar
         public static let new = "New"
         public static let newHelp = "New chat (⌘N)"
