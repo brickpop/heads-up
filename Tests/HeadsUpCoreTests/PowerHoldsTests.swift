@@ -81,8 +81,8 @@ private final class HoldsHarness {
 /// addendum §3–4, slice B).
 @MainActor
 @Suite(.serialized) struct PowerHoldsTests {
-    /// The menu bar's timer part while no focus round runs.
-    static let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
+    /// The menu bar's timer part while nothing is started.
+    static let idle = StatusItemPart.timer(text: "Idle", warning: false)
 
     // MARK: PowerHolds
 
@@ -354,8 +354,8 @@ private final class HoldsHarness {
         let item = StatusItemModel(
             focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
-        #expect(item.parts == [Self.noFocus, .cup(text: nil, accent: false)])
-        #expect(item.accessibilityLabel == "HeadsUp, no focus, kept awake by Web dev server")
+        #expect(item.parts == [Self.idle, .cup(text: nil, accent: false)])
+        #expect(item.accessibilityLabel == "HeadsUp, idle, kept awake by Web dev server")
         let menu = h.model.menu
         #expect(menu.entries.contains(.note("Kept awake by Web dev server")))
 
@@ -403,7 +403,7 @@ private final class HoldsHarness {
         let item = StatusItemModel(
             focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
-        #expect(item.parts == [Self.noFocus, .cup(text: nil, accent: false)])
+        #expect(item.parts == [Self.idle, .cup(text: nil, accent: false)])
         #expect(!h.model.menu.entries.contains { if case .note = $0 { true } else { false } })
     }
 
@@ -415,7 +415,7 @@ private final class HoldsHarness {
         let item = StatusItemModel(
             focus: h.model.focus.snapshot, caffeine: h.caffeine.snapshot, now: h.clock.now,
             showSeconds: false)
-        #expect(item.parts == [Self.noFocus])
+        #expect(item.parts == [Self.idle])
     }
 
     @Test func theCupTooltipFollowsTheHold() {

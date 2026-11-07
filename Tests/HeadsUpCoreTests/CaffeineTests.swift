@@ -45,8 +45,8 @@ private struct CaffeineHarness {
 
 @MainActor
 @Suite struct CaffeineStoreTests {
-    /// The menu bar's timer part while no focus round runs: the cup shows after it.
-    static let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
+    /// The menu bar's timer part while nothing is started: the cup shows after it.
+    static let idle = StatusItemPart.timer(text: "Idle", warning: false)
 
     // MARK: On and off
 
@@ -187,7 +187,7 @@ private struct CaffeineHarness {
         #expect(h.assertions.held.isEmpty)
         #expect(h.caffeine.isOn)  // the switch stays on
         #expect(h.caffeine.snapshot == .on(endsAt: h.caffeine.endsAt, pausedOnBattery: true))
-        #expect(h.model.statusItem.parts == [Self.noFocus, .cup(text: "1h 00m", accent: false)])
+        #expect(h.model.statusItem.parts == [Self.idle, .cup(text: "1h 00m", accent: false)])
         #expect(h.toast == .toast("before"))  // no toast on power changes
         h.minutes(20)  // the countdown keeps running
         #expect(h.caffeine.pill(at: h.clock.now) == "Paused 40m")
@@ -195,7 +195,7 @@ private struct CaffeineHarness {
         h.power.set(onBattery: false)
         #expect(!h.caffeine.pausedOnBattery)
         #expect(h.assertions.held == [.displaySleep, .systemSleep])
-        #expect(h.model.statusItem.parts == [Self.noFocus, .cup(text: "40m", accent: true)])
+        #expect(h.model.statusItem.parts == [Self.idle, .cup(text: "40m", accent: true)])
     }
 
     @Test func onBatteryWithoutTheOptionCaffeineStaysActive() {
@@ -240,7 +240,7 @@ private struct CaffeineHarness {
             return nil
         }.first
         #expect(row?.switchIsOn == true)
-        #expect(h.model.statusItem.parts == [Self.noFocus, .cup(text: "1h 00m", accent: true)])
+        #expect(h.model.statusItem.parts == [Self.idle, .cup(text: "1h 00m", accent: true)])
     }
 
     @Test func thePillShowsTheTimeLeft() {
@@ -318,7 +318,7 @@ private struct CaffeineHarness {
         #expect(!h.caffeine.isOn)
         #expect(h.caffeine.assertionProblem == .refused)
         #expect(h.toast == .toast("before"))  // no "Caffeine on" toast
-        #expect(h.model.statusItem.parts == [.timer(text: "No focus", warning: false)])  // no cup
+        #expect(h.model.statusItem.parts == [CaffeineStoreTests.idle])  // no cup
         #expect(h.caffeine.pill(at: h.clock.now) == nil)
         let screen = h.caffeine.screen(at: h.clock.now)
         #expect(screen.header.title == "Caffeine is off" && !screen.header.isOn)

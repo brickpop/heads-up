@@ -11,8 +11,8 @@ private func status(_ focus: FocusSnapshot, _ caffeine: CaffeineSnapshot = .off,
     StatusItemModel(focus: focus, caffeine: caffeine, now: now, showSeconds: seconds)
 }
 
-/// The timer part while no round runs: "No focus" in the menu bar's colour.
-private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
+/// The timer part while nothing is started: "Idle" in the menu bar's colour.
+private let idle = StatusItemPart.timer(text: "Idle", warning: false)
 
 @Suite struct FormatTests {
     @Test func minutesForTheFocusTimerRoundUp() {
@@ -50,10 +50,10 @@ private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
 }
 
 @Suite struct StatusItemModelTests {
-    @Test func idleSaysNoFocusWithTheTimerGlyph() {
+    @Test func idleSaysIdleWithTheTimerGlyph() {
         let model = status(.idle(nextLength: 25))
-        #expect(model.parts == [noFocus])
-        #expect(model.accessibilityLabel == "HeadsUp, no focus")
+        #expect(model.parts == [idle])
+        #expect(model.accessibilityLabel == "HeadsUp, idle")
         #expect(model.nextChange == nil)
     }
 
@@ -72,16 +72,16 @@ private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
         let both = status(
             .running(.focus, endsAt: now.addingTimeInterval(600)), .on(endsAt: now.addingTimeInterval(65 * 60)))
         #expect(both.parts == [.timer(text: "10m", warning: false), .cup(text: "1h 05m", accent: true)])
-        #expect(status(.idle(nextLength: 25), .on(endsAt: nil)).parts == [noFocus, .cup(text: nil, accent: true)])
+        #expect(status(.idle(nextLength: 25), .on(endsAt: nil)).parts == [idle, .cup(text: nil, accent: true)])
     }
 
     @Test func caffeineWithSecondsOnUsesMinutesAndSecondsOnlyUnderAnHour() {
         #expect(
             status(.idle(nextLength: 25), .on(endsAt: now.addingTimeInterval(59 * 60)), seconds: true).parts
-                == [noFocus, .cup(text: "59:00", accent: true)])
+                == [idle, .cup(text: "59:00", accent: true)])
         #expect(
             status(.idle(nextLength: 25), .on(endsAt: now.addingTimeInterval(65 * 60)), seconds: true).parts
-                == [noFocus, .cup(text: "1h 05m", accent: true)])
+                == [idle, .cup(text: "1h 05m", accent: true)])
     }
 
     @Test func pausedIsAmberWithTheTimerGlyphAndTheFrozenTime() {
@@ -223,7 +223,9 @@ private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
         #expect(focusRow(.idle(nextLength: 50))?.value == "Start 50 min")
         #expect(focusRow(.running(.focus, endsAt: now.addingTimeInterval(18 * 60 + 42)))?.value == "Focus · 18:42")
         #expect(focusRow(.running(.rest, endsAt: now.addingTimeInterval(190)))?.value == "Break · 3:10")
-        #expect(focusRow(.snoozed(until: now.addingTimeInterval(252), prompt: .breakDue))?.value == "Snoozed · 4:12")
+        let snoozed = focusRow(.snoozed(until: now.addingTimeInterval(252), prompt: .breakDue))
+        #expect(snoozed?.value == "Snoozed · 4:12")
+        #expect(snoozed?.valueIsWarning == true)
 
         let paused = focusRow(.paused(.focus, left: 18 * 60 + 42))
         #expect(paused?.value == "Paused · 18:42")
@@ -260,13 +262,23 @@ private let noFocus = StatusItemPart.timer(text: "No focus", warning: false)
 @Suite struct MenuBarAppModelTests {
     @Test func aPlainClickTogglesTheHUD() {
         let model = AppModel.preview()
-        #expect(model.statusItem.parts == [noFocus])
+        #expect(model.statusItem.parts == [idle])
         model.statusItemClicked()
         #expect(model.hud.isOpen)
         #expect(model.statusItemHighlighted)
         model.statusItemClicked()
         #expect(!model.hud.isOpen)
         #expect(!model.statusItemHighlighted)
+    }
+
+    @Test func stopNowOnTheBackPromptTurnsNoFocusIntoIdle() {
+        let model = AppModel.preview()
+        model.focus.takeBreak(minutes: 5)
+        model.focus.skipBreak()
+        #expect(model.statusItem.parts == [.timer(text: "No focus", warning: true)])
+        model.focus.doneForNow()
+        #expect(model.statusItem.parts == [idle])
+        #expect(model.statusItem.accessibilityLabel == "HeadsUp, idle")
     }
 
     @Test func anAmberItemLeadsToFocus() {

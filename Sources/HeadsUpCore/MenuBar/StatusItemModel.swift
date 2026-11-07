@@ -2,7 +2,7 @@ import Foundation
 
 /// One piece of the menu bar item, left to right (ADR-001 §4.3).
 public enum StatusItemPart: Equatable, Sendable {
-    /// Focus: the timer glyph, in every state, with its text: "18m", "Break due" or "No focus".
+    /// Focus: the timer glyph, in every state, with its text: "18m", "Break due", "No focus" or "Idle".
     /// `warning` draws it in the warn colour: the round waits on the user (a prompt, waiting or snoozed,
     /// or a paused timer). Otherwise it uses the menu bar's own colour.
     case timer(text: String, warning: Bool)
@@ -32,8 +32,8 @@ public struct StatusItemModel: Equatable, Sendable {
 
         switch focus {
         case .idle:
-            parts.append(.timer(text: Strings.MenuBar.noFocus, warning: false))
-            spoken.append(Strings.MenuBar.noFocus.lowercased())
+            parts.append(.timer(text: Strings.MenuBar.idle, warning: false))
+            spoken.append(Strings.MenuBar.idle.lowercased())
         case .running(let kind, let endsAt):
             let left = endsAt.timeIntervalSince(now)
             parts.append(.timer(text: Self.focusText(left, showSeconds), warning: false))

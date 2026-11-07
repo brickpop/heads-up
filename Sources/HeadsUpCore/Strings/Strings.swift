@@ -215,9 +215,11 @@ public enum Strings {
         }
 
         /// The menu bar item's words when no focus or break runs: "Break due" while a break prompt
-        /// waits or is snoozed, "No focus" otherwise (Yuki, prompt-tray-polish).
+        /// waits or is snoozed, "No focus" while the back prompt does, and "Idle" when nothing is
+        /// started or after Stop now.
         public static let breakDue = "Break due"
         public static let noFocus = "No focus"
+        public static let idle = "Idle"
 
         /// "Focus" or "Break", as a menu value starts.
         public static func kindTitle(_ kind: FocusSnapshot.Kind) -> String {

@@ -90,8 +90,8 @@ public struct MenuModel: Equatable, Sendable {
             ]
     }
 
-    /// The Focus row's right side (UX part 2, §16). Prompts and pauses use the warn colour here
-    /// whether or not the HUD shows them: one colour for one state.
+    /// The Focus row's right side (UX part 2, §16). Pauses, and prompts that wait or are snoozed,
+    /// use the warn colour here whether or not the HUD shows them, as the menu bar item does.
     static func focusValue(_ focus: FocusSnapshot, now: Date) -> (text: String, warning: Bool) {
         switch focus {
         case .idle(let length):
@@ -103,7 +103,7 @@ public struct MenuModel: Equatable, Sendable {
         case .prompt(let prompt):
             (Strings.MenuBar.promptWords(prompt), true)
         case .snoozed(let until, _):
-            ("\(Strings.MenuBar.snoozed) · \(Format.clock(until.timeIntervalSince(now)))", false)
+            ("\(Strings.MenuBar.snoozed) · \(Format.clock(until.timeIntervalSince(now)))", true)
         }
     }
 }
