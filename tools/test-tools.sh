@@ -724,18 +724,6 @@ else
 fi
 
 echo
-echo "release-adhoc"
-# A public release never ships with the placeholder bundle id (Nick). The check runs before the
-# macOS one, so it holds on Linux too.
-status=0
-"$tools/make-app.sh" adhoc-release dev.headsup.app 0.1.0 1 >"$work/out" 2>&1 || status=$?
-if [ "$status" -ne 0 ] && grep -q "^make-app: bundle_id is still the placeholder dev.headsup.app" "$work/out"; then
-    pass "release-adhoc refuses the placeholder bundle id"
-else
-    fail "release-adhoc refuses the placeholder bundle id" "status $status: $(cat "$work/out")"
-fi
-
-echo
 echo "render-cask"
 good_sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 if "$tools/render-cask.sh" 1.2.3 "$good_sha" brickpop/heads-up dev.headsup.app >"$work/cask.rb" 2>&1 &&

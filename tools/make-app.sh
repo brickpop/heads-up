@@ -25,12 +25,6 @@ die() {
 [ $# -eq 4 ] || die "usage: tools/make-app.sh <adhoc|adhoc-release|identity|quick> <bundle id> <version> <build number>"
 mode=$1 bundle_id=$2 version=$3 build_number=$4
 
-# A public release fixes the bundle id for good: tokens saved under one id aren't found under
-# another. So it never ships with the justfile's placeholder (Nick). Checked first, on any OS.
-if [ "$mode" = adhoc-release ] && [ "$bundle_id" = dev.headsup.app ]; then
-    die "bundle_id is still the placeholder dev.headsup.app. Set the real one in the justfile before a public release: tokens saved under one id aren't found under another."
-fi
-
 [ "$(uname -s)" = Darwin ] || die "building HeadsUp.app needs macOS, with the Command Line Tools (Xcode isn't needed)."
 # Apple silicon only: the macOS 27 Command Line Tools ship Swift's support libraries for arm64
 # only, so an Intel slice can't link.

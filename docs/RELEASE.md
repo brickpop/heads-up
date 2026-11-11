@@ -66,8 +66,9 @@ just build
 `just lint` checked the same entitlements and Info.plist before the build (F8, F19, R3).
 
 To change the version, edit `version` at the top of the `justfile`. The build number is the
-number of commits. To change the bundle id, edit `bundle_id` there; it is the only place. Do it before the first
-real release: API tokens saved under the old id aren't found by the renamed app.
+number of commits. The bundle id, `headsup.brickpop.app`, is `bundle_id` there, the only place
+it is written. It must not change once people have installed HeadsUp: API tokens saved under
+one id aren't found under another.
 
 ## Publishing a release (CI)
 
@@ -76,10 +77,6 @@ of ours. Until there is an identity to sign it with (CEO, 2026-10-29: unsigned f
 publishes the ad-hoc build: `just release-adhoc` runs every check in the table above except the
 signer, and makes `build/HeadsUp.dmg`, an unsigned image holding the ad-hoc app. Users open it
 once with System Settings › Privacy & Security › Open Anyway (see the README).
-
-**Before the first public release, set the real `bundle_id` in the `justfile`.**
-`just release-adhoc` refuses the placeholder `dev.headsup.app`: API tokens saved under one id
-aren't found under another, so the id must not change after people install HeadsUp.
 
 To publish version 0.2.0:
 

@@ -6,10 +6,9 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# The app's bundle identifier: the only place it is written. A placeholder until the CEO
-# chooses the real one; changing it is this one line. Tokens saved under the old id stay in the
-# Keychain but the renamed app won't find them: set the id before the first real release.
-bundle_id := "dev.headsup.app"
+# The app's bundle identifier: the only place it is written. It must not change once people
+# have installed HeadsUp: API tokens saved in the Keychain under one id aren't found under another.
+bundle_id := "headsup.brickpop.app"
 # The version and build number, embedded in Info.plist by every recipe.
 version := "0.1.0"
 build_number := `git rev-list --count HEAD 2>/dev/null || echo 0`
