@@ -21,12 +21,14 @@ fi
 # Each valid identity is a line like:
 #   1) 3E8A…(40 hex) "Apple Development: Name (ABCDE12345)"
 # The list is read whole first: awk stops at the first match, and a pipe from security under
-# pipefail would then fail on SIGPIPE.
+# pipefail would then fail on SIGPIPE. The identity reaches awk through the environment, as
+# typed: `awk -v` would turn its backslashes into escapes, and macOS's awk refuses a newline there.
 identities=$(security find-identity -v -p codesigning) || {
     echo "couldn't list the code-signing identities (security find-identity failed). $list" >&2
     exit 1
 }
-found=$(awk -v want="$identity" '
+found=$(WANT=$identity awk '
+    BEGIN { want = ENVIRON["WANT"] }
     match($0, /^[[:space:]]*[0-9]+\)[[:space:]]+[0-9A-Fa-f]{40}[[:space:]]+"/) {
         hash = $2
         name = substr($0, RLENGTH + 1)

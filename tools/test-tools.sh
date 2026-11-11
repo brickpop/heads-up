@@ -273,7 +273,9 @@ for ok in "3E8A1B2C3D4E5F60718293A4B5C6D7E8F9012345" "3e8a1b2c3d4e5f60718293a4b5
     "Apple Development: Sam Lee (ABCDE12345)"; do
     if identity_check 0 "$ok"; then pass "the identity check accepts: $ok"; else fail "accepts: $ok" "$(cat "$work/out")"; fi
 done
-for refused in "valid" "-" "2" "1" "Apple Development" "Sam Lee" "3E8A1B2C" ""; do
+# The last two are matched as typed: no line break, and no backslash read as an escape.
+for refused in "valid" "-" "2" "1" "Apple Development" "Sam Lee" "3E8A1B2C" "" \
+    $'Apple Development: Sam Lee (ABCDE12345)\nx' 'Apple Development: Sam Lee \(ABCDE12345)'; do
     if identity_check 1 "$refused"; then
         pass "the identity check refuses: '$refused'"
     else
@@ -534,10 +536,11 @@ lint_root() {
     cp -R "$repo/Resources" "$work/lint-root/Resources"
     echo 'import Foundation' >"$work/lint-root/Sources/HeadsUpCore/Fine.swift"
 }
-# Adds the lines $2 at the end of the top-level <dict> of plist $1 in the lint root.
+# Adds the lines $2 at the end of the top-level <dict> of plist $1 in the lint root. The text
+# goes through the environment: macOS's awk refuses a newline in an `awk -v` value.
 add_to_plist() {
     local file=$work/lint-root/Resources/$1
-    awk -v add="$2" '/^<\/dict>/ && !done { print add; done = 1 } { print }' "$file" >"$file.new"
+    ADD=$2 awk '/^<\/dict>/ && !done { print ENVIRON["ADD"]; done = 1 } { print }' "$file" >"$file.new"
     mv "$file.new" "$file"
 }
 # Removes key $2 and the line after it (its value) from plist $1 in the lint root.
