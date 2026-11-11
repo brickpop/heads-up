@@ -23,70 +23,56 @@
   <code>brew install --cask brickpop/tap/headsup</code>
 </p>
 
----
+<p align="center">
+  <img src="docs/screenshots/chat.png" width="760" alt="The HeadsUp HUD in dark mode: a chat with Qwen Flash Next answering &quot;What is HeadsUp?&quot;, with the tab icons along the top and keyboard hints along the bottom">
+</p>
 
 Press **⌥ Space** anywhere, even over a full-screen app, and a Spotlight-style HUD drops in. Ask
 a model something, start a focus block, keep the Mac awake, bring up your dev server or open a
 command in your terminal, then get back to work. No browser tab, no login, no terminal tab kept
 open just in case.
 
+Chat with any **OpenAI-compatible** model, in the cloud or on your Mac (Ollama, LM Studio,
+llama.cpp…). Replies stream in, formatted, and you can attach images. A chat is gone when you
+start a new one or quit, unless you **pin** it.
+
 > [!NOTE]
 > HeadsUp is early (version 0.x). Issues and ideas are welcome.
 
-## Contents
-
-- [Features](#features)
-- [Install](#install)
-- [First launch](#first-launch)
-- [Keyboard](#keyboard)
-- [Requirements](#requirements)
-- [Privacy](#privacy)
-- [Services and your shell](#services-and-your-shell)
-- [Build from source](#build-from-source)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Features
-
-HeadsUp is one HUD with six tabs. An **action autocomplete** in the prompt reaches every one of
-them from the keyboard: type `/` to see what you can do.
-
-| | Tab | What it does |
-|---|---|---|
-| 💬 | **Chat** | A quick chat with any **OpenAI-compatible** model, in the cloud or local (Ollama, LM Studio, llama.cpp…). Text and images, formatted replies that stream in, and **local tools** (Calendar, Reminders, Clipboard) that the model may call only with your permission. Chats are gone when you start a new one, unless you **pin** them. |
-| ⏱️ | **Focus** | A Pomodoro timer (25 / 40 / 50 min, or `/start 35`) with break prompts that suggest something to do away from the screen. It runs the whole loop from the keyboard, and notifications let you answer without opening the HUD. |
-| ☕ | **Caffeine** | Keeps your Mac awake for a set time, extendable, like a built-in Amphetamine. |
-| 🗄️ | **Services** | Starts and stops the long-running things you keep a terminal tab for: a dev server, a database, a local model. Each one gets your shell's environment, and its logs are kept, one click away. |
-| ⌨️ | **Commands** | Shortcuts for the interactive commands you type again and again. Each opens in your terminal (Terminal, iTerm2, Ghostty, WezTerm, Kitty, Alacritty) in the right folder. |
-| ⚙️ | **Settings** | Model endpoints, tool permissions, focus and breaks, the wake shortcut, appearance. Settings, services and commands are plain JSON files in `~/Library/Application Support/HeadsUp`, which you can edit by hand too; API tokens stay in the Keychain. |
-
-It feels like part of macOS: SwiftUI and AppKit, the system font, vibrancy, your accent color,
-light and dark mode, VoiceOver, Reduce Motion and Increase Contrast.
-
 ## Install
-
-### Homebrew
 
 ```sh
 brew install --cask brickpop/tap/headsup
 ```
 
-Update with `brew upgrade --cask headsup`.
-
-### Download
-
-Get `HeadsUp-<version>.dmg` from the [latest release](https://github.com/brickpop/heads-up/releases/latest),
-open it, and drag **HeadsUp** to Applications. Each release lists the `.dmg`'s SHA-256 next to
-it.
-
-## First launch
+Update with `brew upgrade --cask headsup`. Or download `HeadsUp-<version>.dmg` from the
+[latest release](https://github.com/brickpop/heads-up/releases/latest), open it, and drag
+**HeadsUp** to Applications. Each release lists the `.dmg`'s SHA-256 next to it.
 
 > [!IMPORTANT]
 > HeadsUp isn't notarized by Apple yet, so macOS blocks it the first time you open it.
 > Open it once, then go to **System Settings › Privacy & Security** and click **Open Anyway**.
 > You only do this once per version.
 
-Then:
+## What it does
+
+One HUD, six tabs, all of it from the keyboard.
+
+| | |
+|---|---|
+| <img src="docs/screenshots/actions.png" width="420" alt="The prompt with /start typed in, listing Start 25, 40 and 50 min focus, Start WikiView and Restart Foreman"> | **Do anything.** Type **/** and every action of every tab is a few keys away: start a focus block, keep the Mac awake, start or restart a service, open a command. **↑ ↓** to pick, **↩** to run. |
+| <img src="docs/screenshots/local-tools.png" width="420" alt="Settings, Local tools: Calendar, Reminders, Add reminders, Clipboard and Focus timer, each set to Allow, Ask or Off; Add reminders only Ask or Off"> | **Let the model help, on your terms.** It can read your Calendar, Reminders and clipboard, add a reminder or start a timer, but only the tools you allow. Set each one to **Allow**, **Ask** or **Off** (adding a reminder always asks); with Ask, the chat shows a card and waits for your answer. |
+| <img src="docs/screenshots/focus.png" width="420" alt="The Focus tab: a 25:00 timer, cards for 25, 40 and 50 minutes, and a Start focus button"> | **Focus.** A Pomodoro timer: 25, 40 or 50 minutes, or `/start 35`. When it ends, a break prompt suggests something to do away from the screen: look elsewhere, drink water, stretch. Snooze it, or answer from the notification without opening the HUD. The menu bar shows where the round stands. |
+| <img src="docs/screenshots/caffeine.png" width="420" alt="The Caffeine tab: Staying awake, 7h 29m left, with +10 min and +1 h buttons and lengths of 15 min, 1 hour, 2 hours and Until off"> | **Caffeine.** Keep your Mac awake for 15 minutes, an hour, two, or until you turn it off; add time with one click. Choose whether the display stays on, and pause it on battery. |
+| <img src="docs/screenshots/services.png" width="420" alt="The Services tab: WikiView stopped with a Start button, Foreman running on port 8888 for 5h 56m with a Stop button"> | **Services.** Start and stop the long-running things you keep a terminal tab for: a dev server, a database, a local model. Each gets your shell's environment, its logs are kept one click away, and it can keep your Mac awake while it runs. |
+| <img src="docs/screenshots/commands.png" width="420" alt="The Commands tab: two command shortcuts, each with a Terminal button, and a choice of Terminal or iTerm2"> | **Commands.** Shortcuts for the interactive commands you type again and again. Each opens in your terminal (Terminal, iTerm2, Ghostty, WezTerm, Kitty, Alacritty) in the right folder. |
+
+It feels like part of macOS: SwiftUI and AppKit, the system font, vibrancy, your accent color,
+light and dark mode, VoiceOver, Reduce Motion and Increase Contrast. Settings, services and
+commands are plain JSON files in `~/Library/Application Support/HeadsUp` that you can edit by
+hand; API tokens stay in the Keychain.
+
+## First launch
 
 1. Press **⌥ Space**. HeadsUp lives in the menu bar; it has no Dock icon.
 2. To chat, add a model in **Settings › Models**: any OpenAI-compatible endpoint, with or without
@@ -104,18 +90,12 @@ Then:
 | Keys | What they do |
 |---|---|
 | **⌥ Space** | Show or hide HeadsUp (you can change it in Settings › General) |
-| **⌘1 … ⌘6** | Chat, Focus, Caffeine, Services, Commands, Settings |
+| **⌘1 … ⌘6** | Chat, Focus, Caffeine, Services, Commands, Settings (or **⌘← ⌘→** with the prompt empty) |
 | **/** | Actions: type to filter, **↑ ↓** to pick, **↩** to run |
 | **⌘N** · **⌘P** · **⌘.** | New chat · pin the chat · stop the reply |
-| **⌥← ⌥→** · **⌘↩** | On Focus: pick a length or a break · start |
+| **⌥← ⌥→** · **⌘↩** | Pick a card (a length, a break) · run the main button |
 | **⌘ ,** | Settings |
 | **Esc** | Clear, go back, then close |
-
-## Requirements
-
-- macOS 14 Sonoma or later
-- A Mac with Apple silicon
-- For Chat: an OpenAI-compatible endpoint, local or in the cloud
 
 ## Privacy
 
@@ -123,14 +103,17 @@ Then:
   you add.
 - **Chats aren't kept** unless you pin them. Pinned chats stay on your Mac.
 - **API tokens live in your Keychain**, never in `settings.json`.
-- **The model touches your data only when you allow it.** Each tool is set to Allow, Ask or Off.
-  With Ask, the chat shows a card and the tool waits for your answer. Every call shows in the
-  chat.
+- **The model touches your data only when you allow it.** Every tool call shows in the chat.
 
-## Services and your shell
+## Requirements
+
+- macOS 14 Sonoma or later, on a Mac with Apple silicon
+- For Chat: an OpenAI-compatible endpoint, local or in the cloud
 
 <details>
-<summary>How a service gets your <code>PATH</code> and environment</summary>
+<summary><b>Services and your shell</b>: how a service gets your <code>PATH</code> and environment</summary>
+
+<br>
 
 A service starts with the environment your terminal has. Your shell's interactive config runs
 once, at the first service start after HeadsUp launches: HeadsUp runs your login shell as an
@@ -150,7 +133,10 @@ that ends with "command not found" (code 127) makes HeadsUp read the environment
 next start.
 </details>
 
-## Build from source
+<details>
+<summary><b>Build from source</b></summary>
+
+<br>
 
 You need a Mac with Apple silicon, the Command Line Tools with Swift 6.4 or newer (Xcode isn't
 needed), and [`just`](https://github.com/casey/just).
@@ -165,6 +151,7 @@ just lint     # the project's rules and the formatting
 
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) has every recipe, working on Linux, and CI.
 [docs/RELEASE.md](docs/RELEASE.md) covers signed builds and how a release is published.
+</details>
 
 ## Contributing
 
