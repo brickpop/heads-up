@@ -361,6 +361,25 @@ import Foundation
         }
     }
 
+    /// The user's last input, which the test moves: idle time grows with the clock until `input()`.
+    @MainActor
+    public final class FakeInputIdleTime: InputIdleTime {
+        private let clock: Clock
+        public var lastInput: Date
+
+        public init(clock: Clock) {
+            self.clock = clock
+            lastInput = clock.now
+        }
+
+        public var secondsSinceLastInput: TimeInterval { clock.now.timeIntervalSince(lastInput) }
+
+        /// The user typed or moved the mouse just now.
+        public func input() {
+            lastInput = clock.now
+        }
+    }
+
     /// Launches nothing: the test emits output and exits, and sees the signals sent.
     @MainActor
     public final class FakeServiceLauncher: ServiceLauncher {

@@ -41,6 +41,7 @@ private final class ToolHarness {
             clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
             files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: systemSettings,
             notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+            inputIdleTime: FakeInputIdleTime(clock: clock),
             serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
             imageProcessor: FakeImageProcessor(), calendar: calendar, reminders: reminders,
             terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),

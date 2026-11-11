@@ -33,6 +33,7 @@ private final class ChatHarness {
             clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
             files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
             notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+            inputIdleTime: FakeInputIdleTime(clock: clock),
             serviceLauncher: launcher, portProbe: probe, openPanels: FakeOpenPanels(),
             imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
             terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),

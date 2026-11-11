@@ -18,6 +18,8 @@ public final class AppModel {
         public var notifier: Notifier
         public var powerAssertions: PowerAssertions
         public var powerSource: PowerSource
+        /// Seconds since the user's last input, for the services' keep-awake limit.
+        public var inputIdleTime: InputIdleTime
         public var serviceLauncher: ServiceLauncher
         public var portProbe: PortProbe
         public var openPanels: OpenPanels
@@ -53,7 +55,8 @@ public final class AppModel {
         public init(
             clock: Clock, scheduler: Scheduler, hotkeys: HotkeyRegistrar, appearance: SystemAppearance,
             files: FileRevealer, loginItem: LoginItem, systemSettings: SystemSettingsLinks, notifier: Notifier,
-            powerAssertions: PowerAssertions, powerSource: PowerSource, serviceLauncher: ServiceLauncher,
+            powerAssertions: PowerAssertions, powerSource: PowerSource, inputIdleTime: InputIdleTime,
+            serviceLauncher: ServiceLauncher,
             portProbe: PortProbe, openPanels: OpenPanels, imageProcessor: ImageProcessor, calendar: CalendarReader,
             reminders: RemindersAccess, terminalLauncher: TerminalLauncher, secrets: SecretStore,
             httpClient: HTTPClient, linkOpener: LinkOpener, pasteboard: Pasteboard, llmProvider: LLMProvider? = nil,
@@ -73,6 +76,7 @@ public final class AppModel {
             self.notifier = notifier
             self.powerAssertions = powerAssertions
             self.powerSource = powerSource
+            self.inputIdleTime = inputIdleTime
             self.serviceLauncher = serviceLauncher
             self.portProbe = portProbe
             self.openPanels = openPanels
@@ -227,7 +231,8 @@ public final class AppModel {
             folder: ports.dataFolder, clock: ports.clock, scheduler: ports.scheduler, launcher: ports.serviceLauncher,
             ports: ports.portProbe, notifier: ports.notifier, files: ports.files, settings: settings, toaster: hud,
             loginShell: ports.loginShell, home: ports.home, baseEnvironment: ports.environment,
-            readsShellEnvironment: ports.readsShellEnvironment, holds: powerHolds)
+            readsShellEnvironment: ports.readsShellEnvironment, holds: powerHolds,
+            idleTime: ports.inputIdleTime)
         self.services = services
         caffeine.serviceHolds = { [weak services] in services?.serviceHolds ?? [] }
         commands = CommandStore(
@@ -320,6 +325,8 @@ public final class AppModel {
         switch event {
         case .opened:
             chatSeenIfShown()
+            // Opening the HUD is input: a service away comes back before its cup shows.
+            services.checkActivity()
         case .closed:
             if settingsNotice != nil { noticeSeen = settings.fileProblem }
             // Closing never stops a reply, unless an unpinned chat is cleared on close: then it
@@ -577,6 +584,7 @@ public final class AppModel {
                     loginItem: FakeLoginItem(status: loginItem),
                     systemSettings: FakeSystemSettingsLinks(), notifier: FakeNotifier(),
                     powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                    inputIdleTime: FakeInputIdleTime(clock: clock),
                     serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(),
                     openPanels: FakeOpenPanels(), imageProcessor: FakeImageProcessor(),
                     calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),

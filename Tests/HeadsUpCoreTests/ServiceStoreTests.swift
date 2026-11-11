@@ -55,6 +55,7 @@ private final class ServicesHarness {
                 clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
                 files: revealer, loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: notifier, powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                inputIdleTime: FakeInputIdleTime(clock: clock),
                 serviceLauncher: realLauncher ? POSIXServiceLauncher() : launcher, portProbe: probe,
                 openPanels: picker, imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(),
                 reminders: FakeRemindersAccess(), terminalLauncher: terminals,
@@ -1488,10 +1489,6 @@ private final class ServicesHarness {
         #expect(Strings.ServiceForm.restartOnExit == "Restart if it stops")
         #expect(Strings.ServiceForm.restartOnExitHelp.contains("gives up after 5 restarts"))
         #expect(
-            Strings.ServiceForm.keepAwakeHelp
-                == "Your Mac doesn't go to sleep on its own while this runs, up to the time you choose. The time starts when you start the service. Automatic restarts don't reset it. The display can still sleep, and closing the lid still sleeps. Follows Caffeine's “Only on power adapter”."
-        )
-        #expect(
             Strings.ServiceForm.runningNote
                 == "Changes to the command, folder or environment apply the next time it starts.")
         #expect(Strings.Services.keepAwakeIdleHelp == "Keeps your Mac awake while it runs")
@@ -1895,8 +1892,6 @@ private final class ServicesHarness {
         }
         let screen = try #require(h.services.settingsScreen.form)
         #expect(screen.keepAwake == .twoHours && screen.restartOnExit)
-        #expect(Strings.ServiceForm.keepAwake == "Keep your Mac awake")
-        #expect(Strings.ServiceForm.restartOnExit == "Restart if it stops")
     }
 }
 

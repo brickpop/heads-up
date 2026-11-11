@@ -228,7 +228,7 @@ private struct OpensInBrowser: ViewModifier {
 
 /// The flags' glyphs after the meta, 11 pt and secondary, each shown while its flag is on, with
 /// a tooltip. The cup's tooltip follows its hold; it turns --warn when macOS refused it, and
-/// tertiary once its limit ended. VoiceOver reads them through the row's label instead.
+/// tertiary while the user is away. VoiceOver reads them through the row's label instead.
 private struct ServiceFlags: View {
     let row: ServicesScreen.Row
 
@@ -251,7 +251,7 @@ private struct ServiceFlags: View {
 
     private var cupStyle: AnyShapeStyle {
         if row.awake == .refused { return AnyShapeStyle(HUDStyle.Colors.warn) }
-        return row.keepAwakeEnded ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary)
+        return row.keepAwakeAway ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary)
     }
 }
 

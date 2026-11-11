@@ -1,4 +1,5 @@
 import CoreFoundation
+import CoreGraphics
 import HeadsUpCore
 import IOKit.ps
 import IOKit.pwr_mgt
@@ -65,5 +66,18 @@ final class IOKitPowerSource: PowerSource {
         source = created
         // Common modes, so a change is seen while a menu or a drag tracks events too (Rev 3).
         CFRunLoopAddSource(CFRunLoopGetMain(), created, .commonModes)
+    }
+}
+
+/// Seconds since the user's last keyboard, mouse or trackpad input anywhere on the Mac: the HID
+/// system's idle counter for the login session. Remote input (Screen Sharing) counts. It reads a
+/// counter, not events, so it needs no Input Monitoring or Accessibility permission.
+@MainActor
+final class HIDInputIdleTime: InputIdleTime {
+    var secondsSinceLastInput: TimeInterval {
+        // ~0 is kCGAnyInputEventType: any kind of input.
+        // Unreadable: count the user as away, so a limited service holds less, never more.
+        guard let anyInput = CGEventType(rawValue: ~0) else { return .infinity }
+        return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
     }
 }

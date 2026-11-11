@@ -768,11 +768,12 @@ public enum Strings {
         public static let keepAwakeIdleHelp = "Keeps your Mac awake while it runs"
         public static let restartsHelp = "Restarts if it stops"
         /// The row's VoiceOver label: "Web dev server, running, keeping your Mac awake, restarts if
-        /// it stops". The awake part follows the hold: "keeps your Mac awake while it runs" while it
-        /// doesn't run, and "stopped keeping your Mac awake after 2 hours" once its limit `ended`.
+        /// it stops". The awake part follows the hold, in the tooltip's words: "not keeping your Mac
+        /// awake while you're away" while the user is `away`, and while it doesn't run "keeps your
+        /// Mac awake while it runs", with ", until you've been away 2 hours" for a `limit`.
         public static func rowAccessibility(
             name: String, status: ServicesScreen.Status, keepsAwake: Bool, awake: AwakeState? = nil,
-            ended: ServiceKeepAwake? = nil, restarts: Bool
+            limit: ServiceKeepAwake = .unlimited, away: Bool = false, restarts: Bool
         ) -> String {
             var parts = [name, statusWord(status)]
             if keepsAwake {
@@ -781,8 +782,12 @@ public enum Strings {
                 case .pausedOnBattery: parts.append("keeping awake is paused on battery")
                 case .refused: parts.append("can't keep your Mac awake")
                 case nil:
-                    if let ended {
-                        parts.append("stopped keeping your Mac awake after \(ServiceForm.keepAwakeChoiceSpoken(ended))")
+                    if away {
+                        parts.append("not keeping your Mac awake while you're away")
+                    } else if limit.minutes != nil {
+                        parts.append(
+                            "keeps your Mac awake while it runs, until you've been away "
+                                + ServiceForm.keepAwakeChoiceSpoken(limit))
                     } else {
                         parts.append("keeps your Mac awake while it runs")
                     }
@@ -791,21 +796,20 @@ public enum Strings {
             if restarts { parts.append("restarts if it stops") }
             return parts.joined(separator: ", ")
         }
-        /// The cup glyph's tooltip, by the hold's state (UX flags §2). With no hold, it says when
-        /// the `limit` ended, or what the limit is: "Keeps your Mac awake for 2h after it starts".
+        /// The cup glyph's tooltip, by the hold's state (UX flags §2; last activity UX). With no
+        /// hold, it says the user is `away`, or what the `limit` is: "Keeps your Mac awake while it
+        /// runs, until you've been away 2h".
         public static func keepAwakeTooltip(
-            _ awake: AwakeState?, limit: ServiceKeepAwake = .unlimited, ended: Bool = false
+            _ awake: AwakeState?, limit: ServiceKeepAwake = .unlimited, away: Bool = false
         ) -> String {
             switch awake {
             case .holding: return "Keeping your Mac awake"
             case .pausedOnBattery: return "Keeping awake is paused on battery"
             case .refused: return "macOS didn't let HeadsUp keep your Mac awake"
             case nil:
+                if away { return "Not keeping your Mac awake while you're away" }
                 guard limit.minutes != nil else { return keepAwakeIdleHelp }
-                let choice = ServiceForm.keepAwakeChoice(limit)
-                return ended
-                    ? "Stopped keeping your Mac awake after \(choice)"
-                    : "Keeps your Mac awake for \(choice) after it starts"
+                return "\(keepAwakeIdleHelp), until you've been away \(ServiceForm.keepAwakeChoice(limit))"
             }
         }
         /// A service's assertion in `pmset -g assertions`: "HeadsUp: web-app".
@@ -816,10 +820,12 @@ public enum Strings {
         public static let keepingAwakePaused = "keeping awake paused: on battery"
         public static let keepingAwakeResumed = "keeping awake resumed: on power"
         public static let keepAwakeRefused = "macOS didn't let HeadsUp keep the Mac awake"
-        /// The limit ran out: "no longer keeping the Mac awake: 2h limit reached".
-        public static func keepAwakeEnded(_ limit: ServiceKeepAwake) -> String {
-            "\(noLongerKeepingAwake): \(ServiceForm.keepAwakeChoice(limit)) limit reached"
+        /// The user has been away for the limit: "no longer keeping the Mac awake: away for 30m".
+        public static func awayFor(_ limit: ServiceKeepAwake) -> String {
+            "\(noLongerKeepingAwake): away for \(ServiceForm.keepAwakeChoice(limit))"
         }
+        /// The user's input took the hold back.
+        public static let back = "keeping the Mac awake again: you're back"
         /// "just now", "12 min ago", "5 h ago", "yesterday", then the short local date: "Oct 21".
         public static func ago(
             _ date: Date, now: Date, locale: Locale = .current, timeZone: TimeZone = .current
@@ -1046,7 +1052,7 @@ public enum Strings {
         public static let autostartHelp = "Starts this service when HeadsUp opens."
         public static let keepAwake = "Keep your Mac awake"
         public static let keepAwakeHelp =
-            "Your Mac doesn't go to sleep on its own while this runs, up to the time you choose. The time starts when you start the service. Automatic restarts don't reset it. The display can still sleep, and closing the lid still sleeps. Follows Caffeine's “Only on power adapter”."
+            "Your Mac stays awake while this runs and you're using it. After you've been away for this long, it can sleep. Away means no keyboard, mouse or trackpad use. Unlimited keeps it awake even while you're away. The display can still sleep, and closing the lid still sleeps. Follows Caffeine's “Only on power adapter”."
         /// The segmented control's choices: "Off", "30m", "2h", "5h", "Unlimited".
         public static func keepAwakeChoice(_ choice: ServiceKeepAwake) -> String {
             switch choice {

@@ -71,11 +71,11 @@ public struct ServicesScreen: Equatable, Sendable {
         /// The hold's state while it applies (starting, running or waiting to restart, with Keep
         /// awake on); nil otherwise. It picks the cup's tooltip and colour (`--warn` when refused).
         public let awake: AwakeState?
-        /// The cup's tooltip: "Keeping your Mac awake", "Keeps your Mac awake for 2h after it
-        /// starts", "Stopped keeping your Mac awake after 2h"…
+        /// The cup's tooltip: "Keeping your Mac awake", "Not keeping your Mac awake while you're
+        /// away", "Keeps your Mac awake while it runs, until you've been away 2h"…
         public let keepAwakeHelp: String
-        /// Its limit ran out while it runs: the cup is tertiary until the next start.
-        public let keepAwakeEnded: Bool
+        /// It runs and the user has been away for its limit: the cup is tertiary until they're back.
+        public let keepAwakeAway: Bool
         public let logsOpen: Bool
         /// A small --warn dot on the Logs toggle: running while its port is silent.
         public let logsWarning: Bool
@@ -215,20 +215,20 @@ extension ServiceStore {
             ServicesScreen.LogLineScreen(
                 id: line.id, time: LogRing.time(line.time, timeZone: timeZone), text: line.text)
         }
-        let ended = awakeExpired.contains(definition.id)
+        let isAway = away.contains(definition.id)
         return ServicesScreen.Row(
             id: definition.id, name: definition.name, status: status, meta: meta, metaStyle: metaStyle,
             commandLine: Strings.Services.actionSubtitle(command: definition.command, cwd: definition.cwd),
             keepsAwake: definition.keepAwake != .off, restarts: definition.restartOnExit, awake: awake[definition.id],
             keepAwakeHelp: Strings.Services.keepAwakeTooltip(
-                awake[definition.id], limit: definition.keepAwake, ended: ended),
-            keepAwakeEnded: ended,
+                awake[definition.id], limit: definition.keepAwake, away: isAway),
+            keepAwakeAway: isAway,
             logsOpen: logsOpen, logsWarning: silent && state.isLive,
             action: Self.action(
                 isLive: state.isLive || waiting || isWaitingToRestart(definition.id), canStart: problem == nil),
             accessibilityLabel: Strings.Services.rowAccessibility(
                 name: definition.name, status: status, keepsAwake: definition.keepAwake != .off,
-                awake: awake[definition.id], ended: ended ? definition.keepAwake : nil,
+                awake: awake[definition.id], limit: definition.keepAwake, away: isAway,
                 restarts: definition.restartOnExit),
             accessibilityValue: spoken,
             link: localURL(definition.id).flatMap(\.port).map {

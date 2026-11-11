@@ -77,15 +77,15 @@ public final class ServiceStore {
     @ObservationIgnored private var restartWaits: [ServiceDefinition.ID: ScheduledWork] = [:]
     /// Services whose current run is an automatic restart, not a user's start.
     @ObservationIgnored private var automaticRestarts: Set<ServiceDefinition.ID> = []
-    /// When each live service's keep-awake limit started counting: its user's start, or the
-    /// save that changed the limit (keep-awake limit addendum §2). Never saved: services
-    /// don't outlive HeadsUp.
-    @ObservationIgnored private var awakeSince: [ServiceDefinition.ID: Date] = [:]
-    /// The wake-up at the end of each limit that is counting.
-    @ObservationIgnored private var awakeExpiry: [ServiceDefinition.ID: ScheduledWork] = [:]
-    /// Services whose limit ran out while they run: no hold until their next count starts, and
-    /// the row says the limit ended.
-    private(set) var awakeExpired: Set<ServiceDefinition.ID> = []
+    /// Live services with a keep-awake limit whose user has been away for that long: no hold
+    /// until the user is back, and the row says so (keep-awake last activity addendum §2).
+    private(set) var away: Set<ServiceDefinition.ID> = []
+    /// The one check for every service's limit: when the next one is due, or the poll for the
+    /// user's return while one is away. None while no service with a limit is live.
+    @ObservationIgnored private var activityCheck: ScheduledWork?
+    /// Set while `checkActivity` runs, so the holds it syncs don't start another check.
+    @ObservationIgnored private var checkingActivity = false
+    @ObservationIgnored private let idleTime: InputIdleTime
 
     @ObservationIgnored private let file: JSONListFile<ServiceDefinition>
     @ObservationIgnored let clock: Clock
@@ -125,9 +125,10 @@ public final class ServiceStore {
         folder: URL?, clock: Clock, scheduler: Scheduler, launcher: ServiceLauncher, ports: PortProbe,
         notifier: Notifier, files: FileRevealer, settings: SettingsStore, toaster: Toaster, loginShell: String,
         home: String, baseEnvironment: [String: String], readsShellEnvironment: Bool = false,
-        holds: PowerHolding? = nil
+        holds: PowerHolding? = nil, idleTime: InputIdleTime
     ) {
         file = JSONListFile(.services, folder: folder)
+        self.idleTime = idleTime
         self.clock = clock
         self.scheduler = scheduler
         self.launcher = launcher
@@ -333,13 +334,11 @@ public final class ServiceStore {
             isNew = true
         }
         if let problem = file.write(list) { return [.file: problem] }
-        let before = definitions
         definitions = list
         // Restart switched off: a restart that waits doesn't run.
         if !trimmed.restartOnExit { _ = cancelRestart(trimmed.id) }
-        // A new keep-awake choice counts from now, and takes or releases the hold now.
-        restartAwakeCountIfChanged(trimmed.id, before: before)
-        syncHold(trimmed.id)
+        // A new keep-awake choice takes or releases the hold now; its return isn't the user's.
+        checkActivity(saved: trimmed.id)
         toaster?.toast(isNew ? Strings.Services.added(trimmed.name) : Strings.Services.saved(trimmed.name))
         return [:]
     }
@@ -653,12 +652,11 @@ public final class ServiceStore {
                 body: Strings.Services.gaveUpBody(restarts: Self.maxRestarts), date: now))
     }
 
-    /// Start, Restart or autostart by the user: the count starts over, and a waiting restart
-    /// gives way to this start.
+    /// Start, Restart or autostart by the user: the restart count starts over, and a waiting
+    /// restart gives way to this start.
     private func userStarts(_ id: ServiceDefinition.ID) {
         restartStreaks[id] = nil
         automaticRestarts.remove(id)
-        startAwakeCount(id)
         if let wait = restartWaits.removeValue(forKey: id) {
             wait.cancel()
             runtime[id] = nil
@@ -687,22 +685,24 @@ public final class ServiceStore {
     }
 
     /// Takes, keeps or releases the service's hold to match its state: held while starting,
-    /// running, waiting to restart or waiting for the environment, with Keep awake on and its
-    /// limit not run out. Each change is logged (UX flags §3). A refusal doesn't stop the service.
-    private func syncHold(_ id: ServiceDefinition.ID) {
-        let isLive = holdsWhile(id)
-        if !isLive { clearAwakeCount(id) }
+    /// running, waiting to restart or waiting for the environment, with Keep awake on and the
+    /// user not away for its limit. Each change is logged (UX flags §3), once: `back` says the
+    /// user's input brought the hold back. A refusal doesn't stop the service.
+    private func syncHold(_ id: ServiceDefinition.ID, back: Bool = false) {
+        // A start or a stop changes which services have a limit to watch.
+        if !checkingActivity { checkActivity() }
         guard let holds else { return }
         let definition = definition(id)
         let before = awake[id]
-        guard let definition, definition.keepAwake != .off, isLive, !awakeExpired.contains(id) else {
+        let isLive = holdsWhile(id)
+        guard let definition, definition.keepAwake != .off, isLive, !away.contains(id) else {
             guard before != nil else { return }
             holds.set(.service(id), kinds: [], name: "")
             awake[id] = nil
             // A removed service keeps no log.
             guard let definition, before != .refused else { return }
-            if isLive && awakeExpired.contains(id) {
-                log(id, Strings.Services.keepAwakeEnded(definition.keepAwake))
+            if isLive && away.contains(id) {
+                log(id, Strings.Services.awayFor(definition.keepAwake))
             } else {
                 log(id, Strings.Services.noLongerKeepingAwake)
             }
@@ -715,6 +715,10 @@ public final class ServiceStore {
         awake[id] = now
         guard now != before else { return }
         switch (before, now) {
+        case (nil, .holding) where back:
+            log(id, Strings.Services.back)
+        case (nil, .pausedOnBattery) where back:
+            log(id, Strings.Services.keepingAwakePaused)
         case (nil, .holding), (.refused?, .holding):
             log(id, Strings.Services.keepingAwake)
         case (nil, .pausedOnBattery):
@@ -733,51 +737,61 @@ public final class ServiceStore {
 
     // MARK: The keep-awake limit
 
-    /// The Mac's clock jumped (wake, or a time change): a limit whose end has passed runs out now,
-    /// as Caffeine's and Focus's timers do. AppModel calls it.
+    /// How often the user's return is checked while a service is away.
+    static let returnPoll: TimeInterval = 60
+
+    /// The Mac's clock jumped (wake, or a time change): the user may have been away meanwhile, or
+    /// have just come back. AppModel calls it.
     public func clockJumped() {
+        checkActivity()
+    }
+
+    /// Reads the user's idle time once and moves each live service with a limit into or out of
+    /// `away`, then schedules the next check (keep-awake last activity addendum §2). A service that
+    /// comes back logs "you're back", unless `saved` is its id: its own Save brought it back.
+    /// AppModel also calls it when the HUD opens, since opening it is input.
+    public func checkActivity(saved: ServiceDefinition.ID? = nil) {
+        guard !checkingActivity else { return }
+        checkingActivity = true
+        let idle = idleTime.secondsSinceLastInput
+        for definition in definitions {
+            let id = definition.id
+            let limit = holdsWhile(id) ? definition.keepAwake.minutes : nil
+            let isAway = limit.map { idle >= TimeInterval($0 * 60) } ?? false
+            if isAway && !away.contains(id) {
+                away.insert(id)
+                syncHold(id)
+            } else if !isAway && away.contains(id) {
+                away.remove(id)
+                // Stopped, or no longer limited: not a return.
+                syncHold(id, back: limit != nil && id != saved)
+            }
+        }
+        // A removed service keeps nothing.
+        away.formIntersection(definitions.map(\.id))
+        if let saved { syncHold(saved) }
+        checkingActivity = false
+        scheduleActivityCheck(idle: idle)
+    }
+
+    /// The next check: at the earliest limit's end, counted from the last input, or the return
+    /// poll while a service is away. Nothing while no service with a limit is live, so Off and
+    /// Unlimited never schedule anything.
+    private func scheduleActivityCheck(idle: TimeInterval) {
+        activityCheck?.cancel()
+        activityCheck = nil
         let now = clock.now
-        for (id, since) in awakeSince where !awakeExpired.contains(id) {
-            guard let minutes = definition(id)?.keepAwake.minutes else { continue }
-            if since.addingTimeInterval(TimeInterval(minutes * 60)) <= now { expireAwake(id) }
+        let lastInput = now.addingTimeInterval(-idle)
+        let checks = definitions.compactMap { definition -> Date? in
+            guard holdsWhile(definition.id), let minutes = definition.keepAwake.minutes else { return nil }
+            if away.contains(definition.id) { return now.addingTimeInterval(Self.returnPoll) }
+            // A second after the end, so the idle time read then is past the limit.
+            return lastInput.addingTimeInterval(TimeInterval(minutes * 60) + 1)
         }
-    }
-
-    /// Starts the limit's count over from now: a user's start, or a new limit on a live service.
-    /// With Keep awake off there is nothing to count.
-    private func startAwakeCount(_ id: ServiceDefinition.ID) {
-        clearAwakeCount(id)
-        guard let keepAwake = definition(id)?.keepAwake, keepAwake != .off else { return }
-        awakeSince[id] = clock.now
-        guard let minutes = keepAwake.minutes else { return }
-        awakeExpiry[id] = scheduler.schedule(at: clock.now.addingTimeInterval(TimeInterval(minutes * 60))) {
-            [weak self] in
-            self?.expireAwake(id)
+        guard let next = checks.min() else { return }
+        activityCheck = scheduler.schedule(at: next) { [weak self] in
+            self?.checkActivity()
         }
-    }
-
-    /// A save that changed a live service's keep-awake choice: the new choice counts from when it
-    /// was made, so 2h picked on a service that has run for 3h doesn't end at once.
-    private func restartAwakeCountIfChanged(_ id: ServiceDefinition.ID, before: [ServiceDefinition]) {
-        guard holdsWhile(id), let chosen = definition(id)?.keepAwake,
-            let was = before.first(where: { $0.id == id })?.keepAwake, was != chosen
-        else { return }
-        startAwakeCount(id)
-    }
-
-    /// The limit ran out: the hold goes and the service keeps running.
-    private func expireAwake(_ id: ServiceDefinition.ID) {
-        guard awakeSince[id] != nil, !awakeExpired.contains(id) else { return }
-        awakeExpiry.removeValue(forKey: id)?.cancel()
-        awakeExpired.insert(id)
-        syncHold(id)
-    }
-
-    /// Stopped, failed or removed: no count until the next start.
-    private func clearAwakeCount(_ id: ServiceDefinition.ID) {
-        awakeExpiry.removeValue(forKey: id)?.cancel()
-        awakeSince[id] = nil
-        awakeExpired.remove(id)
     }
 
     private func holdsWhile(_ id: ServiceDefinition.ID) -> Bool {

@@ -47,6 +47,7 @@ private final class PinHarness {
             clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
             files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
             notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+            inputIdleTime: FakeInputIdleTime(clock: clock),
             serviceLauncher: FakeServiceLauncher(), portProbe: FakePortProbe(), openPanels: panels,
             imageProcessor: images, calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
             terminalLauncher: FakeTerminalLauncher(), secrets: MemorySecretStore(),

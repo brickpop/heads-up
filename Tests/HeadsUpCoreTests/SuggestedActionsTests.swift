@@ -48,6 +48,7 @@ private final class SuggestHarness {
                 clock: clock, scheduler: scheduler, hotkeys: FakeHotkeyRegistrar(), appearance: FixedAppearance(),
                 files: FakeFileRevealer(), loginItem: FakeLoginItem(), systemSettings: FakeSystemSettingsLinks(),
                 notifier: FakeNotifier(), powerAssertions: FakePowerAssertions(), powerSource: FakePowerSource(),
+                inputIdleTime: FakeInputIdleTime(clock: clock),
                 serviceLauncher: launcher, portProbe: FakePortProbe(), openPanels: FakeOpenPanels(),
                 imageProcessor: FakeImageProcessor(), calendar: FakeCalendarReader(), reminders: FakeRemindersAccess(),
                 terminalLauncher: terminals, secrets: MemorySecretStore(), httpClient: FakeHTTPClient(),

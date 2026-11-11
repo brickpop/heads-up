@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 clock: SystemClock(), scheduler: scheduler, hotkeys: hotkeys,
                 appearance: SystemAppearanceAdapter(), files: FinderRevealer(), loginItem: LoginItemAdapter(),
                 systemSettings: SystemSettingsAdapter(), notifier: notifier,
-                powerAssertions: powerAssertions, powerSource: IOKitPowerSource(),
+                powerAssertions: powerAssertions, powerSource: IOKitPowerSource(), inputIdleTime: HIDInputIdleTime(),
                 serviceLauncher: POSIXServiceLauncher(), portProbe: SystemPortProbe(),
                 openPanels: OpenPanelsAdapter(), imageProcessor: ImageIOProcessor(), calendar: eventKit,
                 reminders: eventKit,

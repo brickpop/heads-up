@@ -254,6 +254,14 @@ public protocol PowerAssertions: AnyObject {
     func hold(_ holds: Set<PowerHold>) -> Set<PowerHold>
 }
 
+/// How long the user has been away from the Mac, for the services' keep-awake limit (keep-awake
+/// last activity addendum §1). It reads the HID system's idle counter, which needs no permission.
+@MainActor
+public protocol InputIdleTime: AnyObject {
+    /// Seconds since the user's last keyboard, mouse or trackpad input anywhere on the Mac.
+    var secondsSinceLastInput: TimeInterval { get }
+}
+
 /// The power source (`IOPSNotificationCreateRunLoopSource`), for "Only on power adapter".
 @MainActor
 public protocol PowerSource: AnyObject {
