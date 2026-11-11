@@ -106,7 +106,7 @@ In the repository's **Settings › Secrets and variables › Actions**:
 |---|---|---|
 | `HOMEBREW_TAP` | variable | The tap repository, e.g. `brickpop/homebrew-tap`. Without it, the cask step is skipped. |
 | `HOMEBREW_TAP_TOKEN` | secret | A fine-grained personal access token with **Contents: read and write** on the tap repository only. |
-| `MACOS_RUNNER` | variable, optional | The runner for CI's macOS job on pushes to `main` only. Default `macos-latest`. |
+| `MACOS_RUNNER` | variable, optional | The runner for CI's macOS job on pushes to `main` only. Default `xcode-27`. A runner of yours needs Swift 6.4 or newer selected. |
 
 In **Settings › Rules › Rulesets**, a tag ruleset on `v*` that lets only the CEO create, update
 or delete those tags. A pushed `v*` tag publishes a release, so it is the release permission.
@@ -116,13 +116,13 @@ The tap repository must exist and be public. A tap named `<owner>/homebrew-tap` 
 
 ### Runners
 
-- **A release is built only on GitHub's own `macos-latest`**, never on a personal Mac or a
+- **A release is built only on GitHub's own `xcode-27` image**, never on a personal Mac or a
   shared runner. The workflow names no other.
 - **Pull requests always run on GitHub's own runners**, never a self-hosted one: code from a fork
   must not reach a machine of ours. `MACOS_RUNNER` applies to pushes to `main` only.
-- **`macos-latest` needs Swift 6.4 or newer** (the newest Xcode on it is selected). With an
-  older one, the macOS jobs fail at once with `tools/swift.sh`'s message, until GitHub's image
-  catches up.
+- **The macOS jobs need Swift 6.4 or newer.** They run on GitHub's `xcode-27` image, whose
+  default Xcode is 27 with Swift 6.4 ([runner-images#14404](https://github.com/actions/runner-images/issues/14404)).
+  With an older Swift, the jobs fail at once with `tools/swift.sh`'s message.
 - **`ubuntu-24.04-arm` runners are free for public repositories only.** For a private repository
   they are billed, or the Linux job must move to another runner.
 

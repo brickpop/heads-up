@@ -41,16 +41,14 @@ jobs:
     name: Build and test (macOS)
     # Pull requests always run on GitHub's own runner: code from a fork must never reach a
     # self-hosted machine. Pushes to main may use another runner through the MACOS_RUNNER
-    # variable. The build needs Swift 6.4 or newer: tools/swift.sh stops with a clear message on
-    # an older one.
-    runs-on: ${{ github.event_name == 'pull_request' && 'macos-latest' || vars.MACOS_RUNNER || 'macos-latest' }}
+    # variable. xcode-27 is GitHub's image whose default Xcode is 27, with Swift 6.4. The build
+    # needs 6.4 or newer: tools/swift.sh stops with a clear message on an older one.
+    runs-on: ${{ github.event_name == 'pull_request' && 'xcode-27' || vars.MACOS_RUNNER || 'xcode-27' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the build number is the number of commits
           persist-credentials: false
-      - name: Use the newest Xcode toolchain on the runner
-        run: .github/scripts/select-newest-xcode.sh
       - name: Install just (pinned, checksum verified)
         run: .github/scripts/install-just.sh
       - run: swift --version

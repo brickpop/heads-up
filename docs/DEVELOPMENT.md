@@ -57,8 +57,9 @@ To work that way, run `just setup-swift` once. It installs the pinned Swift tool
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request: `just lint` and
 `just test` on Linux (arm64, with the toolchain from `just setup-swift`), and `just test` and
-`just app` on macOS. Pull requests always use GitHub's `macos-latest`; pushes to `main` may use
-another runner through the repository variable `MACOS_RUNNER`. The build stops with a clear
-message if the runner's Swift is older than 6.4. Releases are made by
+`just app` on macOS, on GitHub's `xcode-27` image, whose default Xcode is 27 with Swift 6.4.
+Pull requests always use that image; pushes to `main` may use another runner through the
+repository variable `MACOS_RUNNER`. The build stops with a clear message if the runner's Swift
+is older than 6.4. Releases are made by
 `.github/workflows/release.yml`: see [RELEASE.md](RELEASE.md), which also covers what CI pins
 and the runners' limits.
