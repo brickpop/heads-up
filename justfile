@@ -9,8 +9,9 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # The app's bundle identifier: the only place it is written. It must not change once people
 # have installed HeadsUp: API tokens saved in the Keychain under one id aren't found under another.
 bundle_id := "headsup.brickpop.app"
-# The version and build number, embedded in Info.plist by every recipe.
-version := "0.1.0"
+# The version and build number, embedded in Info.plist by every recipe. The version is the
+# latest vX.Y.Z tag reachable from HEAD (tools/version.sh); 0.0.0 when there is none.
+version := `tools/version.sh`
 build_number := `git rev-list --count HEAD 2>/dev/null || echo 0`
 
 # Lists the recipes.
@@ -70,7 +71,7 @@ release-adhoc:
 release-adhoc:
     @echo "just release-adhoc needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
-# Prints the version, for the release workflow to check against its tag.
+# Prints the version the recipes build, from the latest vX.Y.Z tag.
 print-version:
     @echo "{{ version }}"
 

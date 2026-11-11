@@ -36,8 +36,10 @@ Run `just` with no arguments to list the recipes. The ones you want on a Mac:
 
 HeadsUp builds for Apple silicon (arm64) only; Intel isn't supported by the macOS 27 Command Line
 Tools. To sign for distribution, put a code-signing identity in your keychain and set `HEADSUP_SIGN_ID` to it
-(`security find-identity -v -p codesigning` lists them). The bundle identifier and the version
-are variables at the top of the `justfile`.
+(`security find-identity -v -p codesigning` lists them). The bundle identifier is a variable at
+the top of the `justfile`. The version is the latest `vX.Y.Z` tag reachable from your commit, or
+`0.0.0` with none (`just print-version`); a release is made by pushing that tag (see
+[RELEASE.md](RELEASE.md)).
 
 Ad-hoc builds are signed with the hardened runtime but with no identity, so macOS forgets the
 app's permissions and Keychain access after each one. That is normal for `just app`.

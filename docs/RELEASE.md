@@ -65,8 +65,11 @@ just build
 
 `just lint` checked the same entitlements and Info.plist before the build (F8, F19, R3).
 
-To change the version, edit `version` at the top of the `justfile`. The build number is the
-number of commits. The bundle id, `headsup.brickpop.app`, is `bundle_id` there, the only place
+The version comes only from the release tag: every recipe builds the latest `vX.Y.Z` tag
+reachable from your commit, without its `v`, or `0.0.0` when there is none (`tools/version.sh`;
+`just print-version` prints it). A build between two releases carries the last release's version.
+Tags that aren't `vX.Y.Z`, like `v1.0-beta`, are skipped. The build number is the number of
+commits. The bundle id, `headsup.brickpop.app`, is `bundle_id` there, the only place
 it is written. It must not change once people have installed HeadsUp: API tokens saved under
 one id aren't found under another.
 
@@ -78,21 +81,20 @@ publishes the ad-hoc build: `just release-adhoc` runs every check in the table a
 signer, and makes `build/HeadsUp.dmg`, an unsigned image holding the ad-hoc app. Users open it
 once with System Settings › Privacy & Security › Open Anyway (see the README).
 
-To publish version 0.2.0:
+To publish version 0.2.0, tag a commit on `main` `v0.2.0` and push the tag. Nothing else holds
+the version:
 
-1. Set `version := "0.2.0"` in the `justfile`, and merge that to `main`.
-2. Tag that commit on `main` and push the tag:
-
-   ```sh
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
 
 The workflow then:
 
-1. stops if the tag isn't `v` + the justfile's version, or if the tagged commit isn't on `main`;
-2. runs `just lint`, the tests of `tools/`, then `just release-adhoc` (which runs the core tests
-   on the runner's Swift too);
+1. stops if the tag isn't `vX.Y.Z` (whole numbers with no leading zeros, like `v0.2.0`), or if
+   the tagged commit isn't on `main`;
+2. runs `just lint`, the tests of `tools/`, then `just release-adhoc` with the tag's version
+   (which runs the core tests on the runner's Swift too);
 3. creates the GitHub release `v0.2.0` with `HeadsUp-0.2.0.dmg` and `HeadsUp-0.2.0.dmg.sha256`,
    and notes generated from the merged pull requests;
 4. writes `Casks/headsup.rb` in the Homebrew tap, from `packaging/homebrew/headsup.rb.in`

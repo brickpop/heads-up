@@ -31,7 +31,8 @@ mode=$1 bundle_id=$2 version=$3 build_number=$4
 [ "$(uname -m)" = arm64 ] || die "HeadsUp builds on Apple silicon (arm64) only; Intel isn't supported by the macOS 27 Command Line Tools. This Mac is $(uname -m)."
 # Values that end up inside Info.plist: keep them to safe characters.
 [[ "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || die "'$bundle_id' is not a bundle identifier"
-[[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "'$version' is not a version like 1.2.3"
+# The version follows the release tag's rule, X.Y.Z (tools/version.sh).
+"$(dirname "$0")/version.sh" "v$version" >/dev/null 2>&1 || die "'$version' is not a version like 1.2.3"
 [[ "$build_number" =~ ^[0-9]+$ ]] || die "'$build_number' is not a build number"
 
 # The quick build is a separate app: its own name, bundle id (so its permissions and Keychain

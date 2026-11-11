@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for tools/setup-swift.sh and tools/lint.sh. `just test` runs them, on Linux and macOS.
+# Tests for the scripts in tools/. `just test` runs them, on Linux and macOS.
 #
 # setup-swift runs against a lock of local fixtures (a fake toolchain, a fake .deb,
 # file:// URLs), so the tests are quick and need no network. It is for Linux only, so
@@ -360,6 +360,18 @@ if [ "$status" -ne 0 ] && grep -q "^make-app: HeadsUp builds on Apple silicon (a
 else
     fail "an Intel Mac is refused before anything builds" "status $status: $(cat "$work/out")"
 fi
+
+# The version follows the release tag's rule (tools/version.sh), checked before anything builds.
+for bad in 1.2 1.02.3 '1.2.3 x'; do
+    rm -f "$events"
+    if PATH="$fakes:$PATH" "$tools/make-app.sh" adhoc dev.headsup.app "$bad" 1 >"$work/out" 2>&1; then
+        fail "make-app refuses the version '$bad'" "it built"
+    elif grep -q "^make-app: '$bad' is not a version like 1.2.3" "$work/out" && [ ! -s "$events" ]; then
+        pass "make-app refuses the version '$bad'"
+    else
+        fail "make-app refuses the version '$bad'" "$(cat "$work/out")"
+    fi
+done
 
 # The arm64 build and the tests run at the same time: both start before either ends, and no
 # x86_64 build is started.
@@ -746,9 +758,60 @@ render_refuses() { # name, then the four arguments
     fi
 }
 render_refuses "a version with a quote" '1.2"; system("x")' "$good_sha" brickpop/heads-up dev.headsup.app
+render_refuses "a version that isn't X.Y.Z" 1.2 "$good_sha" brickpop/heads-up dev.headsup.app
+render_refuses "a version with a leading zero" 1.02.3 "$good_sha" brickpop/heads-up dev.headsup.app
 render_refuses "a short sha256" 1.2.3 abc123 brickpop/heads-up dev.headsup.app
 render_refuses "a repo with a slash too many" 1.2.3 "$good_sha" brickpop/heads-up/x dev.headsup.app
 render_refuses "a bundle id with a pipe" 1.2.3 "$good_sha" brickpop/heads-up 'dev.headsup|x'
+
+# --- the version, from the vX.Y.Z tag ------------------------------------------------------
+
+echo
+echo "version"
+versions=$work/versions
+mkdir -p "$versions"
+g() { git -C "$versions" -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
+g init -q
+commit() { g -c user.name=test -c user.email=test@example.invalid commit -q --allow-empty -m "$1"; }
+local_version() { # name, expected
+    local got
+    got=$(cd "$versions" && GIT_CEILING_DIRECTORIES=$work "$tools/version.sh" 2>&1) || got="exit $?: $got"
+    if [ "$got" = "$2" ]; then pass "$1"; else fail "$1" "printed '$got', not '$2'"; fi
+}
+commit one
+local_version "no tag gives 0.0.0" 0.0.0
+g tag v1.2.3
+commit two
+local_version "the latest vX.Y.Z tag, between tags too" 1.2.3
+g tag v1.3.0-beta
+commit three
+g tag v2
+g tag v1.010.0
+local_version "tags that aren't vX.Y.Z are skipped" 1.2.3
+g tag v1.10.0
+local_version "a newer vX.Y.Z tag is taken" 1.10.0
+rm -rf "$versions/.git"
+local_version "outside a git clone gives 0.0.0" 0.0.0
+
+if [ "$("$tools/version.sh" v1.2.3 2>&1)" = 1.2.3 ]; then
+    pass "a release tag gives its version"
+else
+    fail "a release tag gives its version" "$("$tools/version.sh" v1.2.3 2>&1)"
+fi
+release_refuses() { # tag
+    if "$tools/version.sh" "$1" >"$work/out" 2>&1; then
+        fail "a release refuses the tag '$1'" "it printed: $(cat "$work/out")"
+    elif grep -q "release tag must be vX.Y.Z" "$work/out"; then
+        pass "a release refuses the tag '$1'"
+    else
+        fail "a release refuses the tag '$1'" "$(cat "$work/out")"
+    fi
+}
+release_refuses v1.2
+release_refuses v1.02.3
+release_refuses v1.3.0-beta
+release_refuses 1.2.3
+release_refuses 'v1.2.3;x'
 
 echo
 echo "tools: $passed passed, $failed failed"

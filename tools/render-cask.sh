@@ -14,7 +14,8 @@ die() {
 version=$1 sha256=$2 repo=$3 bundle_id=$4
 
 # Every value lands in Ruby source: keep each to the characters it needs.
-[[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || die "'$version' is not a version like 1.2.3"
+# The version follows the release tag's rule, X.Y.Z (tools/version.sh).
+"$(dirname "$0")/version.sh" "v$version" >/dev/null 2>&1 || die "'$version' is not a version like 1.2.3"
 [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || die "'$sha256' is not a SHA-256 in lower-case hex"
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "'$repo' is not owner/repo"
 [[ "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]] || die "'$bundle_id' is not a bundle identifier"

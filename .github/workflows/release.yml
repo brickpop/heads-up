@@ -1,5 +1,5 @@
-# Publishes a release when a tag like v0.2.0 is pushed. The tag must match `version` in the
-# justfile and point at a commit on main. It builds the unsigned release on macOS
+# Publishes a release when a tag like v0.2.0 is pushed. The tag is the only place the version is
+# written: it must be vX.Y.Z and point at a commit on main. It builds the unsigned release on macOS
 # (`just release-adhoc`), attaches the .dmg and its SHA-256 to a GitHub release, then updates the
 # Homebrew cask in the tap. See docs/RELEASE.md.
 #
@@ -37,13 +37,9 @@ jobs:
       - name: Install just (pinned, checksum verified)
         run: .github/scripts/install-just.sh
 
-      - name: Check the tag matches the version
+      - name: Take the version from the tag
         run: |
-          version=$(just print-version)
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME but the justfile's version is $version. Tag v$version, or change the version first."
-            exit 1
-          fi
+          version=$(tools/version.sh "$GITHUB_REF_NAME" 2>&1) || { echo "::error::$version"; exit 1; }
           echo "VERSION=$version" >>"$GITHUB_ENV"
           echo "BUNDLE_ID=$(just print-bundle-id)" >>"$GITHUB_ENV"
 
@@ -67,7 +63,7 @@ jobs:
       - name: Test the scripts in tools/
         run: tools/test-tools.sh
       - name: Build the release (runs the core tests on this Swift too)
-        run: just release-adhoc
+        run: just version="$VERSION" release-adhoc # the tag's version, whatever other tags say
 
       - name: Name the image and record its checksum
         run: |
