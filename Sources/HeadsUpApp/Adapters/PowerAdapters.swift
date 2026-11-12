@@ -1,5 +1,5 @@
-import CoreFoundation
 import CoreGraphics
+import Foundation
 import HeadsUpCore
 import IOKit.ps
 import IOKit.pwr_mgt
