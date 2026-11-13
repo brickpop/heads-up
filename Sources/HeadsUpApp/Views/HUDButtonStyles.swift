@@ -81,10 +81,10 @@ struct HUDButtonStyle: ButtonStyle {
         case breakStart
         /// `--raise` and a hairline.
         case secondary
-        /// As secondary, with a red title, icon and outline: Stop focus. Never a red fill.
+        /// As secondary, with a red title, icon and outline: Stop for now. Never a red fill.
         case destructive
-        /// As secondary, with a `warn` title, icon and outline: Skip break.
-        case breakSkip
+        /// As secondary, with a `warn` title, icon and outline: Take a break and Skip break.
+        case breakSecondary
         /// A 28 pt square with the icon only; `isOn` for a toggle, which then shows `--raise2`.
         case iconOnly(isOn: Bool = false)
     }
@@ -176,16 +176,16 @@ private struct CardButtonBody: View {
         case .breakStart: AnyShapeStyle(HUDStyle.Colors.onAmber(contrast))
         case .secondary: AnyShapeStyle(.primary)
         case .destructive: AnyShapeStyle(HUDStyle.Colors.alertText)
-        case .breakSkip: AnyShapeStyle(HUDStyle.Colors.warn)
+        case .breakSecondary: AnyShapeStyle(HUDStyle.Colors.warn)
         case .iconOnly(let isOn): isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)
         }
     }
 
-    /// The hairline of an unfilled button: in the title's colour for Stop focus and Skip break.
+    /// The hairline of an unfilled button: in the title's colour for destructive and break buttons.
     private var outline: Color {
         switch kind {
         case .destructive: HUDStyle.Colors.alertText
-        case .breakSkip: HUDStyle.Colors.warn
+        case .breakSecondary: HUDStyle.Colors.warn
         default: HUDStyle.Colors.line
         }
     }

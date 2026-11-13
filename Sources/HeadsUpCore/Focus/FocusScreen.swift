@@ -37,30 +37,37 @@ public enum FocusScreen: Equatable, Sendable {
         public let timerAccessibility: String
         public let subtitle: String
         public let progress: Double
-        /// The button on the right; it calls `stopRun()`.
-        public let end: EndAction
+        /// Next to Pause: Stop for now in a focus, nothing in a break.
+        public let stop: RunAction?
+        /// On the right: Take a break in a focus, Skip break in a break.
+        public let end: RunAction
         /// "Pause" or "Resume"; both call `togglePause()`.
         public let pauseTitle: String
         public let pauseGlyph: Glyph
     }
 
-    /// The end button of a running focus or break.
-    public enum EndAction: Equatable, Sendable {
-        /// Stop focus: ends the focus, and the session isn't counted.
-        case stopFocus
+    /// A button of a running focus or break, besides Pause; `FocusStore.run(_:)` does it.
+    public enum RunAction: Equatable, Sendable {
+        /// Stop for now: ends the focus, back to idle; the session isn't counted.
+        case stopForNow
+        /// Take a break: ends the focus early, on to the break prompt; the partial focus isn't counted.
+        case takeBreak
         /// Skip break: moves on to the back prompt; nothing is lost.
         case skipBreak
 
         public var title: String {
             switch self {
-            case .stopFocus: Strings.Focus.stopFocus
+            case .stopForNow: Strings.Focus.stopForNow
+            case .takeBreak: Strings.Focus.takeBreak
             case .skipBreak: Strings.Focus.skipBreak
             }
         }
 
+        /// Circled, like Pause and Resume.
         public var glyph: Glyph {
             switch self {
-            case .stopFocus: .stop
+            case .stopForNow: .stop
+            case .takeBreak: .dropletCircle
             case .skipBreak: .skip
             }
         }
@@ -175,13 +182,13 @@ extension FocusStore {
                     run, now: now, label: run.isPaused ? Strings.Focus.focusPaused : Strings.Focus.focusing,
                     subtitle: Strings.Focus.sessionSubtitle(
                         minutes: run.minutes, breakAt: Self.clockTime(breakAt, locale: locale, timeZone: timeZone)),
-                    end: .stopFocus))
+                    stop: .stopForNow, end: .takeBreak))
         case .rest(let run, _):
             return .running(
                 runningScreen(
                     run, now: now,
                     label: run.isPaused ? Strings.Focus.breakPaused : Strings.Focus.breakLabel(activity.label),
-                    subtitle: Strings.Focus.breakSubtitle, end: .skipBreak))
+                    subtitle: Strings.Focus.breakSubtitle, stop: nil, end: .skipBreak))
         case .prompt(.breakPrompt(let manual)):
             return .breakPrompt(breakPromptScreen(manual: manual))
         case .prompt(.backPrompt):
@@ -230,12 +237,12 @@ extension FocusStore {
         settings.settings.focus.breakOptions.count > 1
     }
 
-    /// Stop focus in a focus, Skip break in a break.
-    public func stopRun() {
-        switch phase {
-        case .focus: stop()
-        case .rest: skipBreak()
-        default: break
+    /// Does a running focus's or break's button.
+    public func run(_ action: FocusScreen.RunAction) {
+        switch action {
+        case .stopForNow: stop()
+        case .takeBreak: takeBreakNow()
+        case .skipBreak: skipBreak()
         }
     }
 
@@ -263,15 +270,16 @@ extension FocusStore {
     }
 
     private func runningScreen(
-        _ run: FocusRun, now: Date, label: String, subtitle: String, end: FocusScreen.EndAction
+        _ run: FocusRun, now: Date, label: String, subtitle: String, stop: FocusScreen.RunAction?,
+        end: FocusScreen.RunAction
     ) -> FocusScreen.Running {
         let left = run.timeLeft(at: now)
         return FocusScreen.Running(
             label: label, timer: Format.clock(left),
             timerAccessibility: Strings.Focus.timeLeftAccessibility(Format.spokenMinutes(left, rounding: .up)),
-            subtitle: subtitle, progress: run.progress(at: now), end: end,
+            subtitle: subtitle, progress: run.progress(at: now), stop: stop, end: end,
             pauseTitle: run.isPaused ? Strings.Focus.resume : Strings.Focus.pause,
-            pauseGlyph: run.isPaused ? .play : .pause)
+            pauseGlyph: run.isPaused ? .playCircle : .pause)
     }
 
     private func breakPromptScreen(manual: Bool) -> FocusScreen.BreakPrompt {

@@ -571,7 +571,8 @@ private struct FocusHarness {
         #expect(running.timerAccessibility == "24 minutes left")
         #expect(running.subtitle == "25 min session · break at \(expectedUS)")
         #expect(british.subtitle == "25 min session · break at \(expectedGB)")
-        #expect(running.end == .stopFocus)
+        #expect(running.stop == .stopForNow && running.end == .takeBreak)
+        #expect(running.stop?.title == "Stop for now" && running.end.title == "Take a break")
         #expect(running.pauseTitle == "Pause" && running.pauseGlyph == .pause)
         #expect(abs(running.progress - 1.0 / 25) < 1e-9)
     }
@@ -582,7 +583,7 @@ private struct FocusHarness {
         h.focus.togglePause()
         guard case .running(let paused) = h.focus.screen(at: h.clock.now) else { return }
         #expect(paused.label == "Focus · paused")
-        #expect(paused.pauseTitle == "Resume" && paused.pauseGlyph == .play)
+        #expect(paused.pauseTitle == "Resume" && paused.pauseGlyph == .playCircle)
         h.focus.togglePause()
         #expect(h.focus.snapshot == .running(.focus, endsAt: h.clock.now.addingTimeInterval(25 * 60)))
 
@@ -591,9 +592,25 @@ private struct FocusHarness {
         guard case .running(let rest) = h.focus.screen(at: h.clock.now) else { return }
         #expect(rest.label == "Break · Drink water")
         #expect(rest.subtitle == "Step away. The HUD will call you back.")
-        #expect(rest.end == .skipBreak)
-        h.focus.stopRun()
+        #expect(rest.stop == nil && rest.end == .skipBreak)
+        h.focus.run(rest.end)
         #expect(h.focus.phase == .prompt(.backPrompt))
+    }
+
+    @Test func aFocusCanStopForNowOrTakeABreak() {
+        let h = FocusHarness()
+        h.focus.start()
+        h.minutes(10)
+        h.focus.run(.takeBreak)
+        #expect(h.focus.phase == .prompt(.breakPrompt(manual: true)))
+        #expect(h.focus.today == FocusDay())  // the partial focus isn't counted
+
+        let stopped = FocusHarness()
+        stopped.focus.start()
+        stopped.minutes(10)
+        stopped.focus.run(.stopForNow)
+        #expect(stopped.focus.phase == .idle)
+        #expect(stopped.focus.today == FocusDay())  // the session isn't counted
     }
 
     @Test func bothBreakPromptsOfferDone() {
