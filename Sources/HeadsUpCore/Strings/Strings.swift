@@ -443,13 +443,13 @@ public enum Strings {
             "\(minutes) min session · break at \(breakAt)"
         }
         public static let breakSubtitle = "Step away. The HUD will call you back."
-        public static let stopForNow = "Stop for now"
         public static let takeBreak = "Take a break"
         public static let skipBreak = "Skip break"
         public static let pause = "Pause"
         public static let resume = "Resume"
 
-        /// The snooze group's last segment, on both prompts: ends the loop.
+        /// Ends the loop, back to idle: the snooze group's last segment on both prompts, and the
+        /// button next to Pause in a running focus.
         public static let stopNow = "Stop now"
         public static let stopNowHelp = "Stop here. Nothing else starts."
         /// VoiceOver's hint on the primary buttons that show the ⌘↩ keycap.

@@ -2,7 +2,7 @@ import HeadsUpCore
 import SwiftUI
 
 /// A focus or a break that runs or is paused: the countdown, its subtitle, the progress bar and
-/// the buttons, [Pause] [Stop for now] … [Take a break] in a focus and [Pause] … [Skip break] in a break.
+/// the buttons, [Pause] [Stop now] … [Take a break] in a focus and [Pause] … [Skip break] in a break.
 struct FocusRunningView: View {
     let focus: FocusStore
     let screen: FocusScreen.Running
@@ -38,10 +38,10 @@ struct FocusRunningView: View {
         .buttonStyle(.hud(Self.kind(action)))
     }
 
-    /// Red for Stop for now, which loses the session; the warn colour for the break buttons.
+    /// Red for Stop now, which loses the session; the warn colour for the break buttons.
     private static func kind(_ action: FocusScreen.RunAction) -> HUDButtonStyle.Kind {
         switch action {
-        case .stopForNow: .destructive
+        case .stopNow: .destructive
         case .takeBreak, .skipBreak: .breakSecondary
         }
     }

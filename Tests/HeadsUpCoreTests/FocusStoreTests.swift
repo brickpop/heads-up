@@ -571,8 +571,8 @@ private struct FocusHarness {
         #expect(running.timerAccessibility == "24 minutes left")
         #expect(running.subtitle == "25 min session · break at \(expectedUS)")
         #expect(british.subtitle == "25 min session · break at \(expectedGB)")
-        #expect(running.stop == .stopForNow && running.end == .takeBreak)
-        #expect(running.stop?.title == "Stop for now" && running.end.title == "Take a break")
+        #expect(running.stop == .stopNow && running.end == .takeBreak)
+        #expect(running.stop?.title == "Stop now" && running.end.title == "Take a break")
         #expect(running.pauseTitle == "Pause" && running.pauseGlyph == .pause)
         #expect(abs(running.progress - 1.0 / 25) < 1e-9)
     }
@@ -597,7 +597,7 @@ private struct FocusHarness {
         #expect(h.focus.phase == .prompt(.backPrompt))
     }
 
-    @Test func aFocusCanStopForNowOrTakeABreak() {
+    @Test func aFocusCanStopNowOrTakeABreak() {
         let h = FocusHarness()
         h.focus.start()
         h.minutes(10)
@@ -608,7 +608,7 @@ private struct FocusHarness {
         let stopped = FocusHarness()
         stopped.focus.start()
         stopped.minutes(10)
-        stopped.focus.run(.stopForNow)
+        stopped.focus.run(.stopNow)
         #expect(stopped.focus.phase == .idle)
         #expect(stopped.focus.today == FocusDay())  // the session isn't counted
     }

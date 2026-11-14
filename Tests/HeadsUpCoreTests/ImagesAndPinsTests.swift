@@ -401,6 +401,7 @@ private func image(_ name: String? = "Screenshot 1.png", _ bytes: String = "png-
         await h.send("remember \(marker)")
         await h.reply("Noted: \(marker)")
         h.chat.togglePin()
+        #expect(h.chat.isPinned, "pin failed: \(String(describing: h.chat.screen.toolbar.problem))")
         let wal = URL(fileURLWithPath: h.databaseFile.path + "-wal")
         let before = try Data(contentsOf: h.databaseFile) + ((try? Data(contentsOf: wal)) ?? Data())
         #expect(before.range(of: Data(marker.utf8)) != nil)

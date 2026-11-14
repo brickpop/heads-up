@@ -37,7 +37,7 @@ public enum FocusScreen: Equatable, Sendable {
         public let timerAccessibility: String
         public let subtitle: String
         public let progress: Double
-        /// Next to Pause: Stop for now in a focus, nothing in a break.
+        /// Next to Pause: Stop now in a focus, nothing in a break.
         public let stop: RunAction?
         /// On the right: Take a break in a focus, Skip break in a break.
         public let end: RunAction
@@ -48,8 +48,8 @@ public enum FocusScreen: Equatable, Sendable {
 
     /// A button of a running focus or break, besides Pause; `FocusStore.run(_:)` does it.
     public enum RunAction: Equatable, Sendable {
-        /// Stop for now: ends the focus, back to idle; the session isn't counted.
-        case stopForNow
+        /// Stop now: ends the focus, back to idle; the session isn't counted.
+        case stopNow
         /// Take a break: ends the focus early, on to the break prompt; the partial focus isn't counted.
         case takeBreak
         /// Skip break: moves on to the back prompt; nothing is lost.
@@ -57,7 +57,7 @@ public enum FocusScreen: Equatable, Sendable {
 
         public var title: String {
             switch self {
-            case .stopForNow: Strings.Focus.stopForNow
+            case .stopNow: Strings.Focus.stopNow
             case .takeBreak: Strings.Focus.takeBreak
             case .skipBreak: Strings.Focus.skipBreak
             }
@@ -66,7 +66,7 @@ public enum FocusScreen: Equatable, Sendable {
         /// Circled, like Pause and Resume.
         public var glyph: Glyph {
             switch self {
-            case .stopForNow: .stop
+            case .stopNow: .stop
             case .takeBreak: .dropletCircle
             case .skipBreak: .skip
             }
@@ -182,7 +182,7 @@ extension FocusStore {
                     run, now: now, label: run.isPaused ? Strings.Focus.focusPaused : Strings.Focus.focusing,
                     subtitle: Strings.Focus.sessionSubtitle(
                         minutes: run.minutes, breakAt: Self.clockTime(breakAt, locale: locale, timeZone: timeZone)),
-                    stop: .stopForNow, end: .takeBreak))
+                    stop: .stopNow, end: .takeBreak))
         case .rest(let run, _):
             return .running(
                 runningScreen(
@@ -240,7 +240,7 @@ extension FocusStore {
     /// Does a running focus's or break's button.
     public func run(_ action: FocusScreen.RunAction) {
         switch action {
-        case .stopForNow: stop()
+        case .stopNow: stop()
         case .takeBreak: takeBreakNow()
         case .skipBreak: skipBreak()
         }

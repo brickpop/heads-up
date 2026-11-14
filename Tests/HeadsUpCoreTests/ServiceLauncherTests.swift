@@ -119,8 +119,9 @@ private func isGone(_ pid: Int32) -> Bool {
             unlink(path)
         }
         #expect(fd > 2)
-        // /proc/self/fd lists the shell's own descriptors (Linux).
-        let (_, out) = try await run(plan("ls /proc/$$/fd"))
+        // The shell prints each of 0, 1, 2 and that descriptor it has open: a redirection to a
+        // closed one fails, with a line that isn't a number. It works the same on Linux and macOS.
+        let (_, out) = try await run(plan("for n in 0 1 2 \(fd); do (: >&$n) && echo $n; done"))
         #expect(await waitUntil { out.exit != nil })
         let open = out.text.split(separator: "\n").compactMap { Int32($0) }
         #expect(!open.contains(fd))

@@ -81,7 +81,7 @@ struct HUDButtonStyle: ButtonStyle {
         case breakStart
         /// `--raise` and a hairline.
         case secondary
-        /// As secondary, with a red title, icon and outline: Stop for now. Never a red fill.
+        /// As secondary, with a red title, icon and outline: Stop now. Never a red fill.
         case destructive
         /// As secondary, with a `warn` title, icon and outline: Take a break and Skip break.
         case breakSecondary
