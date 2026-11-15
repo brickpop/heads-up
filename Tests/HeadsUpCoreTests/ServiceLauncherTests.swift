@@ -63,7 +63,9 @@ private func isGone(_ pid: Int32) -> Bool {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("headsup-svc-\(UUID().uuidString)")
         let folder = root.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder
+        // Its real path, which is what `pwd` prints: on macOS the temporary folder is under
+        // /var, a link to /private/var.
+        return URL(fileURLWithPath: try #require(SecureFile.realPath(folder.path)))
     }
 
     @Test func itRunsInAFolderWithAQuoteInItsName() async throws {

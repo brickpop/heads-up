@@ -174,31 +174,42 @@ import Testing
 
     /// Hostile replies that would nest thousands of levels deep: they must parse without
     /// overflowing the stack, which swift-markdown alone does (a crash, signal 11).
-    static let hostile: [String] = {
-        var cases: [String] = []
-        cases.append(String(repeating: "> ", count: 5000) + "bottom")
-        cases.append(String(repeating: "- ", count: 5000) + "bottom")
-        cases.append(String(repeating: "1. ", count: 3000) + "bottom")
-        cases.append(String(repeating: "> - ", count: 3000) + "bottom")
-        cases.append(String(repeating: "*", count: 5000) + "a" + String(repeating: "*", count: 5000))
-        cases.append(String(repeating: "*_", count: 3000) + "a" + String(repeating: "_*", count: 3000))
-        cases.append(String(repeating: "~~", count: 3000) + "a" + String(repeating: "~~", count: 3000))
-        cases.append(String(repeating: "[", count: 5000) + "a" + String(repeating: "](https://x.example)", count: 5000))
-        let indented: [String] = (0..<3000).map { String(repeating: " ", count: $0 * 2) + "- item" }
-        cases.append(indented.joined(separator: "\n"))
+    static let hostile: [HostileMarkdown] = [
+        HostileMarkdown("5000 nested quotes", String(repeating: "> ", count: 5000) + "bottom"),
+        HostileMarkdown("5000 nested lists", String(repeating: "- ", count: 5000) + "bottom"),
+        HostileMarkdown("3000 nested numbered lists", String(repeating: "1. ", count: 3000) + "bottom"),
+        HostileMarkdown("3000 quotes and lists", String(repeating: "> - ", count: 3000) + "bottom"),
+        HostileMarkdown(
+            "5000 asterisks each side", String(repeating: "*", count: 5000) + "a" + String(repeating: "*", count: 5000)),
+        HostileMarkdown(
+            "3000 *_ pairs", String(repeating: "*_", count: 3000) + "a" + String(repeating: "_*", count: 3000)),
+        HostileMarkdown(
+            "3000 strikethroughs", String(repeating: "~~", count: 3000) + "a" + String(repeating: "~~", count: 3000)),
+        HostileMarkdown(
+            "5000 nested links",
+            String(repeating: "[", count: 5000) + "a" + String(repeating: "](https://x.example)", count: 5000)),
+        HostileMarkdown(
+            "3000 indented list items",
+            (0..<3000).map { String(repeating: " ", count: $0 * 2) + "- item" }.joined(separator: "\n")),
         // Scan's shapes: nested images; alternating emphasis with letters between; the same
         // spread over lines of one paragraph.
-        cases.append(
-            String(repeating: "![", count: 3000) + "a" + String(repeating: "](https://x.example/i.png)", count: 3000))
-        cases.append(String(repeating: "*a _a ", count: 3000) + "z" + String(repeating: " a_ a*", count: 3000))
-        cases.append(String(repeating: "*a\n_a\n", count: 3000) + "z" + String(repeating: "\na_\na*", count: 3000))
-        cases.append(String(repeating: "**a __a ", count: 2000) + "z" + String(repeating: " a__ a**", count: 2000))
-        return cases
-    }()
+        HostileMarkdown(
+            "3000 nested images",
+            String(repeating: "![", count: 3000) + "a" + String(repeating: "](https://x.example/i.png)", count: 3000)),
+        HostileMarkdown(
+            "3000 alternating emphasis",
+            String(repeating: "*a _a ", count: 3000) + "z" + String(repeating: " a_ a*", count: 3000)),
+        HostileMarkdown(
+            "3000 alternating emphasis over lines",
+            String(repeating: "*a\n_a\n", count: 3000) + "z" + String(repeating: "\na_\na*", count: 3000)),
+        HostileMarkdown(
+            "2000 alternating strong emphasis",
+            String(repeating: "**a __a ", count: 2000) + "z" + String(repeating: " a__ a**", count: 2000)),
+    ]
 
     @Test(arguments: hostile)
-    func deepNestingParsesSafely(_ markdown: String) {
-        let blocks = MarkdownBlocks.parse(markdown)
+    func deepNestingParsesSafely(_ hostile: HostileMarkdown) {
+        let blocks = MarkdownBlocks.parse(hostile.markdown)
         #expect(!blocks.isEmpty)
         #expect(blocks.map(\.depth).max() ?? 0 <= MarkdownBlocks.maxDepth + 1)
     }
@@ -277,4 +288,18 @@ extension Block {
         let list = (0..<300).map { "- item *\($0)*" }.joined(separator: "\n")
         #expect(MarkdownBlocks.flattenRunawayNesting(list).hasPrefix("- item"))
     }
+}
+
+/// A hostile Markdown input and the short name the test log prints for it: swift-testing
+/// prints an argument in full, and these run to megabytes.
+struct HostileMarkdown: CustomTestStringConvertible, Sendable {
+    let name: String
+    let markdown: String
+
+    init(_ name: String, _ markdown: String) {
+        self.name = name
+        self.markdown = markdown
+    }
+
+    var testDescription: String { name }
 }

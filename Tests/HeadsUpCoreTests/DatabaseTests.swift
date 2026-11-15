@@ -99,6 +99,20 @@ private func mode(_ path: String) throws -> Int {
         #expect(throws: Database.Failure.self) { _ = try Database(file: file) }
     }
 
+    /// A link above the folder is fine; only a link in place of the file is refused.
+    @Test func aFolderReachedThroughALinkOpens() throws {
+        let root = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let real = root.appendingPathComponent("real")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let database = try Database(file: link.appendingPathComponent("HeadsUp/\(Database.fileName)"))
+        try database.execute("INSERT INTO focus_day (day, sessions, minutes) VALUES ('2026-10-25', 1, 25)")
+        #expect(try mode(real.appendingPathComponent("HeadsUp/\(Database.fileName)").path) == 0o600)
+    }
+
     @Test func aFailedTransactionWritesNothing() throws {
         let root = try temporaryFolder()
         defer { try? FileManager.default.removeItem(at: root) }

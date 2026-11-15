@@ -63,9 +63,7 @@ public enum ShellEnvironment {
     /// A folder that exists and that nobody but root and the user can change: its real path
     /// (links resolved), and every folder from / down to it, pass `isSafeChain` (Scan L1).
     static func isSafeFolder(_ path: String) -> Bool {
-        guard let resolved = realpath(path, nil) else { return false }
-        let real = String(cString: resolved)
-        free(resolved)
+        guard let real = SecureFile.realPath(path) else { return false }
         var info = stat()
         guard stat(real, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return false }
         var chain: [(owner: uid_t, mode: mode_t)] = []

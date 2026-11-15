@@ -55,17 +55,22 @@ public final class Database {
         } catch {
             throw Failure(message: error.description)
         }
-        try Self.createPrivately(file)
+        // SQLITE_OPEN_NOFOLLOW refuses a link anywhere in the path, so SQLite gets the folder's
+        // real path: a link above it is fine (macOS's /var → /private/var is under every temporary
+        // folder), and a link in place of the file or its companions is still refused.
+        let real = try Self.realFolder(file.deletingLastPathComponent())
+            .appendingPathComponent(file.lastPathComponent)
+        try Self.createPrivately(real)
         for suffix in ["-wal", "-shm"] {
-            try Self.checkCompanion(URL(fileURLWithPath: file.path + suffix))
+            try Self.checkCompanion(URL(fileURLWithPath: real.path + suffix))
         }
 
         var opened: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOFOLLOW | SQLITE_OPEN_FULLMUTEX
-        guard sqlite3_open_v2(file.path, &opened, flags, nil) == SQLITE_OK, let opened else {
+        guard sqlite3_open_v2(real.path, &opened, flags, nil) == SQLITE_OK, let opened else {
             let message = opened.map { String(cString: sqlite3_errmsg($0)) } ?? "out of memory"
             sqlite3_close(opened)
-            throw Failure(message: "open \(file.path): \(message)")
+            throw Failure(message: "open \(real.path): \(message)")
         }
         handle = opened
         do {
@@ -82,6 +87,21 @@ public final class Database {
 
     deinit {
         sqlite3_close(handle)
+    }
+
+    /// The folder's path with every link in it resolved (`realpath(3)`), checked again as
+    /// `SecureFile` checks a folder, so the folder SQLite opens is the one that was checked.
+    private static func realFolder(_ folder: URL) throws(Failure) -> URL {
+        guard let path = SecureFile.realPath(folder.path) else {
+            throw Failure(message: "realpath \(folder.path): \(String(cString: strerror(errno)))")
+        }
+        let real = URL(fileURLWithPath: path, isDirectory: true)
+        do {
+            try SecureFile.checkFolder(real)
+        } catch {
+            throw Failure(message: error.description)
+        }
+        return real
     }
 
     /// Creates the file with mode 0600 if it is missing; checks an existing one is a regular

@@ -25,6 +25,14 @@ public enum SecureFile {
         public var plainWords: String { Strings.Files.plainWords(errno: code) }
     }
 
+    /// `path` with every link in it resolved (`realpath(3)`), or nil, with `errno` set, if it
+    /// can't be (it doesn't exist, or a folder on the way can't be read).
+    public static func realPath(_ path: String) -> String? {
+        guard let resolved = realpath(path, nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
     /// Checks `folder` if it exists: it must be a folder, not a link, owned by the user.
     /// A folder others can read or write is narrowed to 0700. Returns false if it doesn't exist.
     @discardableResult
