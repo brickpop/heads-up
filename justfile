@@ -51,7 +51,7 @@ app-quick:
     @echo "just app-quick needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
 # The release: the core tests on this Mac's Swift alongside both builds, then build/HeadsUp.app signed with the identity
-# in $HEADSUP_SIGN_ID (the only place it is named), and build/HeadsUp.dmg, both verified. See
+# in $HEADSUP_SIGN_ID (the only place it is named), and build/HeadsUp.zip holding it, both verified. See
 # docs/RELEASE.md.
 [macos]
 build:
@@ -62,7 +62,7 @@ build:
     @echo "just build needs macOS. On Linux, use just test and just lint." >&2; exit 1
 
 # The public release while it has no signing identity, as CI makes it: the checks of `build`
-# except the signer, then build/HeadsUp.dmg, an unsigned image holding the ad-hoc app.
+# except the signer, then build/HeadsUp.zip holding the ad-hoc app.
 [macos]
 release-adhoc:
     tools/make-app.sh adhoc-release "{{ bundle_id }}" "{{ version }}" "{{ build_number }}"
@@ -74,7 +74,3 @@ release-adhoc:
 # Prints the version the recipes build, from the latest vX.Y.Z tag.
 print-version:
     @echo "{{ version }}"
-
-# Prints the bundle identifier, for the release workflow's Homebrew cask.
-print-bundle-id:
-    @echo "{{ bundle_id }}"

@@ -1,12 +1,12 @@
 # Making a release build
 
-The release is `build/HeadsUp.dmg`, which holds `HeadsUp.app` for Apple silicon (arm64) only;
-Intel isn't supported by the macOS 27 Command Line Tools. The image and the app are signed with
-your own code-signing identity, with the hardened runtime. There is no notarization and no
+The release is `build/HeadsUp.zip`, which holds `HeadsUp.app` for Apple silicon (arm64) only;
+Intel isn't supported by the macOS 27 Command Line Tools. The app is signed with your own
+code-signing identity, with the hardened runtime. There is no notarization and no
 auto-update (ADR-001 §10).
 
 This page covers the signed build on your own Mac (`just build`). The public release on GitHub
-and Homebrew is built by CI, unsigned for now: see [Publishing a release (CI)](#publishing-a-release-ci).
+is built by CI, unsigned for now: see [Publishing a release (CI)](#publishing-a-release-ci).
 
 ## Once: the tools and the identity
 
@@ -61,7 +61,7 @@ just build
 | `codesign --verify --strict --deep` | the signature covers everything in the app |
 | Each architecture's entitlements are exactly `automation.apple-events` and `personal-information.calendars`, both true, and the hardened runtime is on (F8) | the app has only the permissions we reviewed |
 | The signature isn't ad-hoc, and `codesign -dv` shows its `Authority=` | that identity really signed the app |
-| `hdiutil verify`, `codesign --verify` on the `.dmg`, and the app inside it verifies | the image you hand out is whole, signed, and holds the signed app |
+| The app unpacked from the `.zip` (`ditto -x -k`) still passes `codesign --verify --strict --deep` | the zip you hand out holds the signed app, its signature intact |
 
 `just lint` checked the same entitlements and Info.plist before the build (F8, F19, R3).
 
@@ -78,7 +78,7 @@ one id aren't found under another.
 The public release is made by GitHub Actions (`.github/workflows/release.yml`), not on a Mac
 of ours. Until there is an identity to sign it with (CEO, 2026-10-29: unsigned for now), it
 publishes the ad-hoc build: `just release-adhoc` runs every check in the table above except the
-signer, and makes `build/HeadsUp.dmg`, an unsigned image holding the ad-hoc app. Users open it
+signer, and makes `build/HeadsUp.zip` holding the ad-hoc app. Users open it
 once with System Settings › Privacy & Security › Open Anyway (see the README).
 
 To publish version 0.2.0, tag a commit on `main` `v0.2.0` and push the tag. Nothing else holds
@@ -95,10 +95,8 @@ The workflow then:
    the tagged commit isn't on `main`;
 2. runs `just lint`, the tests of `tools/`, then `just release-adhoc` with the tag's version
    (which runs the core tests on the runner's Swift too);
-3. creates the GitHub release `v0.2.0` with `HeadsUp-0.2.0.dmg` and `HeadsUp-0.2.0.dmg.sha256`,
-   and notes generated from the merged pull requests;
-4. writes `Casks/headsup.rb` in the Homebrew tap, from `packaging/homebrew/headsup.rb.in`
-   (`tools/render-cask.sh`), with the new version and checksum, and pushes it.
+3. creates the GitHub release `v0.2.0` with `HeadsUp-0.2.0.zip` and `HeadsUp-0.2.0.zip.sha256`,
+   and notes generated from the merged pull requests.
 
 ### Settings, once (the CEO)
 
@@ -106,15 +104,10 @@ In the repository's **Settings › Secrets and variables › Actions**:
 
 | Name | Kind | Value |
 |---|---|---|
-| `HOMEBREW_TAP` | variable | The tap repository, e.g. `brickpop/homebrew-tap`. Without it, the cask step is skipped. |
-| `HOMEBREW_TAP_TOKEN` | secret | A fine-grained personal access token with **Contents: read and write** on the tap repository only. |
 | `MACOS_RUNNER` | variable, optional | The runner for CI's macOS job on pushes to `main` only. Default `xcode-27`. A runner of yours needs Swift 6.4 or newer selected. |
 
 In **Settings › Rules › Rulesets**, a tag ruleset on `v*` that lets only the CEO create, update
 or delete those tags. A pushed `v*` tag publishes a release, so it is the release permission.
-
-The tap repository must exist and be public. A tap named `<owner>/homebrew-tap` installs as
-`brew install --cask <owner>/tap/headsup`; the README uses `brickpop/tap/headsup`.
 
 ### Runners
 
@@ -140,7 +133,7 @@ The tap repository must exist and be public. A tap named `<owner>/homebrew-tap` 
 
 ## Other builds
 
-- `just app`: the same app signed ad-hoc, no `.dmg`. macOS forgets its permissions and
+- `just app`: the same app signed ad-hoc, no `.zip`. macOS forgets its permissions and
   Keychain access after every ad-hoc build, so use `just build` day to day.
 - `just app-quick`: "HeadsUp Quick", a separate debug app where a timer minute lasts 5 seconds.
 

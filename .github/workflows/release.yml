@@ -1,12 +1,7 @@
 # Publishes a release when a tag like v0.2.0 is pushed. The tag is the only place the version is
 # written: it must be vX.Y.Z and point at a commit on main. It builds the unsigned release on macOS
-# (`just release-adhoc`), attaches the .dmg and its SHA-256 to a GitHub release, then updates the
-# Homebrew cask in the tap. See docs/RELEASE.md.
-#
-# Settings, in the repository's Settings › Secrets and variables › Actions:
-#   - variable HOMEBREW_TAP: the tap repository, e.g. brickpop/homebrew-tap. Unset: no cask update.
-#   - secret HOMEBREW_TAP_TOKEN: a fine-grained token with Contents: read and write on that
-#     repository only.
+# (`just release-adhoc`) and attaches the .zip and its SHA-256 to a GitHub release. See
+# docs/RELEASE.md.
 #
 # Actions are pinned by commit, with their tag in a comment; just is pinned and its checksum
 # checked (.github/scripts/install-just.sh).
@@ -41,7 +36,6 @@ jobs:
         run: |
           version=$(tools/version.sh "$GITHUB_REF_NAME" 2>&1) || { echo "::error::$version"; exit 1; }
           echo "VERSION=$version" >>"$GITHUB_ENV"
-          echo "BUNDLE_ID=$(just print-bundle-id)" >>"$GITHUB_ENV"
 
       - name: Check the tagged commit is on main
         env:
@@ -65,44 +59,17 @@ jobs:
       - name: Build the release (runs the core tests on this Swift too)
         run: just version="$VERSION" release-adhoc # the tag's version, whatever other tags say
 
-      - name: Name the image and record its checksum
+      - name: Name the zip and record its checksum
         run: |
-          dmg="build/HeadsUp-$VERSION.dmg"
-          mv build/HeadsUp.dmg "$dmg"
-          (cd build && shasum -a 256 "HeadsUp-$VERSION.dmg" >"HeadsUp-$VERSION.dmg.sha256")
-          echo "SHA256=$(cut -d' ' -f1 "$dmg.sha256")" >>"$GITHUB_ENV"
-          cat "$dmg.sha256"
+          mv build/HeadsUp.zip "build/HeadsUp-$VERSION.zip"
+          (cd build && shasum -a 256 "HeadsUp-$VERSION.zip" >"HeadsUp-$VERSION.zip.sha256")
+          cat "build/HeadsUp-$VERSION.zip.sha256"
 
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "build/HeadsUp-$VERSION.dmg" "build/HeadsUp-$VERSION.dmg.sha256" \
+            "build/HeadsUp-$VERSION.zip" "build/HeadsUp-$VERSION.zip.sha256" \
             --verify-tag --title "HeadsUp $VERSION" --generate-notes
 
-      - name: Update the Homebrew cask
-        if: ${{ vars.HOMEBREW_TAP != '' }}
-        env:
-          TAP: ${{ vars.HOMEBREW_TAP }}
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          [ -n "$TAP_TOKEN" ] || { echo "::error::HOMEBREW_TAP is set but the HOMEBREW_TAP_TOKEN secret isn't."; exit 1; }
-          tools/render-cask.sh "$VERSION" "$SHA256" "$GITHUB_REPOSITORY" "$BUNDLE_ID" >"$RUNNER_TEMP/headsup.rb"
-          # The token goes in a header for these git calls only, never into a remote URL or a
-          # file in the clone. Its base64 form is masked before it is used.
-          basic=$(printf 'x-access-token:%s' "$TAP_TOKEN" | base64 | tr -d '\n')
-          echo "::add-mask::$basic"
-          auth="AUTHORIZATION: basic $basic"
-          git -c "http.https://github.com/.extraheader=$auth" clone --depth 1 "https://github.com/$TAP.git" "$RUNNER_TEMP/tap"
-          mkdir -p "$RUNNER_TEMP/tap/Casks"
-          cp "$RUNNER_TEMP/headsup.rb" "$RUNNER_TEMP/tap/Casks/headsup.rb"
-          cd "$RUNNER_TEMP/tap"
-          if git diff --quiet -- Casks/headsup.rb && git ls-files --error-unmatch Casks/headsup.rb >/dev/null 2>&1; then
-            echo "The cask is already at $VERSION."
-            exit 0
-          fi
-          git add Casks/headsup.rb
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -m "headsup $VERSION"
-          git -c "http.https://github.com/.extraheader=$auth" push origin HEAD

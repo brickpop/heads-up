@@ -20,10 +20,6 @@
 </p>
 
 <p align="center">
-  <code>brew install --cask brickpop/tap/headsup</code>
-</p>
-
-<p align="center">
   <img src="docs/screenshots/chat.png" width="760" alt="The HeadsUp HUD in dark mode: a chat with Qwen Flash Next answering &quot;What is HeadsUp?&quot;, with the tab icons along the top and keyboard hints along the bottom">
 </p>
 
@@ -36,18 +32,11 @@ Chat with any **OpenAI-compatible** model, in the cloud or on your Mac (Ollama, 
 llama.cpp…). Replies stream in, formatted, and you can attach images. A chat is gone when you
 start a new one or quit, unless you **pin** it.
 
-> [!NOTE]
-> HeadsUp is early (version 0.x). Issues and ideas are welcome.
-
 ## Install
 
-```sh
-brew install --cask brickpop/tap/headsup
-```
-
-Update with `brew upgrade --cask headsup`. Or download `HeadsUp-<version>.dmg` from the
-[latest release](https://github.com/brickpop/heads-up/releases/latest), open it, and drag
-**HeadsUp** to Applications. Each release lists the `.dmg`'s SHA-256 next to it.
+Download `HeadsUp-<version>.zip` from the
+[latest release](https://github.com/brickpop/heads-up/releases/latest), unzip it, and move
+**HeadsUp** to Applications. Each release lists the `.zip`'s SHA-256 next to it.
 
 > [!IMPORTANT]
 > HeadsUp isn't notarized by Apple yet, so macOS blocks it the first time you open it.

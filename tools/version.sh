@@ -6,8 +6,8 @@
 #                            when there is none (a fork, or a clone without tags). Tags that
 #                            aren't vX.Y.Z (v1.0-beta, v2) are skipped. The justfile uses this.
 #   tools/version.sh <tag>   the release tag's version, without its v; it stops if the tag isn't
-#                            vX.Y.Z. The release workflow uses this, and make-app.sh and
-#                            render-cask.sh check their version through it.
+#                            vX.Y.Z. The release workflow uses this, and make-app.sh checks
+#                            its version through it.
 #
 # X, Y and Z are whole numbers with no leading zeros: 1.10.0, not 1.010.0.
 #

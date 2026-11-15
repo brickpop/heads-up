@@ -7,9 +7,9 @@
 #             and Keychain access after each ad-hoc build.
 #   adhoc-release  the public release while there is no signing identity (`just release-adhoc`,
 #             run by CI): the checks of `identity` except the signer, the core tests on this
-#             Mac's Swift, and build/HeadsUp.dmg, an unsigned image holding the ad-hoc app.
+#             Mac's Swift, and build/HeadsUp.zip holding the ad-hoc app.
 #   identity  signs with $HEADSUP_SIGN_ID, a code-signing identity in your keychain,
-#             and then makes build/HeadsUp.dmg (`just build`).
+#             and then makes build/HeadsUp.zip (`just build`).
 #   quick     a debug build for this Mac only, signed ad-hoc, where one timer minute lasts
 #             5 seconds (`just app-quick`), for checking a whole Focus round quickly. It is a
 #             separate app, "HeadsUp Quick" (build/HeadsUp Quick.app, bundle id <id>.quick,
@@ -62,10 +62,9 @@ swift_version=$(swift --version 2>&1 || true)
 echo "make-app: ${swift_version%%$'\n'*}"
 
 # What to clean up, whatever happens, even a failure halfway: the background jobs (and what they
-# started), the opened image, and the temporary folders (Scan I21).
+# started) and the temporary folders (Scan I21).
 logs=$(mktemp -d)
 check=$(mktemp -d)
-mount=""
 job_pids=()
 job_names=()
 cleanup() {
@@ -73,10 +72,6 @@ cleanup() {
     for pid in ${job_pids[@]+"${job_pids[@]}"}; do
         kill -- "-$pid" 2>/dev/null || true
     done
-    if [ -n "$mount" ]; then
-        hdiutil detach -force "$mount" >/dev/null 2>&1 || true
-        rmdir "$mount" 2>/dev/null || true
-    fi
     rm -rf "$check" "$logs"
 }
 trap cleanup EXIT
@@ -232,24 +227,12 @@ if [ "$mode" = identity ]; then
 fi
 
 if [ "$mode" = identity ] || [ "$mode" = adhoc-release ]; then
-    dmg=build/HeadsUp.dmg
-    rm -f "$dmg"
-    hdiutil create -volname HeadsUp -srcfolder "$app" -ov -format UDZO "$dmg" >/dev/null
-    # Only an identity signs the image: an ad-hoc signature on it would prove nothing.
-    if [ "$mode" = identity ]; then
-        codesign --force --timestamp=none -s "$sign_id" "$dmg"
-    fi
-    # The image's checksums, its signature, and the app inside it, as the user will open it.
-    hdiutil verify "$dmg" >/dev/null 2>&1 || die "$dmg doesn't verify (hdiutil verify)"
-    if [ "$mode" = identity ]; then
-        codesign --verify --strict "$dmg" || die "$dmg's signature doesn't verify"
-    fi
-    mount=$(mktemp -d)
-    hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg" >/dev/null || die "can't open $dmg"
-    codesign --verify --strict --deep "$mount/$name.app" || die "the app inside $dmg doesn't verify"
-    if [ "$mode" = identity ]; then
-        echo "make-app: built $dmg (signed, verified, and the app inside it verifies)"
-    else
-        echo "make-app: built $dmg (unsigned image, verified; the ad-hoc app inside it verifies)"
-    fi
+    zip=build/HeadsUp.zip
+    rm -f "$zip"
+    # ditto, not zip: it keeps the signature's extended attributes and the bundle's symlinks.
+    ditto -c -k --keepParent "$app" "$zip" || die "can't make $zip"
+    # The app as the user will unpack it: its signature must still verify.
+    ditto -x -k "$zip" "$check/unzipped" || die "can't unpack $zip"
+    codesign --verify --strict --deep "$check/unzipped/$name.app" || die "the app inside $zip doesn't verify"
+    echo "make-app: built $zip (the app inside it verifies)"
 fi
