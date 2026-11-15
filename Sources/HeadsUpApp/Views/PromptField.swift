@@ -21,6 +21,9 @@ struct PromptField: View {
         .textFieldStyle(.plain)
         .font(.system(size: HUDStyle.Prompt.fontSize))
         .autocorrectionDisabled()
+        // The field editor can outgrow the field after a width change while editing (tab switch,
+        // chip or thumbnails appearing), and would draw long text over the buttons beside it.
+        .clipped()
         .focused($isFocused)
         // onSubmit waits while an input method is composing, so Enter there picks the candidate.
         .onSubmit { hud.submit() }
